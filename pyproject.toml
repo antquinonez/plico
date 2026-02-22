@@ -15,6 +15,11 @@ authors = [
 
 dependencies = [
     "mistralai",
+    "anthropic",
+    "openai",
+    "azure-ai-inference",
+    "azure-core",
+    "google-auth",
     "duckdb",
     "requests",
     "pandas",
@@ -29,6 +34,28 @@ dependencies = [
 [project.optional-dependencies]
 dev = [
     "pytest",
+    "pytest-cov",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
+addopts = "-v --tb=short"
+
+[tool.coverage.run]
+source = ["src"]
+omit = [
+    "*/__init__.py",
+]
+
+[tool.coverage.report]
+exclude_lines = [
+    "pragma: no cover",
+    "def __repr__",
+    "raise NotImplementedError",
+    "if __name__ == .__main__.:",
+    "if TYPE_CHECKING:",
 ]
 
 [tool.setuptools.packages.find]
