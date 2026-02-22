@@ -26,6 +26,68 @@ def mock_mistral_client(mock_mistral_response):
 
 
 @pytest.fixture
+def mock_anthropic_response():
+    """Mock response from Anthropic API."""
+    response = MagicMock()
+    response.content = [MagicMock()]
+    response.content[0].text = "This is a test response."
+    return response
+
+
+@pytest.fixture
+def mock_anthropic_client(mock_anthropic_response):
+    """Mock Anthropic client."""
+    client = MagicMock()
+    client.messages.create.return_value = mock_anthropic_response
+    return client
+
+
+@pytest.fixture
+def mock_openai_response():
+    """Mock response from OpenAI-compatible API."""
+    response = MagicMock()
+    response.choices = [MagicMock()]
+    response.choices[0].message.content = "This is a test response."
+    response.choices[0].message.tool_calls = None
+    return response
+
+
+@pytest.fixture
+def mock_openai_client(mock_openai_response):
+    """Mock OpenAI client."""
+    client = MagicMock()
+    client.chat.completions.create.return_value = mock_openai_response
+    return client
+
+
+@pytest.fixture
+def mock_azure_response():
+    """Mock response from Azure AI Inference API."""
+    response = MagicMock()
+    response.choices = [MagicMock()]
+    response.choices[0].message.content = "This is a test response."
+    response.choices[0].message.tool_calls = None
+    return response
+
+
+@pytest.fixture
+def mock_azure_client(mock_azure_response):
+    """Mock Azure AI Inference client."""
+    client = MagicMock()
+    client.complete.return_value = mock_azure_response
+    return client
+
+
+@pytest.fixture
+def mock_gemini_client():
+    """Mock Gemini/AsyncOpenAI client."""
+    client = MagicMock()
+    client.chat = MagicMock()
+    client.chat.completions = MagicMock()
+    return client
+
+
+@pytest.fixture
 def mock_ffmistral(mock_mistral_client):
     """Mock FFMistral instance."""
     with patch("src.Clients.FFMistral.Mistral") as MockMistral:
