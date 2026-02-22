@@ -1,0 +1,39 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ffclients"
+version = "0.1.0"
+description = "AI Client Library for Far Finer LLC"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "Proprietary"}
+authors = [
+    {name = "Antonio Quinonez", email = "antquinonez@farfiner.com"}
+]
+
+dependencies = [
+    "mistralai",
+    "duckdb",
+    "requests",
+    "pandas",
+    "polars-lts-cpu",
+    "python-dotenv",
+    "nest_asyncio",
+    "matplotlib",
+    "openpyxl",
+    "pyarrow",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+]
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["src*", "src.Clients*", "src.workbook*"]
+
+[tool.setuptools.package-data]
+"*" = ["py.typed"]

@@ -1,0 +1,14 @@
+# uv pip install -r requirements.txt  
+mistralai
+
+duckdb
+requests
+
+pandas
+polars-lts-cpu
+pytest
+python-dotenv
+nest_asyncio
+matplotlib
+openpyxl
+

@@ -1,0 +1,6 @@
+*.parquet
+ffclients.egg-info/*
+.vscode/settings.json
+__pycache__/
+*.pyc
+*.pyo
