@@ -86,14 +86,25 @@ FFClients is a declarative context handling API wrapper for AI models with Excel
 - `FFMistral`, `FFAnthropic`, `FFPerplexity`, etc. - Concrete implementations
 - `FFAzureClientBase` - Azure-specific base class (inherits from FFAIClientBase)
 
+**Features:**
+- Unified `generate_response()` interface
+- Conversation history management
+- `clone()` method for thread-safe parallel execution
+
 **See:** [CLIENTS_ARCHITECTURE.md](./CLIENTS_ARCHITECTURE.md)
 
 ### Subsystem 2: Excel Orchestrator
 **Purpose:** Enable non-programmers to define and execute AI prompt workflows.
 
 **Key Components:**
-- `ExcelOrchestrator` - Main orchestration engine
+- `ExcelOrchestrator` - Main orchestration engine with parallel execution
 - `WorkbookBuilder` - Excel file creation, validation, and I/O
+
+**Features:**
+- Dependency-aware parallel execution
+- Real-time progress indicator
+- Configurable concurrency (default: 2, max: 10)
+- Thread-safe client isolation
 
 **See:** [ORCHESTRATOR_ARCHITECTURE.md](./ORCHESTRATOR_ARCHITECTURE.md)
 
@@ -172,7 +183,11 @@ FFClients/
 │
 ├── scripts/
 │   ├── run_orchestrator.py            # CLI entry point for orchestrator
+│   ├── create_test_workbook.py        # Generate test workbooks
 │   └── try_ai_mistralsmall_script.py  # Example usage script
+│
+├── logs/                              # Execution logs (git-ignored)
+│   └── orchestrator.log               # Current log (rotates daily)
 │
 ├── tests/
 │   ├── conftest.py                    # Shared fixtures
@@ -249,19 +264,64 @@ WorkbookBuilder.load_prompts()
     ▼
 ExcelOrchestrator.run()
     │
-    ├──► For each prompt (sequential):
+    ├──► _build_execution_graph() ← Assign dependency levels
+    │
+    ├──► If concurrency > 1:
     │    │
-    │    ├──► FFAI.generate_response()
-    │    │         │
-    │    │         └──► Client → API
+    │    └──► execute_parallel()
+    │         │
+    │         ├──► ThreadPoolExecutor (max_workers=concurrency)
+    │         │
+    │         ├──► For each ready prompt (same level):
+    │         │    │
+    │         │    ├──► Clone client for isolation
+    │         │    │
+    │         │    ├──► Inject dependency context
+    │         │    │
+    │         │    └──► FFAI.generate_response()
+    │         │              │
+    │         │              └──► Client → API
+    │         │
+    │         └──► Collect results, update progress
+    │
+    ├──► Else (concurrency = 1):
     │    │
-    │    └──► Store result
+    │    └──► execute() ← Sequential execution
     │
     ▼
 WorkbookBuilder.write_results()
     │
     ▼
 Excel Workbook (with results sheet)
+```
+
+### Parallel Execution Data Flow
+```
+┌─────────────────────────────────────────────────────────────────┐
+│                    ExecutionState (Shared)                       │
+│                                                                  │
+│  completed: Set[int]      ← Completed sequence numbers          │
+│  in_progress: Set[int]    ← Currently running                   │
+│  results_by_name: Dict    ← Results indexed by prompt_name      │
+│  results_lock: Lock       ← Thread-safe access                  │
+│                                                                  │
+└────────────────────────────┬────────────────────────────────────┘
+                             │
+         ┌───────────────────┼───────────────────┐
+         │                   │                   │
+         ▼                   ▼                   ▼
+   ┌───────────┐       ┌───────────┐       ┌───────────┐
+   │  Thread 1 │       │  Thread 2 │       │  Thread 3 │
+   │           │       │           │       │           │
+   │ Clone     │       │ Clone     │       │ Clone     │
+   │ Client    │       │ Client    │       │ Client    │
+   │           │       │           │       │           │
+   │ Inject    │       │ Inject    │       │ Inject    │
+   │ Deps      │       │ Deps      │       │ Deps      │
+   │           │       │           │       │           │
+   │ Execute   │       │ Execute   │       │ Execute   │
+   │ Prompt    │       │ Prompt    │       │ Prompt    │
+   └───────────┘       └───────────┘       └───────────┘
 ```
 
 ## Extension Points

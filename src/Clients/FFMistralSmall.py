@@ -94,6 +94,16 @@ class FFMistralSmall(FFAIClientBase):
         """Set the conversation history."""
         self.conversation_history = history
 
+    def clone(self) -> "FFMistralSmall":
+        """Create a fresh clone of this client with empty history."""
+        return FFMistralSmall(
+            api_key=self.api_key,
+            model=self.model,
+            temperature=self.temperature,
+            max_tokens=self.max_tokens,
+            system_instructions=self.system_instructions,
+        )
+
     def _convert_history_to_messages(self) -> List[Dict[str, str]]:
         """Convert conversation history to Mistral message format."""
         messages = []

@@ -215,6 +215,8 @@ class ExcelOrchestrator:
         workbook_path: str,
         client: FFAIClientBase,
         config_overrides: Optional[Dict[str, Any]] = None,
+        concurrency: int = 2,
+        progress_callback: Optional[Callable[[int, int, int, int], None]] = None,
     ):
         """
         Initialize orchestrator.
@@ -223,6 +225,8 @@ class ExcelOrchestrator:
             workbook_path: Path to Excel workbook
             client: AI client to use for generation
             config_overrides: Optional config overrides
+            concurrency: Maximum concurrent API calls (default: 2, max: 10)
+            progress_callback: Optional callback for progress updates (completed, total, success, failed)
         """
     
     def run(self) -> str:
@@ -235,7 +239,15 @@ class ExcelOrchestrator:
     
     def execute(self) -> List[Dict[str, Any]]:
         """
-        Execute all prompts in sequence.
+        Execute all prompts sequentially.
+        
+        Returns:
+            List of result dictionaries.
+        """
+    
+    def execute_parallel(self) -> List[Dict[str, Any]]:
+        """
+        Execute prompts in parallel with dependency-aware scheduling.
         
         Returns:
             List of result dictionaries.
@@ -262,8 +274,14 @@ class ExcelOrchestrator:
     def _validate_dependencies(self) -> None:
         """Validate history dependencies are resolvable."""
     
+    def _build_execution_graph(self) -> Dict[int, PromptNode]:
+        """Build dependency graph and assign execution levels."""
+    
     def _execute_prompt(self, prompt: Dict) -> Dict:
         """Execute single prompt with retry logic."""
+    
+    def _execute_prompt_isolated(self, prompt: Dict) -> Dict:
+        """Execute single prompt with isolated FFAI instance (thread-safe)."""
 ```
 
 ### WorkbookBuilder
@@ -451,11 +469,46 @@ python scripts/run_orchestrator.py new_workbook.xlsx --dry-run
 
 ### Options
 
-| Option | Description |
-|--------|-------------|
-| `--client` | AI client to use (mistral-small, mistral) |
-| `--dry-run` | Validate without executing |
-| `--verbose` | Enable debug logging |
+| Option | Short | Description |
+|--------|-------|-------------|
+| `--client` | | AI client to use (mistral-small, mistral) |
+| `--concurrency` | `-c` | Maximum concurrent API calls (default: 2, max: 10) |
+| `--dry-run` | | Validate without executing |
+| `--quiet` | `-q` | Suppress console logging (logs to file only) |
+| `--verbose` | | Enable debug logging |
+
+### Parallel Execution
+
+```bash
+# Run with 4 concurrent API calls
+python scripts/run_orchestrator.py new_workbook.xlsx --concurrency 4
+
+# Run with quiet mode (clean output)
+python scripts/run_orchestrator.py new_workbook.xlsx -c 4 --quiet
+```
+
+Output with progress indicator:
+```
+Starting orchestration with concurrency=4
+Total prompts: 30
+Log file: /path/to/logs/orchestrator.log
+
+[████████░░░░░░░░░░░░] 15/30 (48%) | ✓14 ✗0 | →compare_9 | ⏳2 | ETA: 4s
+```
+
+The parallel executor respects dependencies - prompts at the same dependency level run concurrently, while dependent prompts wait for their prerequisites to complete.
+
+### Logging
+
+All execution logs are written to `logs/orchestrator.log` with daily rotation and 10-day retention.
+
+```bash
+# View logs
+cat logs/orchestrator.log
+
+# Follow live
+tail -f logs/orchestrator.log
+```
 
 ## Programmatic Usage
 
@@ -466,11 +519,12 @@ from src.Clients.FFMistralSmall import FFMistralSmall
 # Initialize client
 client = FFMistralSmall(api_key="...")
 
-# Create orchestrator
+# Create orchestrator with parallel execution
 orchestrator = ExcelOrchestrator(
     workbook_path="my_workbook.xlsx",
     client=client,
-    config_overrides={"temperature": 0.5}
+    config_overrides={"temperature": 0.5},
+    concurrency=4,  # Run up to 4 prompts in parallel
 )
 
 # Run execution

@@ -4,3 +4,4 @@ ffclients.egg-info/*
 __pycache__/
 *.pyc
 *.pyo
+logs/

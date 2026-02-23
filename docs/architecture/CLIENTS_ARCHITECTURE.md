@@ -66,7 +66,42 @@ class FFAIClientBase(ABC):
     def set_conversation_history(self, history: list) -> None:
         """Set conversation history."""
         pass
+    
+    @abstractmethod
+    def clone(self) -> "FFAIClientBase":
+        """
+        Create a fresh clone of this client with empty history.
+        
+        Used for thread-safe parallel execution where each thread
+        needs an isolated client instance with the same configuration.
+        
+        Returns:
+            New client instance with same config, empty history.
+        """
+        pass
 ```
+
+### Clone Method Implementation
+
+Each client must implement `clone()` to support parallel execution:
+
+```python
+class FFMistralSmall(FFAIClientBase):
+    def clone(self) -> "FFMistralSmall":
+        """Create a fresh clone with empty history."""
+        return FFMistralSmall(
+            api_key=self.api_key,
+            model=self.model,
+            temperature=self.temperature,
+            max_tokens=self.max_tokens,
+            system_instructions=self.system_instructions,
+        )
+```
+
+**Why Clone?**
+- Parallel execution requires isolated client state per thread
+- Each prompt execution needs clean conversation history
+- Dependency context is injected per-execution, not accumulated
 
 ## Client Categories
 
@@ -327,6 +362,16 @@ class FFNewProvider(FFAIClientBase):
     
     def set_conversation_history(self, history: List[Dict]) -> None:
         self.conversation_history = history
+    
+    def clone(self) -> "FFNewProvider":
+        """Create a fresh clone for parallel execution."""
+        return FFNewProvider(
+            api_key=self.api_key,
+            model=self.model,
+            temperature=self.temperature,
+            max_tokens=self.max_tokens,
+            system_instructions=self.system_instructions,
+        )
 ```
 
 ### Step 2: Export in `__init__.py`

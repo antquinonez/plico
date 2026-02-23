@@ -125,26 +125,25 @@ class FFAI:
             return self.client.system_instructions
         return None
 
-    def _clean_response(self, response: str) -> Any:
+    def _clean_response(self, response: Any) -> Any:
         """Process and validate the evaluation response"""
         logger.debug(f"Cleaning response: {response}")
 
-        # Remove content enclosed in <think> tags (including the tags themselves)
-        if isinstance(response, str):
-            # Handle multi-line think blocks with re.DOTALL flag
-            response = re.sub(r"<think>[\s\S]*?</think>", "", response)
-            logger.debug(f"Response after removing <think> tags: {response}")
+        if not isinstance(response, str):
+            return response
+
+        response = re.sub(r"<think[\s\S]*?</think\s*>", "", response)
+        logger.debug(f"Response after removing think tags: {response}")
 
         cleaned_json = self._extract_json(response)
         logger.debug(f"cleaned_json: {cleaned_json}")
 
         if cleaned_json is not None:
-            # If the response is JSON, also clean any string values that might contain <think> tags
             if isinstance(cleaned_json, dict):
                 for key, value in cleaned_json.items():
                     if isinstance(value, str):
                         cleaned_json[key] = re.sub(
-                            r"<think>[\s\S]*?</think>", "", value
+                            r"<think[\s\S]*?</think\s*>", "", value
                         )
             return cleaned_json
         return response
@@ -162,7 +161,6 @@ class FFAI:
         logger.info(f"Building prompt with history references: {history}")
         logger.info(f"Current history size: {len(self.prompt_attr_history)}")
 
-        # Debug current history
         for idx, entry in enumerate(self.prompt_attr_history):
             logger.debug(
                 "=================================================================="
@@ -181,7 +179,6 @@ class FFAI:
             )
             logger.debug(f"  Response: {entry.get('response')}")
 
-        # Get historical interactions for each prompt name
         history_entries = []
         for prompt_name in history:
             logger.debug(
@@ -216,7 +213,6 @@ class FFAI:
                     f"Added entry for {prompt_name}: {latest['prompt']} -> {latest['response']}"
                 )
 
-        # Format history entries
         formatted_history = []
         for entry in history_entries:
             formatted_entry = (
@@ -227,7 +223,6 @@ class FFAI:
             )
             formatted_history.append(formatted_entry)
 
-        # Combine history with current prompt
         if formatted_history:
             final_prompt = (
                 "<conversation_history>\n"
@@ -243,7 +238,6 @@ class FFAI:
         logger.info(f"Final constructed prompt:\n{final_prompt}")
         return final_prompt
 
-    # Add this to the generate_response method in FFAI.py
     def generate_response(
         self,
         prompt: str,

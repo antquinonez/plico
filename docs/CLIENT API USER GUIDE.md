@@ -138,7 +138,29 @@ client.set_conversation_history([
 
 # Clear conversation
 client.clear_conversation()
+
+# Clone client (creates fresh instance with empty history)
+new_client = client.clone()
 ```
+
+### Client Cloning
+
+The `clone()` method creates a fresh client instance with the same configuration but empty conversation history. This is essential for parallel execution scenarios where each thread needs isolated state.
+
+```python
+# Original client with conversation history
+client = FFMistralSmall(api_key="...")
+client.generate_response("Hello")  # History now has 1 turn
+
+# Clone creates isolated instance
+isolated = client.clone()  # Empty history, same config
+isolated.generate_response("Hi")  # Independent conversation
+```
+
+**Use Cases:**
+- Parallel prompt execution
+- Isolated conversation contexts
+- Thread-safe client instances
 
 ### Connection Testing
 

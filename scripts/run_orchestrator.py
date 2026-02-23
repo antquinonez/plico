@@ -11,12 +11,21 @@ Examples:
 
     # Run existing workbook
     python scripts/run_orchestrator.py my_prompts.xlsx --client mistral-small
+
+    # Run with parallel execution (4 concurrent calls)
+    python scripts/run_orchestrator.py my_prompts.xlsx --concurrency 4
+
+    # Run with logging to file only (quiet mode)
+    python scripts/run_orchestrator.py my_prompts.xlsx --quiet
 """
 
 import argparse
 import logging
 import os
 import sys
+import time
+from logging.handlers import TimedRotatingFileHandler
+from datetime import datetime
 
 from dotenv import load_dotenv
 
@@ -28,15 +37,116 @@ from src.Clients.FFMistral import FFMistral
 
 load_dotenv()
 
-logging.basicConfig(
-    level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+LOG_DIR = os.path.join(
+    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "logs"
 )
-logger = logging.getLogger(__name__)
+os.makedirs(LOG_DIR, exist_ok=True)
+
+
+def setup_logging(quiet: bool = False, verbose: bool = False):
+    """Configure logging with file rotation and optional console suppression."""
+    root_logger = logging.getLogger()
+    root_logger.setLevel(logging.DEBUG if verbose else logging.INFO)
+
+    for handler in root_logger.handlers[:]:
+        root_logger.removeHandler(handler)
+
+    log_file = os.path.join(LOG_DIR, "orchestrator.log")
+    file_handler = TimedRotatingFileHandler(
+        log_file,
+        when="midnight",
+        interval=1,
+        backupCount=10,
+        encoding="utf-8",
+    )
+    file_handler.suffix = "%Y-%m-%d"
+    file_handler.setLevel(logging.DEBUG)
+    file_handler.setFormatter(
+        logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+    )
+    root_logger.addHandler(file_handler)
+
+    if not quiet:
+        console_handler = logging.StreamHandler(sys.stderr)
+        console_handler.setLevel(logging.INFO)
+        console_handler.setFormatter(
+            logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
+        )
+        root_logger.addHandler(console_handler)
+
+    return logging.getLogger(__name__)
+
+
+logger = setup_logging(quiet=False)
 
 CLIENT_MAP = {
     "mistral-small": FFMistralSmall,
     "mistral": FFMistral,
 }
+
+
+class ProgressIndicator:
+    def __init__(self, total: int, show_names: bool = True):
+        self.total = total
+        self.start_time = time.time()
+        self.last_update = 0
+        self.show_names = show_names
+        self.current_names: list = []
+        self.completed_names: list = []
+        self.running = 0
+
+    def update(
+        self,
+        completed: int,
+        total: int,
+        success: int,
+        failed: int,
+        current_name: str = None,
+        running: int = 0,
+    ):
+        now = time.time()
+        if now - self.last_update < 0.1 and completed < total:
+            return
+        self.last_update = now
+        self.running = running
+
+        pct = (completed / total * 100) if total > 0 else 0
+        bar_width = 20
+        filled = int(bar_width * completed / total) if total > 0 else 0
+        bar = "█" * filled + "░" * (bar_width - filled)
+
+        elapsed = now - self.start_time
+        if completed > 0 and completed < total:
+            eta = (elapsed / completed) * (total - completed)
+            if eta > 60:
+                eta_str = f"ETA: {int(eta // 60)}m {int(eta % 60)}s"
+            else:
+                eta_str = f"ETA: {int(eta)}s"
+        elif completed == total:
+            if elapsed > 60:
+                eta_str = f"Done: {int(elapsed // 60)}m {int(elapsed % 60)}s"
+            else:
+                eta_str = f"Done: {int(elapsed)}s"
+        else:
+            eta_str = "ETA: --"
+
+        status = f"\r[{bar}] {completed}/{total} ({pct:.0f}%) | ✓{success} ✗{failed}"
+
+        if self.show_names and current_name:
+            name_display = current_name[:20] if len(current_name) > 20 else current_name
+            status += f" | →{name_display}"
+
+        if running > 0:
+            status += f" | ⏳{running}"
+
+        status += f" | {eta_str}"
+
+        sys.stdout.write(status)
+        sys.stdout.flush()
+
+    def finish(self):
+        sys.stdout.write("\n")
+        sys.stdout.flush()
 
 
 def get_client(client_type: str, config: dict) -> object:
@@ -79,14 +189,27 @@ def main():
         help="AI client to use (default: mistral-small)",
     )
     parser.add_argument(
+        "--concurrency",
+        "-c",
+        type=int,
+        default=2,
+        help="Maximum concurrent API calls (default: 2, max: 10)",
+    )
+    parser.add_argument(
         "--dry-run", action="store_true", help="Validate workbook without executing"
+    )
+    parser.add_argument(
+        "--quiet",
+        "-q",
+        action="store_true",
+        help="Suppress console logging (logs to file only)",
     )
     parser.add_argument("--verbose", action="store_true", help="Enable debug logging")
 
     args = parser.parse_args()
 
-    if args.verbose:
-        logging.getLogger().setLevel(logging.DEBUG)
+    global logger
+    logger = setup_logging(quiet=args.quiet, verbose=args.verbose)
 
     workbook_path = args.workbook
 
@@ -119,19 +242,31 @@ def main():
 
     client = get_client(args.client, config)
 
+    prompts = builder.load_prompts()
+    progress = ProgressIndicator(len(prompts), show_names=True)
+
     orchestrator = ExcelOrchestrator(
         workbook_path=workbook_path,
         client=client,
+        concurrency=args.concurrency,
+        progress_callback=progress.update,
     )
 
+    print(f"\nStarting orchestration with concurrency={args.concurrency}")
+    print(f"Total prompts: {len(prompts)}")
+    print(f"Log file: {os.path.join(LOG_DIR, 'orchestrator.log')}\n")
+
     results_sheet = orchestrator.run()
+    progress.finish()
+
     summary = orchestrator.get_summary()
 
     print("\n" + "=" * 60)
     print("ORCHESTRATION COMPLETE")
     print("=" * 60)
-    print(f"Workbook:     {summary['workbook']}")
+    print(f"Workbook:      {summary['workbook']}")
     print(f"Results sheet: {results_sheet}")
+    print(f"Concurrency:   {args.concurrency}")
     print(f"Total prompts: {summary['total_prompts']}")
     print(f"Successful:    {summary['successful']}")
     print(f"Failed:        {summary['failed']}")
