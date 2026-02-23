@@ -10,6 +10,7 @@ from typing import Optional, List, Dict, Any, Set, Callable
 from ..FFAI import FFAI
 from ..FFAIClientBase import FFAIClientBase
 from .workbook_builder import WorkbookBuilder
+from .client_registry import ClientRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -72,6 +73,9 @@ class ExcelOrchestrator:
         self.batch_data: List[Dict[str, Any]] = []
         self.is_batch_mode: bool = False
 
+        self.client_registry: Optional[ClientRegistry] = None
+        self.has_multi_client: bool = False
+
     def _init_workbook(self) -> None:
         """Initialize workbook - create if not exists, validate if exists."""
         if not os.path.exists(self.workbook_path):
@@ -94,6 +98,34 @@ class ExcelOrchestrator:
         """Initialize FFAI wrapper with configured client."""
         self.ffai = FFAI(self.client)
         logger.info("FFAI wrapper initialized")
+
+    def _init_client_registry(self) -> None:
+        """Initialize client registry with clients from workbook."""
+        self.client_registry = ClientRegistry(self.client)
+
+        if self.builder.has_clients_sheet():
+            clients = self.builder.load_clients()
+            for client_config in clients:
+                name = client_config.get("name")
+                client_type = client_config.get("client_type")
+                if name and client_type:
+                    config = {
+                        k: v
+                        for k, v in client_config.items()
+                        if k not in ("name", "client_type")
+                    }
+                    try:
+                        self.client_registry.register(name, client_type, config)
+                    except ValueError as e:
+                        logger.warning(f"Failed to register client '{name}': {e}")
+
+            logger.info(
+                f"Client registry initialized with {len(self.client_registry.get_registered_names())} clients"
+            )
+
+        self.has_multi_client = any(p.get("client") for p in self.prompts)
+        if self.has_multi_client:
+            logger.info("Multi-client mode enabled - prompts specify client names")
 
     def _validate_dependencies(self) -> None:
         """Validate all history dependencies reference existing prompt_names."""
@@ -197,11 +229,14 @@ class ExcelOrchestrator:
             "prompt_name": prompt.get("prompt_name"),
             "prompt": prompt["prompt"],
             "history": prompt.get("history"),
+            "client": prompt.get("client"),
             "response": None,
             "status": "pending",
             "attempts": 0,
             "error": None,
         }
+
+        client_name = prompt.get("client")
 
         for attempt in range(1, max_retries + 1):
             result["attempts"] = attempt
@@ -209,9 +244,13 @@ class ExcelOrchestrator:
             try:
                 logger.debug(
                     f"Executing sequence {prompt['sequence']} (attempt {attempt})"
+                    + (f" with client '{client_name}'" if client_name else "")
                 )
 
-                isolated_client = self.client.clone()
+                if client_name:
+                    isolated_client = self.client_registry.clone(client_name)
+                else:
+                    isolated_client = self.client.clone()
                 ffai = FFAI(isolated_client)
 
                 with state.results_lock:
@@ -263,11 +302,16 @@ class ExcelOrchestrator:
             "prompt_name": prompt.get("prompt_name"),
             "prompt": prompt["prompt"],
             "history": prompt.get("history"),
+            "client": prompt.get("client"),
             "response": None,
             "status": "pending",
             "attempts": 0,
             "error": None,
         }
+
+        client_name = prompt.get("client")
+        client = self.client_registry.get(client_name) if client_name else self.client
+        ffai = FFAI(client) if client_name else self.ffai
 
         for attempt in range(1, max_retries + 1):
             result["attempts"] = attempt
@@ -275,9 +319,10 @@ class ExcelOrchestrator:
             try:
                 logger.info(
                     f"Executing sequence {prompt['sequence']} (attempt {attempt})"
+                    + (f" with client '{client_name}'" if client_name else "")
                 )
 
-                response = self.ffai.generate_response(
+                response = ffai.generate_response(
                     prompt=prompt["prompt"],
                     prompt_name=prompt.get("prompt_name"),
                     history=prompt.get("history"),
@@ -377,11 +422,16 @@ class ExcelOrchestrator:
             "prompt_name": prompt.get("prompt_name"),
             "prompt": prompt["prompt"],
             "history": prompt.get("history"),
+            "client": prompt.get("client"),
             "response": None,
             "status": "pending",
             "attempts": 0,
             "error": None,
         }
+
+        client_name = prompt.get("client")
+        client = self.client_registry.get(client_name) if client_name else self.client
+        ffai = FFAI(client)
 
         for attempt in range(1, max_retries + 1):
             result["attempts"] = attempt
@@ -389,9 +439,10 @@ class ExcelOrchestrator:
             try:
                 logger.info(
                     f"Executing batch {batch_id}, sequence {prompt['sequence']} (attempt {attempt})"
+                    + (f" with client '{client_name}'" if client_name else "")
                 )
 
-                response = self.ffai.generate_response(
+                response = ffai.generate_response(
                     prompt=prompt["prompt"],
                     prompt_name=prompt.get("prompt_name"),
                     history=prompt.get("history"),
@@ -615,16 +666,22 @@ class ExcelOrchestrator:
                     "prompt_name": resolved_prompt.get("prompt_name"),
                     "prompt": resolved_prompt["prompt"],
                     "history": resolved_prompt.get("history"),
+                    "client": resolved_prompt.get("client"),
                     "response": None,
                     "status": "pending",
                     "attempts": 0,
                     "error": None,
                 }
 
+                client_name = resolved_prompt.get("client")
+
                 for attempt in range(1, max_retries + 1):
                     result["attempts"] = attempt
                     try:
-                        isolated_client = self.client.clone()
+                        if client_name:
+                            isolated_client = self.client_registry.clone(client_name)
+                        else:
+                            isolated_client = self.client.clone()
                         ffai = FFAI(isolated_client)
 
                         for dep_name in resolved_prompt.get("history") or []:
@@ -740,6 +797,7 @@ class ExcelOrchestrator:
         self.prompts = self.builder.load_prompts()
         self._validate_dependencies()
         self._init_client()
+        self._init_client_registry()
 
         self.batch_data = self.builder.load_data()
         self.is_batch_mode = len(self.batch_data) > 0

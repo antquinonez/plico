@@ -99,12 +99,15 @@ FFClients is a declarative context handling API wrapper for AI models with Excel
 **Key Components:**
 - `ExcelOrchestrator` - Main orchestration engine with parallel execution
 - `WorkbookBuilder` - Excel file creation, validation, and I/O
+- `ClientRegistry` - Client factory and multi-client support
 
 **Features:**
 - Dependency-aware parallel execution
 - Real-time progress indicator
 - Configurable concurrency (default: 2, max: 10)
 - Thread-safe client isolation
+- Batch execution with variable templating
+- Per-prompt client configuration
 
 **See:** [ORCHESTRATOR_ARCHITECTURE.md](./ORCHESTRATOR_ARCHITECTURE.md)
 
@@ -114,11 +117,12 @@ FFClients is a declarative context handling API wrapper for AI models with Excel
 ┌─────────────────────────────────────────────────────────────┐
 │                   Excel Orchestrator                         │
 │                                                              │
-│   1. Load workbook (config + prompts sheets)                │
+│   1. Load workbook (config + prompts + data + clients)      │
 │   2. Validate dependencies                                   │
-│   3. For each prompt:                                        │
+│   3. Resolve clients via ClientRegistry                      │
+│   4. For each prompt (or batch iteration):                   │
 │      └─► FFAI.generate_response(prompt, history=[...])      │
-│   4. Write results to new sheet                              │
+│   5. Write results to new sheet                              │
 │                                                              │
 └──────────────────────────┬──────────────────────────────────┘
                            │
@@ -143,6 +147,29 @@ FFClients is a declarative context handling API wrapper for AI models with Excel
 │   - Returns response                                        │
 │                                                              │
 └─────────────────────────────────────────────────────────────┘
+```
+
+### Client Resolution Flow
+```
+Prompt Definition (client column)
+              │
+              ▼
+      ┌───────────────┐
+      │ ClientRegistry│
+      │  .get_client()│
+      └───────┬───────┘
+              │
+    ┌─────────┴─────────┐
+    │                   │
+    ▼                   ▼
+Named client        Default client
+ (e.g., "fast")     (from config)
+    │                   │
+    └─────────┬─────────┘
+              │
+              ▼
+      Client instance
+    (lazy instantiated)
 ```
 
 ## Directory Structure
@@ -179,11 +206,13 @@ FFClients/
 │   └── orchestrator/                  # SUBSYSTEM 2: Excel Orchestrator
 │       ├── __init__.py
 │       ├── excel_orchestrator.py      # Main orchestration engine
-│       └── workbook_builder.py        # Excel I/O and validation
+│       ├── workbook_builder.py        # Excel I/O and validation
+│       └── client_registry.py         # Client factory and registry
 │
 ├── scripts/
 │   ├── run_orchestrator.py            # CLI entry point for orchestrator
 │   ├── create_test_workbook.py        # Generate test workbooks
+│   ├── create_test_workbook_multiclient.py  # Multi-client test workbooks
 │   └── try_ai_mistralsmall_script.py  # Example usage script
 │
 ├── logs/                              # Execution logs (git-ignored)
@@ -202,7 +231,8 @@ FFClients/
 │   ├── test_ordered_prompt_history.py
 │   ├── test_permanent_history.py
 │   ├── test_excel_orchestrator.py
-│   └── test_workbook_builder.py
+│   ├── test_workbook_builder.py
+│   └── test_client_registry.py
 │
 ├── docs/
 │   ├── architecture/
@@ -229,6 +259,7 @@ FFClients/
 | Builder | `WorkbookBuilder` | Construct Excel workbooks |
 | Strategy | Client implementations | Interchangeable AI providers |
 | Template Method | `FFAzureClientBase._initialize_client()` | Allow subclasses to customize |
+| Registry | `ClientRegistry` | Lazy client instantiation, name-to-factory mapping |
 
 ## Data Flow
 
@@ -331,12 +362,15 @@ Excel Workbook (with results sheet)
 2. Inherit from `FFAIClientBase` (or `FFAzureClientBase` for Azure)
 3. Implement required methods
 4. Add to `src/Clients/__init__.py`
-5. Add tests in `tests/test_ffnewprovider.py`
+5. Register in `ClientRegistry._CLIENT_MAP` (for orchestrator use)
+6. Add to CLI `CLIENT_MAP` in `scripts/run_orchestrator.py`
+7. Add tests in `tests/test_ffnewprovider.py`
 
 ### Extending Orchestrator
 1. Modify `WorkbookBuilder` for new sheet formats
 2. Modify `ExcelOrchestrator` for new execution logic
-3. Update tests
+3. Update `ClientRegistry` if new client configuration needed
+4. Update tests
 
 ## Dependencies
 
@@ -348,7 +382,11 @@ FFAI
 
 ExcelOrchestrator
   ├── FFAI (uses)
-  └── WorkbookBuilder
+  ├── WorkbookBuilder
+  └── ClientRegistry
+
+ClientRegistry
+  └── Client classes (imports lazily)
 
 WorkbookBuilder
   └── openpyxl (external)

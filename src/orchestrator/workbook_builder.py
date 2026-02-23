@@ -17,6 +17,7 @@ class WorkbookBuilder:
     CONFIG_SHEET = "config"
     PROMPTS_SHEET = "prompts"
     DATA_SHEET = "data"
+    CLIENTS_SHEET = "clients"
 
     CONFIG_FIELDS = [
         ("model", "mistral-small-2503"),
@@ -37,7 +38,17 @@ class WorkbookBuilder:
         ("on_batch_error", "continue"),
     ]
 
-    PROMPTS_HEADERS = ["sequence", "prompt_name", "prompt", "history"]
+    PROMPTS_HEADERS = ["sequence", "prompt_name", "prompt", "history", "client"]
+    REQUIRED_PROMPTS_HEADERS = ["sequence", "prompt_name", "prompt", "history"]
+    CLIENTS_HEADERS = [
+        "name",
+        "client_type",
+        "api_key_env",
+        "model",
+        "temperature",
+        "max_tokens",
+        "system_instructions",
+    ]
     RESULTS_HEADERS = [
         "batch_id",
         "batch_name",
@@ -45,6 +56,7 @@ class WorkbookBuilder:
         "prompt_name",
         "prompt",
         "history",
+        "client",
         "response",
         "status",
         "attempts",
@@ -54,6 +66,7 @@ class WorkbookBuilder:
     def __init__(self, workbook_path: str):
         self.workbook_path = workbook_path
         self._has_data_sheet: Optional[bool] = None
+        self._has_clients_sheet: Optional[bool] = None
 
     def has_data_sheet(self) -> bool:
         """Check if workbook has a data sheet for batch execution."""
@@ -68,7 +81,22 @@ class WorkbookBuilder:
         self._has_data_sheet = self.DATA_SHEET in wb.sheetnames
         return self._has_data_sheet
 
-    def create_template_workbook(self, with_data_sheet: bool = False) -> str:
+    def has_clients_sheet(self) -> bool:
+        """Check if workbook has a clients sheet for multi-client execution."""
+        if self._has_clients_sheet is not None:
+            return self._has_clients_sheet
+
+        if not os.path.exists(self.workbook_path):
+            self._has_clients_sheet = False
+            return False
+
+        wb = load_workbook(self.workbook_path)
+        self._has_clients_sheet = self.CLIENTS_SHEET in wb.sheetnames
+        return self._has_clients_sheet
+
+    def create_template_workbook(
+        self, with_data_sheet: bool = False, with_clients_sheet: bool = False
+    ) -> str:
         """Create a new workbook with template structure."""
         logger.info(f"Creating template workbook: {self.workbook_path}")
 
@@ -102,6 +130,7 @@ class WorkbookBuilder:
 
         ws_prompts.column_dimensions["C"].width = 50
         ws_prompts.column_dimensions["D"].width = 30
+        ws_prompts.column_dimensions["E"].width = 15
 
         if with_data_sheet:
             ws_data = wb.create_sheet(title=self.DATA_SHEET)
@@ -109,6 +138,14 @@ class WorkbookBuilder:
             ws_data["B1"] = "batch_name"
             ws_data.column_dimensions["A"].width = 10
             ws_data.column_dimensions["B"].width = 30
+
+        if with_clients_sheet:
+            ws_clients = wb.create_sheet(title=self.CLIENTS_SHEET)
+            for col_idx, header in enumerate(self.CLIENTS_HEADERS, start=1):
+                ws_clients.cell(row=1, column=col_idx, value=header)
+                ws_clients.column_dimensions[get_column_letter(col_idx)].width = max(
+                    15, len(header) + 5
+                )
 
         wb.save(self.workbook_path)
         logger.info(f"Template workbook created: {self.workbook_path}")
@@ -128,12 +165,15 @@ class WorkbookBuilder:
             raise ValueError(f"Missing required sheet: {self.PROMPTS_SHEET}")
 
         ws_prompts = wb[self.PROMPTS_SHEET]
-        headers = [
-            ws_prompts.cell(row=1, column=i).value
-            for i in range(1, len(self.PROMPTS_HEADERS) + 1)
-        ]
 
-        missing = set(self.PROMPTS_HEADERS) - set(headers)
+        actual_headers = []
+        for col in range(1, ws_prompts.max_column + 1):
+            header = ws_prompts.cell(row=1, column=col).value
+            if header:
+                actual_headers.append(str(header).strip().lower())
+
+        normalized_required = [h.lower() for h in self.REQUIRED_PROMPTS_HEADERS]
+        missing = set(normalized_required) - set(actual_headers)
         if missing:
             raise ValueError(f"Missing required columns in prompts sheet: {missing}")
 
@@ -168,16 +208,37 @@ class WorkbookBuilder:
         wb = load_workbook(self.workbook_path)
         ws = wb[self.PROMPTS_SHEET]
 
+        headers = []
+        for col in range(1, ws.max_column + 1):
+            header = ws.cell(row=1, column=col).value
+            headers.append(str(header).strip().lower() if header else f"col_{col}")
+
         prompts = []
         for row in ws.iter_rows(min_row=2, values_only=True):
             if not row[0]:
                 continue
 
+            row_dict = {}
+            for col_idx, header in enumerate(headers):
+                if col_idx < len(row):
+                    row_dict[header] = row[col_idx]
+
             prompt_data = {
-                "sequence": int(row[0]) if row[0] else None,
-                "prompt_name": str(row[1]).strip() if row[1] else None,
-                "prompt": str(row[2]).strip() if row[2] else None,
-                "history": self.parse_history_string(row[3]) if row[3] else None,
+                "sequence": int(row_dict.get("sequence"))
+                if row_dict.get("sequence")
+                else None,
+                "prompt_name": str(row_dict.get("prompt_name", "")).strip()
+                if row_dict.get("prompt_name")
+                else None,
+                "prompt": str(row_dict.get("prompt", "")).strip()
+                if row_dict.get("prompt")
+                else None,
+                "history": self.parse_history_string(row_dict.get("history"))
+                if row_dict.get("history")
+                else None,
+                "client": str(row_dict.get("client", "")).strip()
+                if row_dict.get("client")
+                else None,
             }
 
             if prompt_data["sequence"] and prompt_data["prompt"]:
@@ -233,6 +294,47 @@ class WorkbookBuilder:
 
         return headers
 
+    def load_clients(self) -> List[Dict[str, Any]]:
+        """
+        Load client configurations from clients sheet.
+
+        Returns:
+            List of client config dictionaries with keys:
+            - name: unique identifier for this client
+            - client_type: type of client (e.g., "mistral-small", "anthropic")
+            - api_key_env: environment variable for API key (optional)
+            - model: model override (optional)
+            - temperature: temperature override (optional)
+            - max_tokens: max tokens override (optional)
+            - system_instructions: system prompt override (optional)
+        """
+        if not self.has_clients_sheet():
+            return []
+
+        wb = load_workbook(self.workbook_path)
+        ws = wb[self.CLIENTS_SHEET]
+
+        headers = []
+        for col in range(1, ws.max_column + 1):
+            header = ws.cell(row=1, column=col).value
+            headers.append(str(header).strip() if header else f"col_{col}")
+
+        clients = []
+        for row_idx in range(2, ws.max_row + 1):
+            row_data = {}
+            has_content = False
+            for col_idx, header in enumerate(headers, start=1):
+                value = ws.cell(row=row_idx, column=col_idx).value
+                row_data[header] = value
+                if value is not None:
+                    has_content = True
+
+            if has_content and row_data.get("name") and row_data.get("client_type"):
+                clients.append(row_data)
+
+        logger.info(f"Loaded {len(clients)} client configurations")
+        return clients
+
     def parse_history_string(self, history_str: Any) -> Optional[List[str]]:
         """Parse history string like '["a", "b"]' into list."""
         if not history_str:
@@ -286,10 +388,11 @@ class WorkbookBuilder:
             history_str = json.dumps(history) if history else ""
             ws.cell(row=row_idx, column=6, value=history_str)
 
-            ws.cell(row=row_idx, column=7, value=result.get("response"))
-            ws.cell(row=row_idx, column=8, value=result.get("status"))
-            ws.cell(row=row_idx, column=9, value=result.get("attempts"))
-            ws.cell(row=row_idx, column=10, value=result.get("error"))
+            ws.cell(row=row_idx, column=7, value=result.get("client"))
+            ws.cell(row=row_idx, column=8, value=result.get("response"))
+            ws.cell(row=row_idx, column=9, value=result.get("status"))
+            ws.cell(row=row_idx, column=10, value=result.get("attempts"))
+            ws.cell(row=row_idx, column=11, value=result.get("error"))
 
         ws.column_dimensions["A"].width = 10
         ws.column_dimensions["B"].width = 25
@@ -297,10 +400,11 @@ class WorkbookBuilder:
         ws.column_dimensions["D"].width = 18
         ws.column_dimensions["E"].width = 50
         ws.column_dimensions["F"].width = 30
-        ws.column_dimensions["G"].width = 60
-        ws.column_dimensions["H"].width = 10
+        ws.column_dimensions["G"].width = 15
+        ws.column_dimensions["H"].width = 60
         ws.column_dimensions["I"].width = 10
-        ws.column_dimensions["J"].width = 40
+        ws.column_dimensions["J"].width = 10
+        ws.column_dimensions["K"].width = 40
 
         wb.save(self.workbook_path)
         logger.info(f"Results written to sheet: {sheet_name}")

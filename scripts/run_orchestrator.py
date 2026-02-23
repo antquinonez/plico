@@ -32,8 +32,20 @@ from dotenv import load_dotenv
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.orchestrator import ExcelOrchestrator
+from src.orchestrator.client_registry import ClientRegistry
 from src.Clients.FFMistralSmall import FFMistralSmall
 from src.Clients.FFMistral import FFMistral
+from src.Clients.FFAnthropic import FFAnthropic
+from src.Clients.FFAnthropicCached import FFAnthropicCached
+from src.Clients.FFGemini import FFGemini
+from src.Clients.FFPerplexity import FFPerplexity
+from src.Clients.FFNvidiaDeepSeek import FFNvidiaDeepSeek
+from src.Clients.FFAzureMistral import FFAzureMistral
+from src.Clients.FFAzureMistralSmall import FFAzureMistralSmall
+from src.Clients.FFAzureCodestral import FFAzureCodestral
+from src.Clients.FFAzureDeepSeek import FFAzureDeepSeek
+from src.Clients.FFAzureDeepSeekV3 import FFAzureDeepSeekV3
+from src.Clients.FFAzurePhi import FFAzurePhi
 
 load_dotenv()
 
@@ -82,6 +94,17 @@ logger = setup_logging(quiet=False)
 CLIENT_MAP = {
     "mistral-small": FFMistralSmall,
     "mistral": FFMistral,
+    "anthropic": FFAnthropic,
+    "anthropic-cached": FFAnthropicCached,
+    "gemini": FFGemini,
+    "perplexity": FFPerplexity,
+    "nvidia-deepseek": FFNvidiaDeepSeek,
+    "azure-mistral": FFAzureMistral,
+    "azure-mistral-small": FFAzureMistralSmall,
+    "azure-codestral": FFAzureCodestral,
+    "azure-deepseek": FFAzureDeepSeek,
+    "azure-deepseek-v3": FFAzureDeepSeekV3,
+    "azure-phi": FFAzurePhi,
 }
 
 

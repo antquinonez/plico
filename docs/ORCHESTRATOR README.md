@@ -10,6 +10,8 @@ The Excel Orchestrator enables non-programmers to define and execute AI prompt w
 - Parallel execution with configurable concurrency
 - Real-time progress indicator
 - Automatic retry on failure
+- **Batch execution with variable templating**
+- **Per-prompt client configuration**
 
 ## Quick Start
 
@@ -28,7 +30,7 @@ python scripts/run_orchestrator.py my_prompts.xlsx -c 4
 
 ## Workbook Structure
 
-The orchestrator expects an Excel workbook with two sheets: `config` and `prompts`.
+The orchestrator supports up to four sheets: `config` (required), `prompts` (required), `data` (optional), and `clients` (optional).
 
 ### config Sheet
 
@@ -43,6 +45,9 @@ Configuration for the orchestration run.
 | `max_tokens` | Maximum response tokens | `4096` |
 | `system_instructions` | System prompt | `You are a helpful assistant...` |
 | `created_at` | Timestamp of workbook creation | (auto-generated) |
+| `batch_mode` | Batch execution mode | `per_row` |
+| `batch_output` | Output format for batches | `combined` |
+| `on_batch_error` | Error handling for batches | `continue` |
 
 **Example:**
 
@@ -57,22 +62,61 @@ Configuration for the orchestration run.
 
 ### prompts Sheet
 
-Prompt definitions with optional dependencies.
+Prompt definitions with optional dependencies and client selection.
 
 | Column | Description | Required |
 |--------|-------------|----------|
 | `sequence` | Execution order (1, 2, 3...) | Yes |
 | `prompt_name` | Name for referencing in history | No (recommended) |
-| `prompt` | The prompt text | Yes |
+| `prompt` | The prompt text (supports `{{variable}}` templating) | Yes |
 | `history` | JSON array of prompt_name dependencies | No |
+| `client` | Named client from `clients` sheet | No |
 
 **Example:**
 
-| sequence | prompt_name | prompt | history |
-|----------|-------------|--------|---------|
-| 1 | intro | My name is Alice and I work in finance. | |
-| 2 | question | What is compound interest? | |
-| 3 | personalize | Based on my introduction, explain why compound interest matters to me. | `["intro", "question"]` |
+| sequence | prompt_name | prompt | history | client |
+|----------|-------------|--------|---------|--------|
+| 1 | intro | My name is Alice and I work in finance. | | |
+| 2 | question | What is compound interest? | | fast |
+| 3 | personalize | Based on my introduction, explain why compound interest matters to me. | `["intro", "question"]` | |
+
+### data Sheet (Optional)
+
+Batch data for variable templating. Each row represents a batch execution.
+
+| Column | Description |
+|--------|-------------|
+| `id` | Batch identifier |
+| `batch_name` | Template for naming batches (supports `{{variable}}`) |
+| `...` | Any additional columns become template variables |
+
+**Example:**
+
+| id | batch_name | region | product | price | quantity |
+|----|------------|--------|---------|-------|----------|
+| 1 | {{region}}_{{product}} | north | widget_a | 10 | 100 |
+| 2 | {{region}}_{{product}} | south | widget_b | 15 | 75 |
+
+### clients Sheet (Optional)
+
+Named client configurations for per-prompt client selection.
+
+| Column | Description |
+|--------|-------------|
+| `name` | Unique identifier to reference in prompts |
+| `client_type` | Client type (e.g., `mistral-small`, `anthropic`) |
+| `api_key_env` | Environment variable for API key |
+| `model` | Model override |
+| `temperature` | Temperature override |
+| `max_tokens` | Max tokens override |
+
+**Example:**
+
+| name | client_type | api_key_env | model | temperature | max_tokens |
+|------|-------------|-------------|-------|-------------|------------|
+| fast | mistral-small | MISTRALSMALL_KEY | mistral-small-2503 | 0.3 | 100 |
+| smart | anthropic | ANTHROPIC_TOKEN | claude-3-5-sonnet | 0.7 | 4096 |
+| creative | mistral-small | MISTRALSMALL_KEY | | 0.9 | 500 |
 
 ---
 
@@ -113,14 +157,121 @@ SYSTEM: I'm functioning well, thank you!
 Based on the conversation history above, please answer: [your prompt]
 ```
 
-### Example Workflow
+---
 
-| sequence | prompt_name | prompt | history |
-|----------|-------------|--------|---------|
-| 1 | context | I run a coffee shop with 50 daily customers. | |
-| 2 | problem | My electricity bill is too high. What are common causes? | |
-| 3 | solution | Given my coffee shop context, suggest 3 specific ways to reduce my bill. | `["context", "problem"]` |
-| 4 | prioritize | Which of these solutions should I implement first and why? | `["solution"]` |
+## Batch Execution with Variable Templating
+
+### Overview
+
+Batch execution allows running the same prompt chain multiple times with different data inputs. Use `{{variable}}` syntax in prompts to reference columns from the `data` sheet.
+
+### How It Works
+
+1. Add a `data` sheet with your variable data
+2. Use `{{column_name}}` in your prompts
+3. The orchestrator executes all prompts once per data row
+
+### Example
+
+**data sheet:**
+
+| id | batch_name | region | product |
+|----|------------|--------|---------|
+| 1 | {{region}}_{{product}} | north | widget_a |
+| 2 | {{region}}_{{product}} | south | widget_b |
+
+**prompts sheet:**
+
+| sequence | prompt_name | prompt |
+|----------|-------------|--------|
+| 1 | analyze | Analyze sales for {{region}} region, {{product}} product. |
+| 2 | recommend | Based on the analysis, suggest improvements. |
+
+**Result:** Each prompt runs twice (once per data row), with `{{region}}` and `{{product}}` replaced by actual values.
+
+### Batch Configuration
+
+| Config Field | Options | Description |
+|--------------|---------|-------------|
+| `batch_mode` | `per_row` | Execute once per data row |
+| `batch_output` | `combined`, `separate_sheets` | Combined results or separate sheets per batch |
+| `on_batch_error` | `continue`, `stop` | Continue or stop on batch failure |
+
+### Results Sheet with Batch Info
+
+| Column | Description |
+|--------|-------------|
+| `batch_id` | Batch number |
+| `batch_name` | Resolved batch name |
+| `sequence` | Prompt sequence |
+| `prompt_name` | Prompt name |
+| `prompt` | Resolved prompt (with variables substituted) |
+| `history` | Dependencies |
+| `client` | Client used |
+| `response` | AI response |
+| `status` | `success` or `failed` |
+| `attempts` | Retry attempts |
+| `error` | Error message if failed |
+
+---
+
+## Per-Prompt Client Configuration
+
+### Overview
+
+Different prompts can use different AI clients or configurations. Define named clients in the `clients` sheet and reference them in prompts.
+
+### How It Works
+
+1. Add a `clients` sheet with named client configurations
+2. Add a `client` column to your prompts sheet
+3. Reference the client name, or leave empty for default
+
+### Example
+
+**clients sheet:**
+
+| name | client_type | temperature | max_tokens |
+|------|-------------|-------------|------------|
+| fast | mistral-small | 0.3 | 100 |
+| creative | mistral-small | 0.9 | 500 |
+
+**prompts sheet:**
+
+| sequence | prompt_name | prompt | client |
+|----------|-------------|--------|--------|
+| 1 | classify | Classify this sentiment | fast |
+| 2 | explain | Explain why | |
+| 3 | poem | Write a poem about it | creative |
+
+**Behavior:**
+- Sequence 1 uses the `fast` client (temperature=0.3, max_tokens=100)
+- Sequence 2 uses the default client (from CLI)
+- Sequence 3 uses the `creative` client (temperature=0.9, max_tokens=500)
+
+### Supported Client Types
+
+| Client Type | Description |
+|-------------|-------------|
+| `mistral` | Mistral Large |
+| `mistral-small` | Mistral Small |
+| `anthropic` | Claude via Anthropic API |
+| `anthropic-cached` | Claude with prompt caching |
+| `gemini` | Google Gemini |
+| `perplexity` | Perplexity AI |
+| `nvidia-deepseek` | DeepSeek via Nvidia NIM |
+| `azure-mistral` | Mistral via Azure |
+| `azure-mistral-small` | Mistral Small via Azure |
+| `azure-codestral` | Codestral via Azure |
+| `azure-deepseek` | DeepSeek via Azure |
+| `azure-deepseek-v3` | DeepSeek V3 via Azure |
+| `azure-phi` | Phi-4 via Azure |
+
+### Fallback Behavior
+
+If a prompt references a client name that doesn't exist:
+- A warning is logged
+- The default client (from CLI) is used instead
 
 ---
 
@@ -136,7 +287,7 @@ python scripts/run_orchestrator.py <workbook_path> [options]
 
 | Option | Short | Description |
 |--------|-------|-------------|
-| `--client <type>` | | AI client to use: `mistral-small` (default) or `mistral` |
+| `--client <type>` | | AI client to use (see supported types above) |
 | `--concurrency <n>` | `-c` | Maximum concurrent API calls (default: 2, max: 10) |
 | `--dry-run` | | Validate workbook without executing |
 | `--quiet` | `-q` | Suppress console output (logs to file only) |
@@ -154,14 +305,14 @@ python scripts/run_orchestrator.py analysis.xlsx --dry-run
 # Run with parallel execution (4 workers)
 python scripts/run_orchestrator.py analysis.xlsx -c 4
 
-# Run with quiet mode (clean progress indicator, no console logging)
+# Run with quiet mode (clean progress indicator)
 python scripts/run_orchestrator.py analysis.xlsx -c 4 --quiet
 
-# Run with debug logging to file
-python scripts/run_orchestrator.py analysis.xlsx -q --verbose
-
 # Use different client
-python scripts/run_orchestrator.py analysis.xlsx --client mistral
+python scripts/run_orchestrator.py analysis.xlsx --client anthropic
+
+# Run batch workbook
+python scripts/run_orchestrator.py batch_analysis.xlsx -c 3
 ```
 
 ---
@@ -185,28 +336,6 @@ logs/
 - **Frequency**: Daily at midnight
 - **Retention**: 10 days
 - **Format**: `orchestrator.log.YYYY-MM-DD`
-
-### Quiet Mode
-
-Use `--quiet` (or `-q`) to suppress console logging and see only the progress indicator:
-
-```bash
-python scripts/run_orchestrator.py workbook.xlsx --quiet -c 4
-```
-
-This is recommended for production runs to keep the output clean.
-
-### Verbose Mode
-
-Use `--verbose` to enable debug-level logging (writes to file, optionally to console):
-
-```bash
-# Debug to console
-python scripts/run_orchestrator.py workbook.xlsx --verbose
-
-# Debug to file only
-python scripts/run_orchestrator.py workbook.xlsx -q --verbose
-```
 
 ---
 
@@ -232,19 +361,7 @@ The orchestrator supports parallel execution of independent prompts, significant
 3. **Parallel Scheduling** - Prompts at the same level execute concurrently
 4. **Thread Isolation** - Each execution gets its own isolated client clone
 
-### Dependency Levels
-
-```
-Level 0: [prompt_1] [prompt_2] [prompt_3]     ← All run in parallel
-           │       │       │
-Level 1: [prompt_4] [prompt_5]               ← Wait for level 0
-           │       │
-Level 2: [prompt_6]                          ← Waits for level 1
-```
-
 ### Progress Indicator
-
-The orchestrator displays a real-time progress indicator during execution:
 
 ```
 Starting orchestration with concurrency=4
@@ -253,39 +370,6 @@ Log file: /path/to/logs/orchestrator.log
 
 [████████░░░░░░░░░░░░] 15/30 (48%) | ✓14 ✗0 | →compare_9 | ⏳2 | ETA: 4s
 ```
-
-**Progress Indicator Elements:**
-
-| Element | Description |
-|---------|-------------|
-| `[████░░]` | Visual progress bar |
-| `15/30` | Completed / Total prompts |
-| `(48%)` | Percentage complete |
-| `✓14` | Successful count |
-| `✗0` | Failed count |
-| `→compare_9` | Current prompt being processed |
-| `⏳2` | Number currently running in parallel |
-| `ETA: 4s` | Estimated time remaining (shows minutes when >60s) |
-
-**Completed State:**
-
-```
-[████████████████████] 30/30 (100%) | ✓30 ✗0 | →final_prompt | Done: 22s
-```
-
-### Choosing Concurrency
-
-- **Default (2)**: Safe for most API rate limits
-- **3-4**: Optimal for workbooks with many independent prompts
-- **5-10**: Only if you have high API rate limits
-- **1**: Sequential execution (for debugging)
-
-### Thread Safety
-
-Each parallel execution uses an isolated client instance with:
-- Empty conversation history
-- Injected dependency context from completed prompts
-- No shared state with other executions
 
 ---
 
@@ -297,10 +381,13 @@ After execution, a new sheet is added to the workbook with a timestamped name (e
 
 | Column | Description |
 |--------|-------------|
+| `batch_id` | Batch number (if batch mode) |
+| `batch_name` | Batch name (if batch mode) |
 | `sequence` | Execution order |
 | `prompt_name` | Name of the prompt |
-| `prompt` | The prompt text |
+| `prompt` | The prompt text (resolved if batch mode) |
 | `history` | Dependencies (JSON array) |
+| `client` | Client name used |
 | `response` | AI response |
 | `status` | `success` or `failed` |
 | `attempts` | Number of retry attempts |
@@ -314,6 +401,12 @@ After execution, a new sheet is added to the workbook with a timestamped name (e
 
 Failed prompts are retried up to `max_retries` times (default: 3). Configure in the `config` sheet.
 
+### Batch Error Handling
+
+When running in batch mode, configure `on_batch_error`:
+- `continue` (default) - Continue to next batch on failure
+- `stop` - Stop all processing on first batch failure
+
 ### Validation Errors
 
 The orchestrator validates before execution:
@@ -323,20 +416,12 @@ The orchestrator validates before execution:
 - **Invalid dependencies**: Referenced prompt_name doesn't exist
 - **Dependency order**: Dependency defined after its use
 
-### Handling Failures
-
-If a prompt fails after all retries:
-- Status is set to `failed`
-- Error message is recorded
-- Execution continues with next prompt
-- Dependent prompts may fail due to missing context
-
 ---
 
 ## Programmatic Usage
 
 ```python
-from src.orchestrator import ExcelOrchestrator
+from src.orchestrator import ExcelOrchestrator, ClientRegistry
 from src.Clients.FFMistralSmall import FFMistralSmall
 
 # Initialize client
@@ -346,8 +431,8 @@ client = FFMistralSmall(api_key="your-api-key")
 orchestrator = ExcelOrchestrator(
     workbook_path="my_prompts.xlsx",
     client=client,
-    config_overrides={"temperature": 0.5},  # Optional overrides
-    concurrency=4,  # Run up to 4 prompts in parallel
+    config_overrides={"temperature": 0.5},
+    concurrency=4,
 )
 
 # Run
@@ -357,6 +442,8 @@ results_sheet = orchestrator.run()
 summary = orchestrator.get_summary()
 print(f"Successful: {summary['successful']}")
 print(f"Failed: {summary['failed']}")
+if summary.get("batch_mode"):
+    print(f"Total batches: {summary['total_batches']}")
 ```
 
 ### With Progress Callback
@@ -378,82 +465,33 @@ orchestrator = ExcelOrchestrator(
 orchestrator.run()
 ```
 
-**Progress Callback Parameters:**
-
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `completed` | int | Number of completed prompts |
-| `total` | int | Total number of prompts |
-| `success` | int | Number of successful executions |
-| `failed` | int | Number of failed executions |
-| `current_name` | str \| None | Name of the prompt just completed |
-| `running` | int | Number of prompts currently executing |
-
-### WorkbookBuilder
-
-```python
-from src.orchestrator import WorkbookBuilder
-
-builder = WorkbookBuilder("new_workbook.xlsx")
-
-# Create template
-builder.create_template_workbook()
-
-# Validate
-builder.validate_workbook()
-
-# Load data
-config = builder.load_config()
-prompts = builder.load_prompts()
-
-# Write results
-builder.write_results(results_list, "results_20260221")
-```
-
 ---
 
-## Test Workbook Generator
+## Test Workbook Generators
 
-Create a test workbook with 31 prompts for testing parallel execution:
+### Standard Test Workbook
 
 ```bash
-# Default: creates test_workbook_30.xlsx
-python scripts/create_test_workbook.py
-
-# Custom filename
 python scripts/create_test_workbook.py my_test.xlsx
 ```
 
-**Generated Workbook Structure:**
+31 prompts with dependency levels for testing parallel execution.
 
-| Level | Count | Description |
-|-------|-------|-------------|
-| 0 | 12 | Independent prompts (6 math, 6 word) - fully parallel |
-| 1 | 10 | Prompts with 1-2 dependencies (6 double, 4 compare) |
-| 2 | 5 | Prompts with 2-4 dependencies (3 sum, 1 triple_check, 1 analysis) |
-| 3 | 4 | Final prompts (2 synthesis, 2 bonus independent) |
-
-**Run the test workbook:**
+### Batch Test Workbook
 
 ```bash
-python scripts/run_orchestrator.py test_workbook_30.xlsx -c 3 --quiet
+python scripts/create_test_workbook_batch.py batch_test.xlsx
 ```
 
----
+35 prompts × 5 batches = 175 total executions with variable templating.
 
-## Sample Workbook
-
-A sample workbook is provided at `sample_orchestrator.xlsx` with example prompts:
-
-1. **greeting** - Simple greeting
-2. **math** - Basic math question
-3. **followup** - References previous prompts via history
-
-Run it:
+### Multi-Client Test Workbook
 
 ```bash
-python scripts/run_orchestrator.py sample_orchestrator.xlsx
+python scripts/create_test_workbook_multiclient.py multiclient_test.xlsx
 ```
+
+13 prompts using different client configurations.
 
 ---
 
@@ -464,37 +502,23 @@ python scripts/run_orchestrator.py sample_orchestrator.xlsx
 - Use descriptive, unique names: `customer_context`, `problem_statement`, `solution`
 - Avoid generic names: `prompt1`, `question`, `test`
 
-### History Design
+### Batch Mode
 
-- Keep dependency chains reasonable (2-5 references)
-- Consider context window limits
-- Group related information in early prompts
+- Use `batch_name` column for meaningful batch identifiers
+- Set `on_batch_error: continue` for resilient batch processing
+- Test with small batches first
+
+### Multi-Client Usage
+
+- Define clients with descriptive names reflecting their purpose
+- Use lower temperature for classification tasks
+- Use higher temperature for creative tasks
 
 ### Parallel Execution
 
 - Use `-c 3` or `-c 4` for optimal performance
 - Set `-c 1` for debugging dependency issues
 - Monitor API rate limits when increasing concurrency
-- Use `--quiet` for clean output during production runs
-
-### Logging
-
-- Check `logs/orchestrator.log` for detailed execution info
-- Use `--verbose` when debugging issues
-- Use `--quiet` for automated/production runs
-- Logs rotate daily with 10-day retention
-
-### Workbook Organization
-
-- One workbook per workflow/logical task
-- Use descriptive filenames: `customer_analysis_20260221.xlsx`
-- Archive completed workbooks with results
-
-### Configuration
-
-- Lower `temperature` (0.3-0.5) for factual/analytical tasks
-- Higher `temperature` (0.7-1.0) for creative tasks
-- Set `max_tokens` appropriately for expected response length
 
 ---
 
@@ -502,21 +526,17 @@ python scripts/run_orchestrator.py sample_orchestrator.xlsx
 
 ### API Key Issues
 
-```
-ValueError: API key not found in environment variable: MISTRALSMALL_KEY
-```
-
-Ensure the environment variable is set:
-
 ```bash
 export MISTRALSMALL_KEY="your-key-here"
 ```
 
-Or use a `.env` file:
+Or use a `.env` file.
 
-```
-MISTRALSMALL_KEY=your-key-here
-```
+### Unknown Client Warning
+
+If you see `Client 'name' not found in registry, falling back to default client`:
+- Check spelling of client name in prompts sheet
+- Verify the client is defined in the clients sheet
 
 ### Dependency Validation Errors
 
@@ -525,49 +545,7 @@ ValueError: Dependency validation failed:
 Sequence 5: dependency 'summary' not found in any prompt_name
 ```
 
-Check that:
-- The prompt_name exists in the prompts sheet
-- The dependency is defined before it's referenced (lower sequence)
-
-### Workbook Locked
-
-```
-PermissionError: [Errno 13] Permission denied: 'my_prompts.xlsx'
-```
-
-Close the workbook in Excel before running the orchestrator.
-
-### Cross-Contamination in Results
-
-If prompts receive incorrect context from other prompts:
-- This was fixed in the latest version with client cloning
-- Ensure you're using the latest code
-- Each parallel execution now has complete isolation
-
-### Checking Logs
-
-For detailed execution information, check the log file:
-
-```bash
-# View current log
-cat logs/orchestrator.log
-
-# View specific day
-cat logs/orchestrator.log.2026-02-22
-
-# Follow live (during execution)
-tail -f logs/orchestrator.log
-```
-
-### Console Output Too Verbose
-
-Use `--quiet` to suppress console logging:
-
-```bash
-python scripts/run_orchestrator.py workbook.xlsx --quiet -c 4
-```
-
-This shows only the progress indicator while logging everything to file.
+Check that the prompt_name exists and is defined before it's referenced.
 
 ---
 
@@ -576,7 +554,6 @@ This shows only the progress indicator while logging everything to file.
 ```
 ┌─────────────────────────────────────────┐
 │           run_orchestrator.py           │
-│              (CLI Script)               │
 └─────────────────────────────────────────┘
                     │
                     ▼
@@ -585,24 +562,14 @@ This shows only the progress indicator while logging everything to file.
 │  - Load/validate workbook               │
 │  - Build dependency graph               │
 │  - Execute prompts (parallel/sequential)│
-│  - Handle retries                       │
-│  - Write results sheet                  │
+│  - Batch execution with templating      │
+│  - Per-prompt client selection          │
 └─────────────────────────────────────────┘
-          │                    │
-          ▼                    ▼
-┌──────────────────┐  ┌──────────────────┐
-│ WorkbookBuilder  │  │      FFAI        │
-│ - Create/validate│  │ - Context mgmt   │
-│ - Read/write     │  │ - History        │
-└──────────────────┘  └──────────────────┘
-                              │
-                              ▼
-                   ┌──────────────────┐
-                   │  FFMistralSmall  │
-                   │  (API Client)    │
-                   │  - clone() for   │
-                   │    isolation     │
-                   └──────────────────┘
+          │           │           │
+          ▼           ▼           ▼
+┌──────────────┐ ┌──────────┐ ┌──────────────┐
+│WorkbookBuilder│ │ClientReg │ │    FFAI      │
+└──────────────┘ └──────────┘ └──────────────┘
 ```
 
 ---

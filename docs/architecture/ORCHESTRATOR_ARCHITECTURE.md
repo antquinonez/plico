@@ -10,6 +10,7 @@ The Excel Orchestrator enables non-programmers to define and execute AI prompt w
 2. **Transparency** - All prompts and results visible in Excel
 3. **Declarative** - Define *what* to execute, not *how*
 4. **Traceability** - Full history of executions in workbook
+5. **Flexibility** - Batch execution, multi-client support, templating
 
 ## Components
 
@@ -30,14 +31,9 @@ The Excel Orchestrator enables non-programmers to define and execute AI prompt w
 │   └─────────────────┘  └─────────────────┘  └───────────────┘  │
 │                                                                  │
 │   ┌─────────────────────────────────────────────────────────┐   │
-│   │                    execute()                             │   │
-│   │                                                          │   │
-│   │   For each prompt:                                       │   │
-│   │     1. Load prompt from workbook                         │   │
-│   │     2. Resolve history dependencies                      │   │
-│   │     3. Call FFAI.generate_response()                     │   │
-│   │     4. Store result with metadata                        │   │
-│   │                                                          │   │
+│   │              _init_client_registry()                     │   │
+│   │  - Load clients from 'clients' sheet                     │   │
+│   │  - Register named client configurations                  │   │
 │   └─────────────────────────────────────────────────────────┘   │
 │                                                                  │
 │   ┌─────────────────────────────────────────────────────────┐   │
@@ -45,27 +41,27 @@ The Excel Orchestrator enables non-programmers to define and execute AI prompt w
 │   │                                                          │   │
 │   │   1. Initialize workbook (create if needed)              │   │
 │   │   2. Validate structure and dependencies                 │   │
-│   │   3. Execute all prompts                                 │   │
-│   │   4. Write results to new sheet                          │   │
-│   │   5. Return results sheet name                           │   │
+│   │   3. Check for batch mode (data sheet)                   │   │
+│   │   4. Check for multi-client mode (client column)         │   │
+│   │   5. Execute prompts (sequential/parallel/batch)         │   │
+│   │   6. Write results to new sheet                          │   │
 │   │                                                          │   │
 │   └─────────────────────────────────────────────────────────┘   │
 │                                                                  │
 └──────────────────────────────┬──────────────────────────────────┘
                                │
-           ┌───────────────────┴───────────────────┐
-           │                                       │
-           ▼                                       ▼
-┌─────────────────────┐               ┌─────────────────────────┐
-│   WorkbookBuilder   │               │         FFAI            │
-│                     │               │                         │
-│ - create_template() │               │ - generate_response()   │
-│ - validate()        │               │ - history management    │
-│ - load_config()     │               │ - context assembly      │
-│ - load_prompts()    │               │                         │
-│ - write_results()   │               └─────────────────────────┘
-│                     │
-└─────────────────────┘
+           ┌───────────────────┼───────────────────┐
+           │                   │                   │
+           ▼                   ▼                   ▼
+┌─────────────────┐  ┌─────────────────┐  ┌─────────────────────┐
+│ WorkbookBuilder │  │  ClientRegistry │  │        FFAI         │
+│                 │  │                 │  │                     │
+│ - load_config() │  │ - register()    │  │ - generate_response │
+│ - load_prompts()│  │ - get()         │  │ - history mgmt      │
+│ - load_data()   │  │ - clone()       │  │ - context assembly  │
+│ - load_clients()│  │                 │  │                     │
+│ - write_results │  └─────────────────┘  └─────────────────────┘
+└─────────────────┘
 ```
 
 ## Workbook Structure
@@ -80,120 +76,100 @@ The Excel Orchestrator enables non-programmers to define and execute AI prompt w
 | temperature | 0.8 | Model temperature |
 | max_tokens | 4096 | Maximum response tokens |
 | system_instructions | You are a... | System prompt |
+| batch_mode | per_row | Batch execution mode |
+| batch_output | combined | Batch output format |
+| on_batch_error | continue | Error handling for batches |
 | created_at | 2025-02-21T... | Workbook creation timestamp |
 
 ### prompts Sheet
 
-| sequence | prompt_name | prompt | history |
-|----------|-------------|--------|---------|
-| 1 | context | I run a coffee shop with 50 customers. | |
-| 2 | problem | My electricity bill is too high. What are common causes? | |
-| 3 | solution | Suggest 3 ways to reduce my bill based on my context. | `["context", "problem"]` |
-| 4 | prioritize | Which should I implement first? | `["solution"]` |
+| sequence | prompt_name | prompt | history | client |
+|----------|-------------|--------|---------|--------|
+| 1 | context | I run a coffee shop with 50 customers. | | |
+| 2 | problem | My electricity bill is too high. | | fast |
+| 3 | solution | Suggest 3 ways to reduce my bill based on {{region}}. | `["context", "problem"]` | |
+
+### data Sheet (Optional)
+
+| id | batch_name | region | product |
+|----|------------|--------|---------|
+| 1 | {{region}}_{{product}} | north | widget_a |
+| 2 | {{region}}_{{product}} | south | widget_b |
+
+### clients Sheet (Optional)
+
+| name | client_type | api_key_env | model | temperature |
+|------|-------------|-------------|-------|-------------|
+| fast | mistral-small | MISTRALSMALL_KEY | | 0.3 |
+| smart | anthropic | ANTHROPIC_TOKEN | claude-3-5-sonnet | 0.7 |
 
 ### results_{timestamp} Sheet (Generated)
 
-| sequence | prompt_name | prompt | history | response | status | attempts | error |
-|----------|-------------|--------|---------|----------|--------|----------|-------|
-| 1 | context | I run... | | Based on your... | success | 1 | |
-| 2 | problem | My electricity... | | Common causes... | success | 1 | |
-| 3 | solution | Suggest 3... | `["context","problem"]` | Here are 3... | success | 1 | |
-| 4 | prioritize | Which... | `["solution"]` | Implement X first... | success | 1 | |
+| batch_id | batch_name | sequence | prompt_name | prompt | history | client | response | status | attempts | error |
+|----------|------------|----------|-------------|--------|---------|--------|----------|--------|----------|-------|
+| 1 | north_widget_a | 1 | context | I run... | | | Based on... | success | 1 | |
+| 2 | south_widget_b | 1 | context | I run... | | | Based on... | success | 1 | |
 
 ## Data Flow
 
+### Standard Execution Flow
+
 ```
-┌──────────────────────────────────────────────────────────────────┐
-│                         Execution Flow                            │
-└──────────────────────────────────────────────────────────────────┘
-
 1. INITIALIZATION
-   ┌─────────────┐
-   │ Workbook    │──► WorkbookBuilder.validate_workbook()
-   │ (input.xlsx)│    └─► Check: config sheet exists
-   └─────────────┘    └─► Check: prompts sheet exists
-                      └─► Check: required columns present
-   
+   Workbook → WorkbookBuilder.validate_workbook()
+              └─► Check: config sheet exists
+              └─► Check: prompts sheet exists
+              └─► Check: required columns present
+
 2. CONFIGURATION LOADING
-   ┌─────────────┐
-   │ config sheet│──► WorkbookBuilder.load_config()
-   └─────────────┘    └─► Parse field/value pairs
-                      └─► Type conversion (int, float)
-                      └─► Apply config_overrides
+   config sheet → WorkbookBuilder.load_config()
+                  └─► Parse field/value pairs
+                  └─► Type conversion (int, float)
+                  └─► Apply config_overrides
 
-3. PROMPT LOADING
-   ┌─────────────┐
-   │prompts sheet│──► WorkbookBuilder.load_prompts()
-   └─────────────┘    └─► Read all rows
-                      └─► Parse history column (JSON → list)
-                      └─► Sort by sequence number
+3. CLIENT REGISTRY INITIALIZATION
+   clients sheet → WorkbookBuilder.load_clients()
+                   └─► For each client config:
+                       ClientRegistry.register(name, type, config)
+   
+4. PROMPT LOADING
+   prompts sheet → WorkbookBuilder.load_prompts()
+                   └─► Read all rows
+                   └─► Parse history column (JSON → list)
+                   └─► Extract client column
+                   └─► Sort by sequence number
 
-4. DEPENDENCY VALIDATION
-   ┌─────────────┐
-   │ Loaded      │──► ExcelOrchestrator._validate_dependencies()
-   │ Prompts     │    └─► Check: all history refs exist
-   └─────────────┘    └─► Check: refs defined before use
+5. BATCH MODE DETECTION
+   data sheet → WorkbookBuilder.load_data()
+                └─► If data rows exist: enable batch mode
+                └─► Resolve {{variable}} templates per batch
 
-5. EXECUTION (for each prompt in sequence order)
+6. DEPENDENCY VALIDATION
+   Loaded Prompts → ExcelOrchestrator._validate_dependencies()
+                    └─► Check: all history refs exist
+                    └─► Check: refs defined before use
+
+7. EXECUTION
    ┌─────────────────────────────────────────────────────────────┐
+   │   For each prompt (per batch if batch mode):               │
    │                                                             │
-   │   Prompt: {sequence: 3, prompt_name: "solution",           │
-   │            prompt: "Suggest 3...", history: ["context"]}   │
+   │   client_name = prompt.get("client")                        │
+   │   client = ClientRegistry.get(client_name)                  │
    │                                                             │
-   │   ┌──────────────────────────────────────────────────────┐ │
-   │   │ ExcelOrchestrator._execute_prompt()                   │ │
-   │   │                                                       │ │
-   │   │   For attempt in 1..max_retries:                      │ │
-   │   │     ┌──────────────────────────────────────────────┐ │ │
-   │   │     │ FFAI.generate_response(                       │ │ │
-   │   │     │     prompt="Suggest 3...",                    │ │ │
-   │   │     │     prompt_name="solution",                   │ │ │
-   │   │     │     history=["context", "problem"]            │ │ │
-   │   │     │ )                                             │ │ │
-   │   │     └──────────────────────────────────────────────┘ │ │
-   │   │                     │                                 │ │
-   │   │                     ▼                                 │ │
-   │   │     ┌──────────────────────────────────────────────┐ │ │
-   │   │     │ FFAI assembles context:                       │ │ │
-   │   │     │                                              │ │ │
-   │   │     │ <conversation_history>                        │ │ │
-   │   │     │ <interaction prompt_name='context'>          │ │ │
-   │   │     │   USER: I run a coffee shop...               │ │ │
-   │   │     │   SYSTEM: Based on your...                   │ │ │
-   │   │     │ </interaction>                               │ │ │
-   │   │     │ <interaction prompt_name='problem'>          │ │ │
-   │   │     │   USER: My electricity bill...               │ │ │
-   │   │     │   SYSTEM: Common causes are...               │ │ │
-   │   │     │ </interaction>                               │ │ │
-   │   │     │ </conversation_history>                      │ │ │
-   │   │     │ ===                                           │ │ │
-   │   │     │ Based on the conversation history above,     │ │ │
-   │   │     │ please answer: Suggest 3 ways to reduce...   │ │ │
-   │   │     └──────────────────────────────────────────────┘ │ │
-   │   │                     │                                 │ │
-   │   │                     ▼                                 │ │
-   │   │     ┌──────────────────────────────────────────────┐ │ │
-   │   │     │ Client.generate_response()                    │ │ │
-   │   │     │   └─► API call to provider                    │ │ │
-   │   │     │   └─► Return response                         │ │ │
-   │   │     └──────────────────────────────────────────────┘ │ │
-   │   │                                                       │ │
-   │   │   Store result: {status, response, attempts, error}  │ │
-   │   └───────────────────────────────────────────────────────┘ │
+   │   If batch mode:                                            │
+   │     resolved_prompt = _resolve_variables(prompt, data_row)  │
+   │                                                             │
+   │   FFAI.generate_response(                                   │
+   │       prompt=resolved_prompt,                               │
+   │       prompt_name=prompt_name,                              │
+   │       history=history                                       │
+   │   )                                                         │
    │                                                             │
    └─────────────────────────────────────────────────────────────┘
 
-6. RESULTS WRITING
-   ┌─────────────┐     ┌─────────────────┐
-   │ Results     │──► │WorkbookBuilder  │
-   │ List        │    │.write_results() │
-   └─────────────┘    └─────────────────┘
-                             │
-                             ▼
-                      ┌─────────────────┐
-                      │results_{ts} sheet│
-                      │(in input.xlsx)  │
-                      └─────────────────┘
+8. RESULTS WRITING
+   Results List → WorkbookBuilder.write_results()
+                  └─► Include batch_id, batch_name, client columns
 ```
 
 ## Class Reference
@@ -205,9 +181,10 @@ class ExcelOrchestrator:
     """
     Orchestrates AI prompt execution via Excel workbook.
     
-    Usage:
-        orchestrator = ExcelOrchestrator("workbook.xlsx", client=FFMistralSmall())
-        results_sheet = orchestrator.run()
+    Features:
+    - Sequential and parallel execution
+    - Batch execution with variable templating
+    - Per-prompt client configuration
     """
     
     def __init__(
@@ -216,17 +193,17 @@ class ExcelOrchestrator:
         client: FFAIClientBase,
         config_overrides: Optional[Dict[str, Any]] = None,
         concurrency: int = 2,
-        progress_callback: Optional[Callable[[int, int, int, int], None]] = None,
+        progress_callback: Optional[Callable] = None,
     ):
         """
         Initialize orchestrator.
         
         Args:
             workbook_path: Path to Excel workbook
-            client: AI client to use for generation
+            client: Default AI client
             config_overrides: Optional config overrides
             concurrency: Maximum concurrent API calls (default: 2, max: 10)
-            progress_callback: Optional callback for progress updates (completed, total, success, failed)
+            progress_callback: Optional callback for progress updates
         """
     
     def run(self) -> str:
@@ -238,50 +215,84 @@ class ExcelOrchestrator:
         """
     
     def execute(self) -> List[Dict[str, Any]]:
-        """
-        Execute all prompts sequentially.
-        
-        Returns:
-            List of result dictionaries.
-        """
+        """Execute all prompts sequentially."""
     
     def execute_parallel(self) -> List[Dict[str, Any]]:
-        """
-        Execute prompts in parallel with dependency-aware scheduling.
-        
-        Returns:
-            List of result dictionaries.
-        """
+        """Execute prompts in parallel with dependency-aware scheduling."""
+    
+    def execute_batch(self) -> List[Dict[str, Any]]:
+        """Execute all prompts for each batch row sequentially."""
+    
+    def execute_batch_parallel(self) -> List[Dict[str, Any]]:
+        """Execute batches in parallel."""
     
     def get_summary(self) -> Dict[str, Any]:
+        """Get execution summary including batch info if applicable."""
+    
+    # Variable resolution
+    def _resolve_variables(self, text: str, data_row: Dict) -> str:
+        """Replace {{variable}} placeholders with values from data row."""
+    
+    def _resolve_batch_name(self, data_row: Dict, batch_id: int) -> str:
+        """Generate batch name from template or default."""
+    
+    # Client registry
+    def _init_client_registry(self) -> None:
+        """Initialize client registry from clients sheet."""
+```
+
+### ClientRegistry
+
+```python
+class ClientRegistry:
+    """
+    Registry for AI clients with lazy instantiation.
+    
+    Supports per-prompt client selection via named configurations.
+    """
+    
+    CLIENT_MAP: Dict[str, Type[FFAIClientBase]] = {
+        "mistral": FFMistral,
+        "mistral-small": FFMistralSmall,
+        "anthropic": FFAnthropic,
+        "anthropic-cached": FFAnthropicCached,
+        "gemini": FFGemini,
+        "perplexity": FFPerplexity,
+        "azure-mistral": FFAzureMistral,
+        # ... more clients
+    }
+    
+    def __init__(self, default_client: FFAIClientBase):
+        """Initialize registry with a default client."""
+    
+    def register(
+        self, 
+        name: str, 
+        client_type: str, 
+        config: Optional[Dict[str, Any]] = None
+    ) -> None:
         """
-        Get execution summary.
+        Register a named client configuration.
         
-        Returns:
-            Summary dict with total_prompts, successful, failed, etc.
+        Args:
+            name: Unique identifier
+            client_type: Type from CLIENT_MAP
+            config: Optional configuration (api_key_env, model, temperature, etc.)
         """
     
-    # Private methods
-    def _init_workbook(self) -> None:
-        """Create workbook if not exists, validate if exists."""
+    def get(self, name: Optional[str] = None) -> FFAIClientBase:
+        """
+        Get client by name or default.
+        
+        If name not found, returns default client with warning.
+        """
     
-    def _load_config(self) -> None:
-        """Load configuration from config sheet."""
+    def clone(self, name: Optional[str] = None) -> FFAIClientBase:
+        """Get a fresh clone for parallel execution."""
     
-    def _init_client(self) -> None:
-        """Initialize FFAI wrapper with client."""
-    
-    def _validate_dependencies(self) -> None:
-        """Validate history dependencies are resolvable."""
-    
-    def _build_execution_graph(self) -> Dict[int, PromptNode]:
-        """Build dependency graph and assign execution levels."""
-    
-    def _execute_prompt(self, prompt: Dict) -> Dict:
-        """Execute single prompt with retry logic."""
-    
-    def _execute_prompt_isolated(self, prompt: Dict) -> Dict:
-        """Execute single prompt with isolated FFAI instance (thread-safe)."""
+    @classmethod
+    def get_available_client_types(cls) -> list:
+        """Get list of available client types."""
 ```
 
 ### WorkbookBuilder
@@ -292,330 +303,186 @@ class WorkbookBuilder:
     
     CONFIG_SHEET = "config"
     PROMPTS_SHEET = "prompts"
+    DATA_SHEET = "data"
+    CLIENTS_SHEET = "clients"
     
-    def __init__(self, workbook_path: str):
-        """Initialize with workbook path."""
-    
-    def create_template_workbook(self) -> str:
-        """
-        Create a new workbook with template structure.
-        
-        Returns:
-            Path to created workbook.
-        """
+    def create_template_workbook(
+        self, 
+        with_data_sheet: bool = False,
+        with_clients_sheet: bool = False
+    ) -> str:
+        """Create a new workbook with template structure."""
     
     def validate_workbook(self) -> bool:
-        """
-        Validate workbook has required structure.
-        
-        Returns:
-            True if valid.
-            
-        Raises:
-            FileNotFoundError: Workbook not found
-            ValueError: Missing required sheet or columns
-        """
+        """Validate workbook has required structure."""
     
     def load_config(self) -> Dict[str, Any]:
-        """
-        Load configuration from config sheet.
-        
-        Returns:
-            Configuration dictionary with type conversion.
-        """
+        """Load configuration from config sheet."""
     
     def load_prompts(self) -> List[Dict[str, Any]]:
         """
         Load prompts from prompts sheet.
         
-        Returns:
-            List of prompt dictionaries, sorted by sequence.
+        Returns prompts with: sequence, prompt_name, prompt, history, client
         """
+    
+    def load_data(self) -> List[Dict[str, Any]]:
+        """Load batch data from data sheet."""
+    
+    def load_clients(self) -> List[Dict[str, Any]]:
+        """Load client configurations from clients sheet."""
+    
+    def has_data_sheet(self) -> bool:
+        """Check if workbook has a data sheet."""
+    
+    def has_clients_sheet(self) -> bool:
+        """Check if workbook has a clients sheet."""
     
     def write_results(
-        self,
-        results: List[Dict[str, Any]],
+        self, 
+        results: List[Dict[str, Any]], 
         sheet_name: str
     ) -> str:
-        """
-        Write execution results to a new sheet.
-        
-        Args:
-            results: List of result dictionaries
-            sheet_name: Desired sheet name
-            
-        Returns:
-            Actual sheet name used (may differ if conflict).
-        """
+        """Write execution results to a new sheet."""
     
-    def parse_history_string(self, history_str: Any) -> Optional[List[str]]:
-        """
-        Parse history string into list of prompt names.
-        
-        Supports formats:
-        - JSON: '["name1", "name2"]'
-        - Comma-separated: '[name1, name2]'
-        - Already list: ["name1", "name2"]
-        """
+    def write_batch_results(
+        self,
+        results: List[Dict[str, Any]],
+        batch_name: str,
+        base_sheet_name: str = "results"
+    ) -> str:
+        """Write results for a single batch to a separate sheet."""
 ```
 
-## History Dependency Resolution
+## Batch Execution
 
-### How Dependencies Work
+### Variable Templating
 
-When a prompt specifies `history: ["context", "problem"]`:
-
-1. **Lookup** - Find interactions with `prompt_name="context"` and `prompt_name="problem"`
-2. **Assembly** - Build context string with those interactions
-3. **Injection** - Prepend context to the actual prompt
-
-### Context Assembly Format
-
-```
-<conversation_history>
-<interaction prompt_name='context'>
-USER: I run a coffee shop with 50 customers.
-SYSTEM: I understand you run a coffee shop with 50 customers. How can I help?
-</interaction>
-<interaction prompt_name='problem'>
-USER: My electricity bill is too high. What are common causes?
-SYSTEM: Common causes of high electricity bills include...
-</interaction>
-</conversation_history>
-===
-Based on the conversation history above, please answer: Suggest 3 ways to reduce my bill.
-```
-
-### Dependency Validation Rules
-
-1. **Existence** - All referenced prompt_names must exist
-2. **Ordering** - Dependencies must be defined before use
-
-```
-❌ INVALID: Sequence 3 depends on "summary" which is defined at sequence 5
-
-✅ VALID: Sequence 3 depends on "context" defined at sequence 1
-```
-
-## Error Handling
-
-### Validation Errors (Fail Fast)
+Variables in prompts use `{{variable}}` syntax:
 
 ```python
-# Missing dependency
-ValueError: Dependency validation failed:
-Sequence 5: dependency 'summary' not found in any prompt_name
-
-# Invalid structure
-ValueError: Missing required sheet: config
-ValueError: Missing required columns in prompts sheet: {'prompt_name'}
+def _resolve_variables(self, text: str, data_row: Dict[str, Any]) -> str:
+    """Replace {{variable}} placeholders with values from data row."""
+    pattern = r'\{\{(\w+)\}\}'
+    
+    def replacer(match):
+        var_name = match.group(1)
+        if var_name in data_row and data_row[var_name] is not None:
+            return str(data_row[var_name])
+        return match.group(0)  # Keep placeholder if not found
+    
+    return re.sub(pattern, replacer, text)
 ```
 
-### Execution Errors (Retry + Continue)
+### Batch Name Resolution
 
 ```python
-# Retry logic
-for attempt in range(1, max_retries + 1):
-    try:
-        response = ffai.generate_response(...)
+def _resolve_batch_name(self, data_row: Dict, batch_id: int) -> str:
+    """Generate batch name from template or default."""
+    if "batch_name" in data_row and data_row["batch_name"]:
+        name = self._resolve_variables(str(data_row["batch_name"]), data_row)
+        return re.sub(r'[^\w\-]', '_', name)[:50]
+    return f"batch_{batch_id}"
+```
+
+### Error Handling in Batch Mode
+
+```python
+# Config: on_batch_error = "continue" | "stop"
+
+if result["status"] == "failed":
+    on_error = self.config.get("on_batch_error", "continue")
+    if on_error == "stop":
+        logger.error(f"Stopping batch execution due to failure")
         break
-    except Exception as e:
-        if attempt == max_retries:
-            # Mark as failed, continue to next prompt
-            result["status"] = "failed"
-            result["error"] = str(e)
+    # else: continue to next batch
 ```
 
-### Error in Results Sheet
+## Multi-Client Execution
 
-| sequence | prompt_name | prompt | response | status | attempts | error |
-|----------|-------------|--------|----------|--------|----------|-------|
-| 5 | broken | Test | | failed | 3 | API Error: Rate limit exceeded |
+### Client Selection Flow
+
+```
+Prompt with client="fast"
+         │
+         ▼
+ClientRegistry.get("fast")
+         │
+         ├─► If "fast" registered:
+         │       Return cached or create new client
+         │
+         └─► If "fast" not registered:
+                 Log warning, return default client
+```
+
+### Thread-Safe Client Isolation
+
+```python
+def _execute_prompt_isolated(self, prompt: Dict, state: ExecutionState):
+    client_name = prompt.get("client")
+    
+    if client_name:
+        isolated_client = self.client_registry.clone(client_name)
+    else:
+        isolated_client = self.client.clone()
+    
+    ffai = FFAI(isolated_client)
+    # ... execute with isolated client
+```
 
 ## CLI Usage
-
-### Create New Workbook
-
-```bash
-python scripts/run_orchestrator.py new_workbook.xlsx
-```
-
-Creates:
-- `new_workbook.xlsx` with `config` and `prompts` sheets
-
-### Execute Workbook
-
-```bash
-python scripts/run_orchestrator.py new_workbook.xlsx --client mistral-small
-```
-
-Outputs:
-```
-ORCHESTRATION COMPLETE
-============================================================
-Workbook:     new_workbook.xlsx
-Results sheet: results_20250221_143052
-Total prompts: 5
-Successful:    5
-Failed:        0
-============================================================
-```
-
-### Dry Run (Validate Only)
-
-```bash
-python scripts/run_orchestrator.py new_workbook.xlsx --dry-run
-```
 
 ### Options
 
 | Option | Short | Description |
 |--------|-------|-------------|
-| `--client` | | AI client to use (mistral-small, mistral) |
-| `--concurrency` | `-c` | Maximum concurrent API calls (default: 2, max: 10) |
+| `--client` | | AI client to use (default: mistral-small) |
+| `--concurrency` | `-c` | Maximum concurrent API calls |
 | `--dry-run` | | Validate without executing |
-| `--quiet` | `-q` | Suppress console logging (logs to file only) |
+| `--quiet` | `-q` | Suppress console logging |
 | `--verbose` | | Enable debug logging |
 
-### Parallel Execution
+### Supported Client Types
 
-```bash
-# Run with 4 concurrent API calls
-python scripts/run_orchestrator.py new_workbook.xlsx --concurrency 4
-
-# Run with quiet mode (clean output)
-python scripts/run_orchestrator.py new_workbook.xlsx -c 4 --quiet
 ```
-
-Output with progress indicator:
-```
-Starting orchestration with concurrency=4
-Total prompts: 30
-Log file: /path/to/logs/orchestrator.log
-
-[████████░░░░░░░░░░░░] 15/30 (48%) | ✓14 ✗0 | →compare_9 | ⏳2 | ETA: 4s
-```
-
-The parallel executor respects dependencies - prompts at the same dependency level run concurrently, while dependent prompts wait for their prerequisites to complete.
-
-### Logging
-
-All execution logs are written to `logs/orchestrator.log` with daily rotation and 10-day retention.
-
-```bash
-# View logs
-cat logs/orchestrator.log
-
-# Follow live
-tail -f logs/orchestrator.log
+mistral, mistral-small, anthropic, anthropic-cached, gemini, 
+perplexity, nvidia-deepseek, azure-mistral, azure-mistral-small, 
+azure-codestral, azure-deepseek, azure-deepseek-v3, azure-phi
 ```
 
 ## Programmatic Usage
 
 ```python
-from src.orchestrator import ExcelOrchestrator
+from src.orchestrator import ExcelOrchestrator, ClientRegistry
 from src.Clients.FFMistralSmall import FFMistralSmall
 
-# Initialize client
 client = FFMistralSmall(api_key="...")
 
-# Create orchestrator with parallel execution
 orchestrator = ExcelOrchestrator(
     workbook_path="my_workbook.xlsx",
     client=client,
-    config_overrides={"temperature": 0.5},
-    concurrency=4,  # Run up to 4 prompts in parallel
+    concurrency=4,
 )
 
-# Run execution
 results_sheet = orchestrator.run()
-
-# Get summary
 summary = orchestrator.get_summary()
-print(f"Success rate: {summary['successful']}/{summary['total_prompts']}")
-```
 
-## Extension Points
-
-### Custom Result Processing
-
-```python
-class CustomOrchestrator(ExcelOrchestrator):
-    def _execute_prompt(self, prompt):
-        result = super()._execute_prompt(prompt)
-        
-        # Custom post-processing
-        if result["status"] == "success":
-            result["word_count"] = len(result["response"].split())
-        
-        return result
-```
-
-### Custom Validation
-
-```python
-class StrictOrchestrator(ExcelOrchestrator):
-    def _validate_dependencies(self):
-        super()._validate_dependencies()
-        
-        # Additional validation
-        for prompt in self.prompts:
-            if not prompt.get("prompt_name"):
-                raise ValueError(f"Sequence {prompt['sequence']}: prompt_name required")
-```
-
-### Custom Output Format
-
-```python
-class JSONOrchestrator(ExcelOrchestrator):
-    def run(self) -> str:
-        results_sheet = super().run()
-        
-        # Also export to JSON
-        import json
-        with open("results.json", "w") as f:
-            json.dump(self.results, f, indent=2)
-        
-        return results_sheet
+if summary.get("batch_mode"):
+    print(f"Batches: {summary['total_batches']}")
 ```
 
 ## Testing Strategy
 
-### Unit Tests
+### Test Categories
 
-```python
-# Test workbook creation
-def test_create_template_workbook(self, temp_workbook):
-    builder = WorkbookBuilder(temp_workbook)
-    builder.create_template_workbook()
-    assert os.path.exists(temp_workbook)
+1. **WorkbookBuilder Tests** - Creation, validation, loading
+2. **ExcelOrchestrator Tests** - Execution, dependencies, parallel
+3. **ClientRegistry Tests** - Registration, retrieval, fallback
+4. **Batch Execution Tests** - Variable resolution, batch naming
+5. **Multi-Client Tests** - Per-prompt client selection
 
-# Test validation
-def test_validate_missing_config_raises(self, temp_workbook):
-    builder = WorkbookBuilder(temp_workbook)
-    with pytest.raises(ValueError, match="Missing required sheet: config"):
-        builder.validate_workbook()
+### Test Workbook Generators
 
-# Test execution
-def test_execute_all_prompts(self, temp_workbook_with_data, mock_client):
-    orchestrator = ExcelOrchestrator(temp_workbook_with_data, mock_client)
-    results = orchestrator.execute()
-    assert len(results) == 3
-    assert all(r["status"] == "success" for r in results)
-```
-
-### Integration Tests
-
-```python
-# Test full flow with mock API
-def test_full_orchestration_flow(self, temp_workbook):
-    builder = WorkbookBuilder(temp_workbook)
-    builder.create_template_workbook()
-    
-    # Add prompts programmatically
-    
-    orchestrator = ExcelOrchestrator(temp_workbook, mock_client)
-    results_sheet = orchestrator.run()
-    
-    assert results_sheet.startswith("results_")
-```
+- `create_test_workbook.py` - 31 prompts for parallel testing
+- `create_test_workbook_batch.py` - 35 prompts × 5 batches
+- `create_test_workbook_multiclient.py` - 13 prompts with multiple clients

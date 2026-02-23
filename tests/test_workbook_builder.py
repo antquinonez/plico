@@ -552,3 +552,118 @@ class TestWorkbookBuilderWriteBatchResults:
 
         assert "batch_id" in headers
         assert "batch_name" in headers
+
+
+class TestWorkbookBuilderClientsSheet:
+    """Tests for clients sheet functionality."""
+
+    def test_has_clients_sheet_true(self, temp_workbook):
+        """Test has_clients_sheet returns True when clients sheet exists."""
+        from src.orchestrator.workbook_builder import WorkbookBuilder
+        from openpyxl import Workbook
+
+        wb = Workbook()
+        wb.create_sheet("config")
+        wb.create_sheet("prompts")
+        wb.create_sheet("clients")
+        del wb["Sheet"]
+        wb.save(temp_workbook)
+
+        builder = WorkbookBuilder(temp_workbook)
+        assert builder.has_clients_sheet() is True
+
+    def test_has_clients_sheet_false(self, temp_workbook_with_data):
+        """Test has_clients_sheet returns False when no clients sheet."""
+        from src.orchestrator.workbook_builder import WorkbookBuilder
+
+        builder = WorkbookBuilder(temp_workbook_with_data)
+        assert builder.has_clients_sheet() is False
+
+    def test_load_clients(self, temp_workbook):
+        """Test loading clients from clients sheet."""
+        from src.orchestrator.workbook_builder import WorkbookBuilder
+        from openpyxl import Workbook
+
+        wb = Workbook()
+        wb.create_sheet("config")
+        wb.create_sheet("prompts")
+
+        ws_clients = wb.create_sheet("clients")
+        headers = ["name", "client_type", "api_key_env", "model", "temperature"]
+        for col, header in enumerate(headers, start=1):
+            ws_clients.cell(row=1, column=col, value=header)
+
+        ws_clients.cell(row=2, column=1, value="fast")
+        ws_clients.cell(row=2, column=2, value="mistral-small")
+        ws_clients.cell(row=2, column=3, value="MISTRALSMALL_KEY")
+        ws_clients.cell(row=2, column=4, value="mistral-small-2503")
+        ws_clients.cell(row=2, column=5, value=0.3)
+
+        ws_clients.cell(row=3, column=1, value="smart")
+        ws_clients.cell(row=3, column=2, value="anthropic")
+        ws_clients.cell(row=3, column=3, value="ANTHROPIC_TOKEN")
+
+        del wb["Sheet"]
+        wb.save(temp_workbook)
+
+        builder = WorkbookBuilder(temp_workbook)
+        clients = builder.load_clients()
+
+        assert len(clients) == 2
+        assert clients[0]["name"] == "fast"
+        assert clients[0]["client_type"] == "mistral-small"
+        assert clients[1]["name"] == "smart"
+
+    def test_load_clients_empty_when_no_sheet(self, temp_workbook_with_data):
+        """Test load_clients returns empty list when no clients sheet."""
+        from src.orchestrator.workbook_builder import WorkbookBuilder
+
+        builder = WorkbookBuilder(temp_workbook_with_data)
+        clients = builder.load_clients()
+
+        assert clients == []
+
+    def test_create_template_with_clients_sheet(self, temp_workbook):
+        """Test creating template with clients sheet."""
+        from src.orchestrator.workbook_builder import WorkbookBuilder
+
+        builder = WorkbookBuilder(temp_workbook)
+        builder.create_template_workbook(with_clients_sheet=True)
+
+        wb = load_workbook(temp_workbook)
+        assert "clients" in wb.sheetnames
+
+    def test_load_prompts_with_client_column(self, temp_workbook):
+        """Test loading prompts that include client column."""
+        from src.orchestrator.workbook_builder import WorkbookBuilder
+        from openpyxl import Workbook
+
+        wb = Workbook()
+        wb.create_sheet("config")
+
+        ws_prompts = wb.create_sheet("prompts")
+        headers = ["sequence", "prompt_name", "prompt", "history", "client"]
+        for col, header in enumerate(headers, start=1):
+            ws_prompts.cell(row=1, column=col, value=header)
+
+        ws_prompts.cell(row=2, column=1, value=1)
+        ws_prompts.cell(row=2, column=2, value="classify")
+        ws_prompts.cell(row=2, column=3, value="Classify this text")
+        ws_prompts.cell(row=2, column=4, value="")
+        ws_prompts.cell(row=2, column=5, value="fast")
+
+        ws_prompts.cell(row=3, column=1, value=2)
+        ws_prompts.cell(row=3, column=2, value="analyze")
+        ws_prompts.cell(row=3, column=3, value="Analyze deeply")
+        ws_prompts.cell(row=3, column=4, value="")
+        ws_prompts.cell(row=3, column=5, value="smart")
+
+        del wb["Sheet"]
+        wb.save(temp_workbook)
+
+        builder = WorkbookBuilder(temp_workbook)
+        prompts = builder.load_prompts()
+
+        assert len(prompts) == 2
+        assert prompts[0]["client"] == "fast"
+        assert prompts[1]["client"] == "smart"
