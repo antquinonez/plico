@@ -308,6 +308,8 @@ class TestWorkbookBuilderWriteResults:
 
         results = [
             {
+                "batch_id": 0,
+                "batch_name": "",
                 "sequence": 1,
                 "prompt_name": "test",
                 "prompt": "Hello?",
@@ -345,6 +347,8 @@ class TestWorkbookBuilderWriteResults:
 
         results = [
             {
+                "batch_id": 0,
+                "batch_name": "",
                 "sequence": 1,
                 "prompt_name": "test",
                 "prompt": "Hello?",
@@ -363,6 +367,8 @@ class TestWorkbookBuilderWriteResults:
 
         headers = [cell.value for cell in ws[1]]
 
+        assert "batch_id" in headers
+        assert "batch_name" in headers
         assert "sequence" in headers
         assert "prompt_name" in headers
         assert "prompt" in headers
@@ -380,6 +386,8 @@ class TestWorkbookBuilderWriteResults:
 
         results = [
             {
+                "batch_id": 0,
+                "batch_name": "",
                 "sequence": 1,
                 "prompt_name": "test",
                 "prompt": "Hello?",
@@ -396,6 +404,151 @@ class TestWorkbookBuilderWriteResults:
         wb = load_workbook(temp_workbook_with_data)
         ws = wb["results_test"]
 
-        history_cell = ws.cell(row=2, column=4).value
+        history_cell = ws.cell(row=2, column=6).value
 
         assert history_cell == '["a", "b"]'
+
+
+class TestWorkbookBuilderBatchData:
+    """Tests for batch data sheet functionality."""
+
+    def test_has_data_sheet_true(self, temp_workbook_with_batch_data):
+        """Test has_data_sheet returns True when data sheet exists."""
+        from src.orchestrator.workbook_builder import WorkbookBuilder
+
+        builder = WorkbookBuilder(temp_workbook_with_batch_data)
+        assert builder.has_data_sheet() is True
+
+    def test_has_data_sheet_false(self, temp_workbook_with_data):
+        """Test has_data_sheet returns False when no data sheet."""
+        from src.orchestrator.workbook_builder import WorkbookBuilder
+
+        builder = WorkbookBuilder(temp_workbook_with_data)
+        assert builder.has_data_sheet() is False
+
+    def test_load_data(self, temp_workbook_with_batch_data):
+        """Test loading data from data sheet."""
+        from src.orchestrator.workbook_builder import WorkbookBuilder
+
+        builder = WorkbookBuilder(temp_workbook_with_batch_data)
+        data = builder.load_data()
+
+        assert len(data) == 3
+        assert data[0]["region"] == "north"
+        assert data[1]["region"] == "south"
+        assert data[2]["region"] == "east"
+
+    def test_load_data_columns(self, temp_workbook_with_batch_data):
+        """Test that data columns are loaded correctly."""
+        from src.orchestrator.workbook_builder import WorkbookBuilder
+
+        builder = WorkbookBuilder(temp_workbook_with_batch_data)
+        data = builder.load_data()
+
+        assert "id" in data[0]
+        assert "batch_name" in data[0]
+        assert "region" in data[0]
+        assert "product" in data[0]
+        assert "price" in data[0]
+        assert "quantity" in data[0]
+
+    def test_load_data_empty_when_no_sheet(self, temp_workbook_with_data):
+        """Test load_data returns empty list when no data sheet."""
+        from src.orchestrator.workbook_builder import WorkbookBuilder
+
+        builder = WorkbookBuilder(temp_workbook_with_data)
+        data = builder.load_data()
+
+        assert data == []
+
+    def test_get_data_columns(self, temp_workbook_with_batch_data):
+        """Test getting data column names."""
+        from src.orchestrator.workbook_builder import WorkbookBuilder
+
+        builder = WorkbookBuilder(temp_workbook_with_batch_data)
+        columns = builder.get_data_columns()
+
+        assert "id" in columns
+        assert "batch_name" in columns
+        assert "region" in columns
+
+    def test_create_template_with_data_sheet(self, temp_workbook):
+        """Test creating template with data sheet."""
+        from src.orchestrator.workbook_builder import WorkbookBuilder
+
+        builder = WorkbookBuilder(temp_workbook)
+        builder.create_template_workbook(with_data_sheet=True)
+
+        wb = load_workbook(temp_workbook)
+        assert "data" in wb.sheetnames
+
+    def test_create_template_without_data_sheet(self, temp_workbook):
+        """Test creating template without data sheet."""
+        from src.orchestrator.workbook_builder import WorkbookBuilder
+
+        builder = WorkbookBuilder(temp_workbook)
+        builder.create_template_workbook(with_data_sheet=False)
+
+        wb = load_workbook(temp_workbook)
+        assert "data" not in wb.sheetnames
+
+
+class TestWorkbookBuilderWriteBatchResults:
+    """Tests for writing batch results to separate sheets."""
+
+    def test_write_batch_results(self, temp_workbook_with_batch_data):
+        """Test writing batch results to a separate sheet."""
+        from src.orchestrator.workbook_builder import WorkbookBuilder
+
+        builder = WorkbookBuilder(temp_workbook_with_batch_data)
+
+        results = [
+            {
+                "sequence": 1,
+                "prompt_name": "intro",
+                "prompt": "Analyze north widget_a.",
+                "history": None,
+                "response": "Analysis complete.",
+                "status": "success",
+                "attempts": 1,
+                "error": None,
+            }
+        ]
+
+        sheet_name = builder.write_batch_results(results, "north_widget_a")
+
+        assert "north_widget_a" in sheet_name
+
+        wb = load_workbook(temp_workbook_with_batch_data)
+        assert sheet_name in wb.sheetnames
+
+    def test_write_results_with_batch_info(self, temp_workbook_with_batch_data):
+        """Test writing results with batch_id and batch_name columns."""
+        from src.orchestrator.workbook_builder import WorkbookBuilder
+
+        builder = WorkbookBuilder(temp_workbook_with_batch_data)
+
+        results = [
+            {
+                "batch_id": 1,
+                "batch_name": "north_widget_a",
+                "sequence": 1,
+                "prompt_name": "intro",
+                "prompt": "Analyze north widget_a.",
+                "history": None,
+                "response": "Analysis complete.",
+                "status": "success",
+                "attempts": 1,
+                "error": None,
+            }
+        ]
+
+        builder.write_results(results, "results_test")
+
+        wb = load_workbook(temp_workbook_with_batch_data)
+        ws = wb["results_test"]
+
+        headers = [cell.value for cell in ws[1]]
+
+        assert "batch_id" in headers
+        assert "batch_name" in headers

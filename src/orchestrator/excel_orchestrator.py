@@ -1,4 +1,5 @@
 import os
+import re
 import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -67,6 +68,9 @@ class ExcelOrchestrator:
         self.prompts: List[Dict[str, Any]] = []
         self.results: List[Dict[str, Any]] = []
         self.ffai: Optional[FFAI] = None
+
+        self.batch_data: List[Dict[str, Any]] = []
+        self.is_batch_mode: bool = False
 
     def _init_workbook(self) -> None:
         """Initialize workbook - create if not exists, validate if exists."""
@@ -301,6 +305,122 @@ class ExcelOrchestrator:
 
         return result
 
+    def _resolve_variables(self, text: str, data_row: Dict[str, Any]) -> str:
+        """Replace {{variable}} placeholders with values from data row."""
+        if not text:
+            return text
+
+        pattern = r"\{\{(\w+)\}\}"
+
+        def replacer(match):
+            var_name = match.group(1)
+            if var_name in data_row and data_row[var_name] is not None:
+                return str(data_row[var_name])
+            logger.warning(f"Variable '{var_name}' not found in data row")
+            return match.group(0)
+
+        return re.sub(pattern, replacer, text)
+
+    def _resolve_prompt_variables(
+        self, prompt: Dict[str, Any], data_row: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """Resolve all {{variable}} placeholders in a prompt."""
+        resolved = dict(prompt)
+        resolved["prompt"] = self._resolve_variables(prompt.get("prompt", ""), data_row)
+        if prompt.get("prompt_name"):
+            resolved["prompt_name"] = self._resolve_variables(
+                prompt["prompt_name"], data_row
+            )
+        return resolved
+
+    def _resolve_batch_name(self, data_row: Dict[str, Any], batch_id: int) -> str:
+        """Generate batch name from data row or default."""
+        if "batch_name" in data_row and data_row["batch_name"]:
+            name = self._resolve_variables(str(data_row["batch_name"]), data_row)
+            return re.sub(r"[^\w\-]", "_", name)[:50]
+        return f"batch_{batch_id}"
+
+    def _execute_single_batch(
+        self, batch_id: int, data_row: Dict[str, Any], batch_name: str
+    ) -> List[Dict[str, Any]]:
+        """Execute all prompts for a single batch with resolved variables."""
+        results = []
+
+        for prompt in self.prompts:
+            resolved_prompt = self._resolve_prompt_variables(prompt, data_row)
+
+            result = self._execute_prompt_with_batch(
+                resolved_prompt, batch_id, batch_name
+            )
+            results.append(result)
+
+            if result["status"] == "failed":
+                on_error = self.config.get("on_batch_error", "continue")
+                if on_error == "stop":
+                    logger.error(
+                        f"Stopping batch execution due to failure at batch {batch_id}"
+                    )
+                    break
+
+        return results
+
+    def _execute_prompt_with_batch(
+        self, prompt: Dict[str, Any], batch_id: int, batch_name: str
+    ) -> Dict[str, Any]:
+        """Execute a single prompt and tag with batch info."""
+        max_retries = self.config.get("max_retries", 3)
+
+        result = {
+            "batch_id": batch_id,
+            "batch_name": batch_name,
+            "sequence": prompt["sequence"],
+            "prompt_name": prompt.get("prompt_name"),
+            "prompt": prompt["prompt"],
+            "history": prompt.get("history"),
+            "response": None,
+            "status": "pending",
+            "attempts": 0,
+            "error": None,
+        }
+
+        for attempt in range(1, max_retries + 1):
+            result["attempts"] = attempt
+
+            try:
+                logger.info(
+                    f"Executing batch {batch_id}, sequence {prompt['sequence']} (attempt {attempt})"
+                )
+
+                response = self.ffai.generate_response(
+                    prompt=prompt["prompt"],
+                    prompt_name=prompt.get("prompt_name"),
+                    history=prompt.get("history"),
+                    model=self.config.get("model"),
+                    temperature=self.config.get("temperature"),
+                    max_tokens=self.config.get("max_tokens"),
+                )
+
+                result["response"] = response
+                result["status"] = "success"
+                logger.info(
+                    f"Batch {batch_id}, sequence {prompt['sequence']} succeeded"
+                )
+                break
+
+            except Exception as e:
+                result["error"] = str(e)
+                logger.warning(
+                    f"Batch {batch_id}, sequence {prompt['sequence']} failed (attempt {attempt}): {e}"
+                )
+
+                if attempt == max_retries:
+                    result["status"] = "failed"
+                    logger.error(
+                        f"Batch {batch_id}, sequence {prompt['sequence']} failed after {max_retries} attempts"
+                    )
+
+        return result
+
     def execute(self) -> List[Dict[str, Any]]:
         """Execute all prompts in sequence."""
         self.results = []
@@ -425,6 +545,189 @@ class ExcelOrchestrator:
         )
         return self.results
 
+    def execute_batch(self) -> List[Dict[str, Any]]:
+        """Execute all prompts for each batch row sequentially."""
+        self.results = []
+        total_batches = len(self.batch_data)
+        total_prompts = len(self.prompts)
+        total = total_batches * total_prompts
+
+        for batch_idx, data_row in enumerate(self.batch_data, start=1):
+            batch_name = self._resolve_batch_name(data_row, batch_idx)
+            logger.info(f"Starting batch {batch_idx}/{total_batches}: {batch_name}")
+
+            batch_results = self._execute_single_batch(batch_idx, data_row, batch_name)
+            self.results.extend(batch_results)
+
+            batch_failed = sum(1 for r in batch_results if r["status"] == "failed")
+            if batch_failed > 0:
+                on_error = self.config.get("on_batch_error", "continue")
+                if on_error == "stop":
+                    logger.error(
+                        f"Stopping at batch {batch_idx} due to {batch_failed} failures"
+                    )
+                    break
+
+            if self.progress_callback:
+                completed = len(self.results)
+                success = sum(1 for r in self.results if r["status"] == "success")
+                failed = sum(1 for r in self.results if r["status"] == "failed")
+                self.progress_callback(
+                    completed,
+                    total,
+                    success,
+                    failed,
+                    current_name=f"batch_{batch_idx}",
+                    running=1,
+                )
+
+        successful = sum(1 for r in self.results if r["status"] == "success")
+        failed = sum(1 for r in self.results if r["status"] == "failed")
+        logger.info(
+            f"Batch execution complete: {successful} succeeded, {failed} failed"
+        )
+        return self.results
+
+    def execute_batch_parallel(self) -> List[Dict[str, Any]]:
+        """Execute batches in parallel, with dependency-aware prompt execution within each batch."""
+        total_batches = len(self.batch_data)
+        total_prompts = len(self.prompts)
+        total = total_batches * total_prompts
+
+        state = ExecutionState()
+        results_lock = threading.Lock()
+
+        def execute_single_batch_isolated(batch_idx: int, data_row: Dict[str, Any]):
+            batch_name = self._resolve_batch_name(data_row, batch_idx)
+            batch_results = []
+            batch_results_by_name: Dict[str, Dict[str, Any]] = {}
+
+            nodes = self._build_execution_graph()
+
+            for prompt in self.prompts:
+                resolved_prompt = self._resolve_prompt_variables(prompt, data_row)
+
+                max_retries = self.config.get("max_retries", 3)
+                result = {
+                    "batch_id": batch_idx,
+                    "batch_name": batch_name,
+                    "sequence": resolved_prompt["sequence"],
+                    "prompt_name": resolved_prompt.get("prompt_name"),
+                    "prompt": resolved_prompt["prompt"],
+                    "history": resolved_prompt.get("history"),
+                    "response": None,
+                    "status": "pending",
+                    "attempts": 0,
+                    "error": None,
+                }
+
+                for attempt in range(1, max_retries + 1):
+                    result["attempts"] = attempt
+                    try:
+                        isolated_client = self.client.clone()
+                        ffai = FFAI(isolated_client)
+
+                        for dep_name in resolved_prompt.get("history") or []:
+                            if dep_name in batch_results_by_name:
+                                dep_result = batch_results_by_name[dep_name]
+                                ffai.prompt_attr_history.append(
+                                    {
+                                        "prompt_name": dep_name,
+                                        "prompt": dep_result.get("prompt"),
+                                        "response": dep_result.get("response"),
+                                    }
+                                )
+
+                        response = ffai.generate_response(
+                            prompt=resolved_prompt["prompt"],
+                            prompt_name=resolved_prompt.get("prompt_name"),
+                            history=resolved_prompt.get("history"),
+                            model=self.config.get("model"),
+                            temperature=self.config.get("temperature"),
+                            max_tokens=self.config.get("max_tokens"),
+                        )
+
+                        result["response"] = response
+                        result["status"] = "success"
+                        break
+
+                    except Exception as e:
+                        result["error"] = str(e)
+                        if attempt == max_retries:
+                            result["status"] = "failed"
+
+                batch_results.append(result)
+                if result["status"] == "success" and result.get("prompt_name"):
+                    batch_results_by_name[result["prompt_name"]] = result
+
+                if result["status"] == "failed":
+                    on_error = self.config.get("on_batch_error", "continue")
+                    if on_error == "stop":
+                        break
+
+            return batch_results
+
+        all_results = []
+        failed_batches = []
+
+        logger.info(
+            f"Starting parallel batch execution with concurrency={self.concurrency}"
+        )
+
+        with ThreadPoolExecutor(max_workers=self.concurrency) as executor:
+            futures = {}
+            for batch_idx, data_row in enumerate(self.batch_data, start=1):
+                future = executor.submit(
+                    execute_single_batch_isolated, batch_idx, data_row
+                )
+                futures[future] = batch_idx
+
+            for future in as_completed(futures):
+                batch_idx = futures[future]
+                try:
+                    batch_results = future.result()
+                    with results_lock:
+                        all_results.extend(batch_results)
+                        state.success_count += sum(
+                            1 for r in batch_results if r["status"] == "success"
+                        )
+                        state.failed_count += sum(
+                            1 for r in batch_results if r["status"] == "failed"
+                        )
+
+                    if self.progress_callback:
+                        completed = len(all_results)
+                        self.progress_callback(
+                            completed,
+                            total,
+                            state.success_count,
+                            state.failed_count,
+                            current_name=f"batch_{batch_idx}",
+                            running=len([f for f in futures if not f.done()]),
+                        )
+
+                    batch_failed = sum(
+                        1 for r in batch_results if r["status"] == "failed"
+                    )
+                    if batch_failed > 0:
+                        failed_batches.append(batch_idx)
+
+                except Exception as e:
+                    logger.error(f"Batch {batch_idx} failed with exception: {e}")
+                    failed_batches.append(batch_idx)
+
+        all_results.sort(key=lambda r: (r["batch_id"], r["sequence"]))
+        self.results = all_results
+
+        logger.info(
+            f"Parallel batch execution complete: {state.success_count} succeeded, "
+            f"{state.failed_count} failed across {total_batches} batches"
+        )
+        if failed_batches:
+            logger.warning(f"Failed batches: {failed_batches}")
+
+        return self.results
+
     def run(self) -> str:
         """
         Main entry point. Initialize, validate, execute, write results.
@@ -438,28 +741,75 @@ class ExcelOrchestrator:
         self._validate_dependencies()
         self._init_client()
 
-        if self.concurrency > 1:
-            self.execute_parallel()
+        self.batch_data = self.builder.load_data()
+        self.is_batch_mode = len(self.batch_data) > 0
+
+        if self.is_batch_mode:
+            logger.info(f"Running in batch mode with {len(self.batch_data)} batches")
+            if self.concurrency > 1:
+                self.execute_batch_parallel()
+            else:
+                self.execute_batch()
         else:
-            self.execute()
+            if self.concurrency > 1:
+                self.execute_parallel()
+            else:
+                self.execute()
 
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        results_sheet = f"results_{timestamp}"
+        batch_output = self.config.get("batch_output", "combined")
 
-        self.builder.write_results(self.results, results_sheet)
+        if self.is_batch_mode and batch_output == "separate_sheets":
+            return self._write_separate_batch_results()
+        else:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            results_sheet = f"results_{timestamp}"
+            self.builder.write_results(self.results, results_sheet)
+            logger.info(f"Orchestration complete. Results in sheet: {results_sheet}")
+            return results_sheet
 
-        logger.info(f"Orchestration complete. Results in sheet: {results_sheet}")
-        return results_sheet
+    def _write_separate_batch_results(self) -> str:
+        """Write results to separate sheets per batch."""
+        batches: Dict[int, List[Dict[str, Any]]] = {}
+        for result in self.results:
+            batch_id = result.get("batch_id", 0)
+            if batch_id not in batches:
+                batches[batch_id] = []
+            batches[batch_id].append(result)
+
+        sheet_names = []
+        for batch_id in sorted(batches.keys()):
+            batch_results = batches[batch_id]
+            batch_name = batch_results[0].get("batch_name", f"batch_{batch_id}")
+            sheet_name = self.builder.write_batch_results(batch_results, batch_name)
+            sheet_names.append(sheet_name)
+
+        logger.info(f"Wrote {len(sheet_names)} batch result sheets")
+        return ", ".join(sheet_names)
 
     def get_summary(self) -> Dict[str, Any]:
         """Get execution summary."""
         if not self.results:
             return {"status": "not_run"}
 
-        return {
+        summary = {
             "total_prompts": len(self.results),
             "successful": sum(1 for r in self.results if r["status"] == "success"),
             "failed": sum(1 for r in self.results if r["status"] == "failed"),
             "total_attempts": sum(r["attempts"] for r in self.results),
             "workbook": self.workbook_path,
         }
+
+        if self.is_batch_mode:
+            batch_ids = set(r.get("batch_id", 0) for r in self.results)
+            summary["total_batches"] = len(batch_ids)
+            summary["batch_mode"] = True
+
+            batch_failures = {}
+            for r in self.results:
+                if r["status"] == "failed":
+                    batch_id = r.get("batch_id", 0)
+                    batch_failures[batch_id] = batch_failures.get(batch_id, 0) + 1
+            if batch_failures:
+                summary["batches_with_failures"] = batch_failures
+
+        return summary

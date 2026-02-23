@@ -205,3 +205,113 @@ def temp_workbook_with_data(temp_workbook, sample_prompts, sample_config):
 
     wb.save(temp_workbook)
     return temp_workbook
+
+
+@pytest.fixture
+def sample_batch_data():
+    """Sample batch data for testing."""
+    return [
+        {
+            "id": 1,
+            "batch_name": "{{region}}_{{product}}",
+            "region": "north",
+            "product": "widget_a",
+            "price": 10,
+            "quantity": 100,
+        },
+        {
+            "id": 2,
+            "batch_name": "{{region}}_{{product}}",
+            "region": "south",
+            "product": "widget_b",
+            "price": 15,
+            "quantity": 75,
+        },
+        {
+            "id": 3,
+            "batch_name": "{{region}}_{{product}}",
+            "region": "east",
+            "product": "widget_c",
+            "price": 20,
+            "quantity": 50,
+        },
+    ]
+
+
+@pytest.fixture
+def temp_workbook_with_batch_data(
+    temp_workbook, sample_prompts, sample_config, sample_batch_data
+):
+    """Create a workbook with sample data including batch data sheet."""
+    from openpyxl import Workbook
+
+    wb = Workbook()
+
+    ws_config = wb.active
+    ws_config.title = "config"
+    ws_config["A1"] = "field"
+    ws_config["B1"] = "value"
+
+    config_items = [
+        ("model", sample_config["model"]),
+        ("api_key_env", sample_config["api_key_env"]),
+        ("max_retries", sample_config["max_retries"]),
+        ("temperature", sample_config["temperature"]),
+        ("max_tokens", sample_config["max_tokens"]),
+        ("system_instructions", sample_config["system_instructions"]),
+        ("batch_mode", "per_row"),
+        ("batch_output", "combined"),
+        ("on_batch_error", "continue"),
+    ]
+
+    for idx, (field, value) in enumerate(config_items, start=2):
+        ws_config[f"A{idx}"] = field
+        ws_config[f"B{idx}"] = value
+
+    ws_prompts = wb.create_sheet(title="prompts")
+    ws_prompts["A1"] = "sequence"
+    ws_prompts["B1"] = "prompt_name"
+    ws_prompts["C1"] = "prompt"
+    ws_prompts["D1"] = "history"
+
+    batch_prompts = [
+        {
+            "sequence": 1,
+            "prompt_name": "intro",
+            "prompt": "Analyze {{region}} region, product {{product}}.",
+            "history": None,
+        },
+        {
+            "sequence": 2,
+            "prompt_name": "calc",
+            "prompt": "Price is {{price}}, quantity is {{quantity}}.",
+            "history": None,
+        },
+        {
+            "sequence": 3,
+            "prompt_name": "summary",
+            "prompt": "Summarize the analysis.",
+            "history": ["intro", "calc"],
+        },
+    ]
+
+    for idx, p in enumerate(batch_prompts, start=2):
+        ws_prompts[f"A{idx}"] = p["sequence"]
+        ws_prompts[f"B{idx}"] = p["prompt_name"]
+        ws_prompts[f"C{idx}"] = p["prompt"]
+        if p["history"]:
+            import json
+
+            ws_prompts[f"D{idx}"] = json.dumps(p["history"])
+
+    ws_data = wb.create_sheet(title="data")
+    data_headers = ["id", "batch_name", "region", "product", "price", "quantity"]
+    for col_idx, header in enumerate(data_headers, start=1):
+        ws_data.cell(row=1, column=col_idx, value=header)
+
+    for row_idx, row_data in enumerate(sample_batch_data, start=2):
+        for col_idx, header in enumerate(data_headers, start=1):
+            ws_data.cell(row=row_idx, column=col_idx, value=row_data.get(header))
+
+    wb.save(temp_workbook)
+    return temp_workbook

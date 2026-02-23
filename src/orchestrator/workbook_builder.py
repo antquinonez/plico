@@ -16,6 +16,7 @@ class WorkbookBuilder:
 
     CONFIG_SHEET = "config"
     PROMPTS_SHEET = "prompts"
+    DATA_SHEET = "data"
 
     CONFIG_FIELDS = [
         ("model", "mistral-small-2503"),
@@ -30,8 +31,16 @@ class WorkbookBuilder:
         ("created_at", ""),
     ]
 
+    BATCH_CONFIG_FIELDS = [
+        ("batch_mode", "per_row"),
+        ("batch_output", "combined"),
+        ("on_batch_error", "continue"),
+    ]
+
     PROMPTS_HEADERS = ["sequence", "prompt_name", "prompt", "history"]
     RESULTS_HEADERS = [
+        "batch_id",
+        "batch_name",
         "sequence",
         "prompt_name",
         "prompt",
@@ -44,8 +53,22 @@ class WorkbookBuilder:
 
     def __init__(self, workbook_path: str):
         self.workbook_path = workbook_path
+        self._has_data_sheet: Optional[bool] = None
 
-    def create_template_workbook(self) -> str:
+    def has_data_sheet(self) -> bool:
+        """Check if workbook has a data sheet for batch execution."""
+        if self._has_data_sheet is not None:
+            return self._has_data_sheet
+
+        if not os.path.exists(self.workbook_path):
+            self._has_data_sheet = False
+            return False
+
+        wb = load_workbook(self.workbook_path)
+        self._has_data_sheet = self.DATA_SHEET in wb.sheetnames
+        return self._has_data_sheet
+
+    def create_template_workbook(self, with_data_sheet: bool = False) -> str:
         """Create a new workbook with template structure."""
         logger.info(f"Creating template workbook: {self.workbook_path}")
 
@@ -56,7 +79,11 @@ class WorkbookBuilder:
         ws_config["A1"] = "field"
         ws_config["B1"] = "value"
 
-        for idx, (field, default) in enumerate(self.CONFIG_FIELDS, start=2):
+        all_config = list(self.CONFIG_FIELDS)
+        if with_data_sheet:
+            all_config.extend(self.BATCH_CONFIG_FIELDS)
+
+        for idx, (field, default) in enumerate(all_config, start=2):
             ws_config[f"A{idx}"] = field
             if field == "created_at":
                 ws_config[f"B{idx}"] = datetime.now().isoformat()
@@ -75,6 +102,13 @@ class WorkbookBuilder:
 
         ws_prompts.column_dimensions["C"].width = 50
         ws_prompts.column_dimensions["D"].width = 30
+
+        if with_data_sheet:
+            ws_data = wb.create_sheet(title=self.DATA_SHEET)
+            ws_data["A1"] = "id"
+            ws_data["B1"] = "batch_name"
+            ws_data.column_dimensions["A"].width = 10
+            ws_data.column_dimensions["B"].width = 30
 
         wb.save(self.workbook_path)
         logger.info(f"Template workbook created: {self.workbook_path}")
@@ -153,6 +187,52 @@ class WorkbookBuilder:
         logger.info(f"Loaded {len(prompts)} prompts")
         return prompts
 
+    def load_data(self) -> List[Dict[str, Any]]:
+        """Load batch data from data sheet."""
+        if not self.has_data_sheet():
+            return []
+
+        wb = load_workbook(self.workbook_path)
+        ws = wb[self.DATA_SHEET]
+
+        headers = []
+        for col in range(1, ws.max_column + 1):
+            header = ws.cell(row=1, column=col).value
+            headers.append(str(header).strip() if header else f"col_{col}")
+
+        data_rows = []
+        for row_idx in range(2, ws.max_row + 1):
+            row_data = {}
+            has_content = False
+            for col_idx, header in enumerate(headers, start=1):
+                value = ws.cell(row=row_idx, column=col_idx).value
+                row_data[header] = value
+                if value is not None:
+                    has_content = True
+
+            if has_content:
+                row_data["_row_idx"] = row_idx
+                data_rows.append(row_data)
+
+        logger.info(f"Loaded {len(data_rows)} data rows for batch execution")
+        return data_rows
+
+    def get_data_columns(self) -> List[str]:
+        """Get column names from data sheet."""
+        if not self.has_data_sheet():
+            return []
+
+        wb = load_workbook(self.workbook_path)
+        ws = wb[self.DATA_SHEET]
+
+        headers = []
+        for col in range(1, ws.max_column + 1):
+            header = ws.cell(row=1, column=col).value
+            if header:
+                headers.append(str(header).strip())
+
+        return headers
+
     def parse_history_string(self, history_str: Any) -> Optional[List[str]]:
         """Parse history string like '["a", "b"]' into list."""
         if not history_str:
@@ -187,14 +267,74 @@ class WorkbookBuilder:
         wb = load_workbook(self.workbook_path)
 
         if sheet_name in wb.sheetnames:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
             sheet_name = f"results_{timestamp}"
-        else:
-            pass
 
         ws = wb.create_sheet(title=sheet_name)
 
         for col_idx, header in enumerate(self.RESULTS_HEADERS, start=1):
+            ws.cell(row=1, column=col_idx, value=header)
+
+        for row_idx, result in enumerate(results, start=2):
+            ws.cell(row=row_idx, column=1, value=result.get("batch_id"))
+            ws.cell(row=row_idx, column=2, value=result.get("batch_name"))
+            ws.cell(row=row_idx, column=3, value=result.get("sequence"))
+            ws.cell(row=row_idx, column=4, value=result.get("prompt_name"))
+            ws.cell(row=row_idx, column=5, value=result.get("prompt"))
+
+            history = result.get("history")
+            history_str = json.dumps(history) if history else ""
+            ws.cell(row=row_idx, column=6, value=history_str)
+
+            ws.cell(row=row_idx, column=7, value=result.get("response"))
+            ws.cell(row=row_idx, column=8, value=result.get("status"))
+            ws.cell(row=row_idx, column=9, value=result.get("attempts"))
+            ws.cell(row=row_idx, column=10, value=result.get("error"))
+
+        ws.column_dimensions["A"].width = 10
+        ws.column_dimensions["B"].width = 25
+        ws.column_dimensions["C"].width = 10
+        ws.column_dimensions["D"].width = 18
+        ws.column_dimensions["E"].width = 50
+        ws.column_dimensions["F"].width = 30
+        ws.column_dimensions["G"].width = 60
+        ws.column_dimensions["H"].width = 10
+        ws.column_dimensions["I"].width = 10
+        ws.column_dimensions["J"].width = 40
+
+        wb.save(self.workbook_path)
+        logger.info(f"Results written to sheet: {sheet_name}")
+        return sheet_name
+
+    def write_batch_results(
+        self,
+        results: List[Dict[str, Any]],
+        batch_name: str,
+        base_sheet_name: str = "results",
+    ) -> str:
+        """Write results for a single batch to a separate sheet."""
+        wb = load_workbook(self.workbook_path)
+
+        sheet_name = f"{base_sheet_name}_{batch_name}"
+        original_name = sheet_name
+        counter = 1
+        while sheet_name in wb.sheetnames:
+            sheet_name = f"{original_name}_{counter}"
+            counter += 1
+
+        ws = wb.create_sheet(title=sheet_name)
+
+        headers = [
+            "sequence",
+            "prompt_name",
+            "prompt",
+            "history",
+            "response",
+            "status",
+            "attempts",
+            "error",
+        ]
+        for col_idx, header in enumerate(headers, start=1):
             ws.cell(row=1, column=col_idx, value=header)
 
         for row_idx, result in enumerate(results, start=2):
@@ -211,17 +351,15 @@ class WorkbookBuilder:
             ws.cell(row=row_idx, column=7, value=result.get("attempts"))
             ws.cell(row=row_idx, column=8, value=result.get("error"))
 
-        for col_idx, header in enumerate(self.RESULTS_HEADERS, start=1):
-            max_len = len(header)
-            for row in range(2, len(results) + 2):
-                cell_val = ws.cell(row=row, column=col_idx).value
-                if cell_val:
-                    max_len = max(max_len, min(len(str(cell_val)), 100))
-            ws.column_dimensions[get_column_letter(col_idx)].width = max_len + 2
-
+        ws.column_dimensions["A"].width = 10
+        ws.column_dimensions["B"].width = 18
         ws.column_dimensions["C"].width = 50
+        ws.column_dimensions["D"].width = 30
         ws.column_dimensions["E"].width = 60
+        ws.column_dimensions["F"].width = 10
+        ws.column_dimensions["G"].width = 10
+        ws.column_dimensions["H"].width = 40
 
         wb.save(self.workbook_path)
-        logger.info(f"Results written to sheet: {sheet_name}")
+        logger.info(f"Batch results written to sheet: {sheet_name}")
         return sheet_name
