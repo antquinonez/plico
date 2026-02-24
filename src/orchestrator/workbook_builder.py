@@ -38,7 +38,14 @@ class WorkbookBuilder:
         ("on_batch_error", "continue"),
     ]
 
-    PROMPTS_HEADERS = ["sequence", "prompt_name", "prompt", "history", "client"]
+    PROMPTS_HEADERS = [
+        "sequence",
+        "prompt_name",
+        "prompt",
+        "history",
+        "client",
+        "condition",
+    ]
     REQUIRED_PROMPTS_HEADERS = ["sequence", "prompt_name", "prompt", "history"]
     CLIENTS_HEADERS = [
         "name",
@@ -57,6 +64,9 @@ class WorkbookBuilder:
         "prompt",
         "history",
         "client",
+        "condition",
+        "condition_result",
+        "condition_error",
         "response",
         "status",
         "attempts",
@@ -131,6 +141,7 @@ class WorkbookBuilder:
         ws_prompts.column_dimensions["C"].width = 50
         ws_prompts.column_dimensions["D"].width = 30
         ws_prompts.column_dimensions["E"].width = 15
+        ws_prompts.column_dimensions["F"].width = 40
 
         if with_data_sheet:
             ws_data = wb.create_sheet(title=self.DATA_SHEET)
@@ -238,6 +249,9 @@ class WorkbookBuilder:
                 else None,
                 "client": str(row_dict.get("client", "")).strip()
                 if row_dict.get("client")
+                else None,
+                "condition": str(row_dict.get("condition", "")).strip()
+                if row_dict.get("condition")
                 else None,
             }
 
@@ -389,10 +403,13 @@ class WorkbookBuilder:
             ws.cell(row=row_idx, column=6, value=history_str)
 
             ws.cell(row=row_idx, column=7, value=result.get("client"))
-            ws.cell(row=row_idx, column=8, value=result.get("response"))
-            ws.cell(row=row_idx, column=9, value=result.get("status"))
-            ws.cell(row=row_idx, column=10, value=result.get("attempts"))
-            ws.cell(row=row_idx, column=11, value=result.get("error"))
+            ws.cell(row=row_idx, column=8, value=result.get("condition"))
+            ws.cell(row=row_idx, column=9, value=result.get("condition_result"))
+            ws.cell(row=row_idx, column=10, value=result.get("condition_error"))
+            ws.cell(row=row_idx, column=11, value=result.get("response"))
+            ws.cell(row=row_idx, column=12, value=result.get("status"))
+            ws.cell(row=row_idx, column=13, value=result.get("attempts"))
+            ws.cell(row=row_idx, column=14, value=result.get("error"))
 
         ws.column_dimensions["A"].width = 10
         ws.column_dimensions["B"].width = 25
@@ -401,10 +418,13 @@ class WorkbookBuilder:
         ws.column_dimensions["E"].width = 50
         ws.column_dimensions["F"].width = 30
         ws.column_dimensions["G"].width = 15
-        ws.column_dimensions["H"].width = 60
-        ws.column_dimensions["I"].width = 10
-        ws.column_dimensions["J"].width = 10
-        ws.column_dimensions["K"].width = 40
+        ws.column_dimensions["H"].width = 40
+        ws.column_dimensions["I"].width = 15
+        ws.column_dimensions["J"].width = 25
+        ws.column_dimensions["K"].width = 60
+        ws.column_dimensions["L"].width = 10
+        ws.column_dimensions["M"].width = 10
+        ws.column_dimensions["N"].width = 40
 
         wb.save(self.workbook_path)
         logger.info(f"Results written to sheet: {sheet_name}")
@@ -433,6 +453,8 @@ class WorkbookBuilder:
             "prompt_name",
             "prompt",
             "history",
+            "condition",
+            "condition_result",
             "response",
             "status",
             "attempts",
@@ -450,19 +472,23 @@ class WorkbookBuilder:
             history_str = json.dumps(history) if history else ""
             ws.cell(row=row_idx, column=4, value=history_str)
 
-            ws.cell(row=row_idx, column=5, value=result.get("response"))
-            ws.cell(row=row_idx, column=6, value=result.get("status"))
-            ws.cell(row=row_idx, column=7, value=result.get("attempts"))
-            ws.cell(row=row_idx, column=8, value=result.get("error"))
+            ws.cell(row=row_idx, column=5, value=result.get("condition"))
+            ws.cell(row=row_idx, column=6, value=result.get("condition_result"))
+            ws.cell(row=row_idx, column=7, value=result.get("response"))
+            ws.cell(row=row_idx, column=8, value=result.get("status"))
+            ws.cell(row=row_idx, column=9, value=result.get("attempts"))
+            ws.cell(row=row_idx, column=10, value=result.get("error"))
 
         ws.column_dimensions["A"].width = 10
         ws.column_dimensions["B"].width = 18
         ws.column_dimensions["C"].width = 50
         ws.column_dimensions["D"].width = 30
-        ws.column_dimensions["E"].width = 60
-        ws.column_dimensions["F"].width = 10
-        ws.column_dimensions["G"].width = 10
-        ws.column_dimensions["H"].width = 40
+        ws.column_dimensions["E"].width = 40
+        ws.column_dimensions["F"].width = 15
+        ws.column_dimensions["G"].width = 60
+        ws.column_dimensions["H"].width = 10
+        ws.column_dimensions["I"].width = 10
+        ws.column_dimensions["J"].width = 40
 
         wb.save(self.workbook_path)
         logger.info(f"Batch results written to sheet: {sheet_name}")

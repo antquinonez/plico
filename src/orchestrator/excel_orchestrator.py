@@ -11,6 +11,7 @@ from ..FFAI import FFAI
 from ..FFAIClientBase import FFAIClientBase
 from .workbook_builder import WorkbookBuilder
 from .client_registry import ClientRegistry
+from .condition_evaluator import ConditionEvaluator
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +33,7 @@ class ExecutionState:
     results_lock: threading.Lock = field(default_factory=threading.Lock)
     success_count: int = 0
     failed_count: int = 0
+    skipped_count: int = 0
     results_by_name: Dict[str, Dict[str, Any]] = field(default_factory=dict)
     current_name: str = ""
     running_count: int = 0
@@ -169,7 +171,54 @@ class ExcelOrchestrator:
         if errors:
             raise ValueError("Dependency validation failed:\n" + "\n".join(errors))
 
+        self._validate_conditions(prompt_names)
         logger.info("Dependency validation passed")
+
+    def _validate_conditions(self, prompt_names: set) -> None:
+        """Validate condition syntax and references."""
+        errors = []
+
+        for prompt in self.prompts:
+            condition = prompt.get("condition")
+            if not condition:
+                continue
+
+            seq = prompt["sequence"]
+
+            refs = ConditionEvaluator.extract_referenced_names(condition)
+            for ref_tuple in refs:
+                ref_name = ref_tuple[0]  # Extract just the prompt name from tuple
+                if ref_name not in prompt_names:
+                    errors.append(
+                        f"Sequence {seq}: condition references unknown prompt '{ref_name}'"
+                    )
+                else:
+                    ref_seq = next(
+                        (
+                            p["sequence"]
+                            for p in self.prompts
+                            if p.get("prompt_name") == ref_name
+                        ),
+                        None,
+                    )
+                    if ref_seq and ref_seq >= seq:
+                        errors.append(
+                            f"Sequence {seq}: condition references '{ref_name}' (seq {ref_seq}) "
+                            f"which must be defined first"
+                        )
+
+            is_valid, syntax_error = ConditionEvaluator.validate_syntax(condition)
+            if not is_valid:
+                errors.append(
+                    f"Sequence {seq}: invalid condition syntax: {syntax_error}"
+                )
+
+        if errors:
+            raise ValueError("Condition validation failed:\n" + "\n".join(errors))
+
+        condition_count = sum(1 for p in self.prompts if p.get("condition"))
+        if condition_count > 0:
+            logger.info(f"Validated {condition_count} prompt conditions")
 
     def _build_execution_graph(self) -> Dict[int, PromptNode]:
         """Build dependency graph and assign execution levels."""
@@ -183,10 +232,21 @@ class ExcelOrchestrator:
         for prompt in self.prompts:
             seq = prompt["sequence"]
             deps = set()
+
+            # Explicit history dependencies
             if prompt.get("history"):
                 for dep_name in prompt["history"]:
                     if dep_name in name_to_sequence:
                         deps.add(name_to_sequence[dep_name])
+
+            # Condition-based dependencies (implicit)
+            condition = prompt.get("condition")
+            if condition:
+                refs = ConditionEvaluator.extract_referenced_names(condition)
+                for ref_tuple in refs:
+                    ref_name = ref_tuple[0]  # Extract just the prompt name from tuple
+                    if ref_name in name_to_sequence:
+                        deps.add(name_to_sequence[ref_name])
 
             nodes[seq] = PromptNode(
                 sequence=seq,
@@ -218,25 +278,66 @@ class ExcelOrchestrator:
                 ready.append(node)
         return sorted(ready, key=lambda n: n.sequence)
 
-    def _execute_prompt_isolated(
-        self, prompt: Dict[str, Any], state: ExecutionState
-    ) -> Dict[str, Any]:
-        """Execute a single prompt with completely isolated client clone."""
-        max_retries = self.config.get("max_retries", 3)
-
-        result = {
+    def _create_result_dict(self, prompt: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a result dictionary with all required fields."""
+        return {
             "sequence": prompt["sequence"],
             "prompt_name": prompt.get("prompt_name"),
             "prompt": prompt["prompt"],
             "history": prompt.get("history"),
             "client": prompt.get("client"),
+            "condition": prompt.get("condition"),
+            "condition_result": None,
+            "condition_error": None,
             "response": None,
             "status": "pending",
             "attempts": 0,
             "error": None,
         }
 
+    def _evaluate_condition(
+        self, prompt: Dict[str, Any], results_by_name: Dict[str, Dict[str, Any]]
+    ) -> Tuple[bool, Optional[str], Optional[str]]:
+        """
+        Evaluate a prompt's condition.
+
+        Returns:
+            Tuple of (should_execute, condition_result, condition_error)
+        """
+        condition = prompt.get("condition")
+
+        if not condition or not condition.strip():
+            return True, None, None
+
+        evaluator = ConditionEvaluator(results_by_name)
+        result, error = evaluator.evaluate(condition)
+
+        return result, result, error
+
+    def _execute_prompt_isolated(
+        self, prompt: Dict[str, Any], state: ExecutionState
+    ) -> Dict[str, Any]:
+        """Execute a single prompt with completely isolated client clone."""
+        max_retries = self.config.get("max_retries", 3)
+
+        result = self._create_result_dict(prompt)
+
         client_name = prompt.get("client")
+
+        with state.results_lock:
+            should_execute, cond_result, cond_error = self._evaluate_condition(
+                prompt, state.results_by_name
+            )
+            result["condition_result"] = cond_result
+            result["condition_error"] = cond_error
+
+        if not should_execute:
+            result["status"] = "skipped"
+            result["attempts"] = 0
+            logger.info(
+                f"Sequence {prompt['sequence']} skipped: condition evaluated to False"
+            )
+            return result
 
         for attempt in range(1, max_retries + 1):
             result["attempts"] = attempt
@@ -293,21 +394,31 @@ class ExcelOrchestrator:
 
         return result
 
-    def _execute_prompt(self, prompt: Dict[str, Any]) -> Dict[str, Any]:
+    def _execute_prompt(
+        self,
+        prompt: Dict[str, Any],
+        results_by_name: Optional[Dict[str, Dict[str, Any]]] = None,
+    ) -> Dict[str, Any]:
         """Execute a single prompt with retry logic."""
         max_retries = self.config.get("max_retries", 3)
 
-        result = {
-            "sequence": prompt["sequence"],
-            "prompt_name": prompt.get("prompt_name"),
-            "prompt": prompt["prompt"],
-            "history": prompt.get("history"),
-            "client": prompt.get("client"),
-            "response": None,
-            "status": "pending",
-            "attempts": 0,
-            "error": None,
-        }
+        result = self._create_result_dict(prompt)
+
+        results_by_name = results_by_name or {}
+
+        should_execute, cond_result, cond_error = self._evaluate_condition(
+            prompt, results_by_name
+        )
+        result["condition_result"] = cond_result
+        result["condition_error"] = cond_error
+
+        if not should_execute:
+            result["status"] = "skipped"
+            result["attempts"] = 0
+            logger.info(
+                f"Sequence {prompt['sequence']} skipped: condition evaluated to False"
+            )
+            return result
 
         client_name = prompt.get("client")
         client = self.client_registry.get(client_name) if client_name else self.client
@@ -390,14 +501,18 @@ class ExcelOrchestrator:
     ) -> List[Dict[str, Any]]:
         """Execute all prompts for a single batch with resolved variables."""
         results = []
+        results_by_name: Dict[str, Dict[str, Any]] = {}
 
         for prompt in self.prompts:
             resolved_prompt = self._resolve_prompt_variables(prompt, data_row)
 
             result = self._execute_prompt_with_batch(
-                resolved_prompt, batch_id, batch_name
+                resolved_prompt, batch_id, batch_name, results_by_name
             )
             results.append(result)
+
+            if result.get("prompt_name"):
+                results_by_name[result["prompt_name"]] = result
 
             if result["status"] == "failed":
                 on_error = self.config.get("on_batch_error", "continue")
@@ -410,7 +525,11 @@ class ExcelOrchestrator:
         return results
 
     def _execute_prompt_with_batch(
-        self, prompt: Dict[str, Any], batch_id: int, batch_name: str
+        self,
+        prompt: Dict[str, Any],
+        batch_id: int,
+        batch_name: str,
+        results_by_name: Optional[Dict[str, Dict[str, Any]]] = None,
     ) -> Dict[str, Any]:
         """Execute a single prompt and tag with batch info."""
         max_retries = self.config.get("max_retries", 3)
@@ -423,11 +542,30 @@ class ExcelOrchestrator:
             "prompt": prompt["prompt"],
             "history": prompt.get("history"),
             "client": prompt.get("client"),
+            "condition": prompt.get("condition"),
+            "condition_result": None,
+            "condition_error": None,
             "response": None,
             "status": "pending",
             "attempts": 0,
             "error": None,
         }
+
+        results_by_name = results_by_name or {}
+
+        should_execute, cond_result, cond_error = self._evaluate_condition(
+            prompt, results_by_name
+        )
+        result["condition_result"] = cond_result
+        result["condition_error"] = cond_error
+
+        if not should_execute:
+            result["status"] = "skipped"
+            result["attempts"] = 0
+            logger.info(
+                f"Batch {batch_id}, sequence {prompt['sequence']} skipped: condition evaluated to False"
+            )
+            return result
 
         client_name = prompt.get("client")
         client = self.client_registry.get(client_name) if client_name else self.client
@@ -475,6 +613,7 @@ class ExcelOrchestrator:
     def execute(self) -> List[Dict[str, Any]]:
         """Execute all prompts in sequence."""
         self.results = []
+        results_by_name: Dict[str, Dict[str, Any]] = {}
         total = len(self.prompts)
 
         for prompt in self.prompts:
@@ -487,11 +626,15 @@ class ExcelOrchestrator:
                     current_name=prompt.get("prompt_name"),
                     running=1,
                 )
-            result = self._execute_prompt(prompt)
+            result = self._execute_prompt(prompt, results_by_name)
             self.results.append(result)
+
+            if result.get("prompt_name"):
+                results_by_name[result["prompt_name"]] = result
 
         successful = sum(1 for r in self.results if r["status"] == "success")
         failed = sum(1 for r in self.results if r["status"] == "failed")
+        skipped = sum(1 for r in self.results if r["status"] == "skipped")
 
         if self.progress_callback:
             self.progress_callback(
@@ -503,7 +646,9 @@ class ExcelOrchestrator:
                 running=0,
             )
 
-        logger.info(f"Execution complete: {successful} succeeded, {failed} failed")
+        logger.info(
+            f"Execution complete: {successful} succeeded, {failed} failed, {skipped} skipped"
+        )
         return self.results
 
     def execute_parallel(self) -> List[Dict[str, Any]]:
@@ -562,6 +707,8 @@ class ExcelOrchestrator:
                                     state.results_by_name[result["prompt_name"]] = (
                                         result
                                     )
+                            elif result["status"] == "skipped":
+                                state.skipped_count += 1
                             else:
                                 state.failed_count += 1
                     except Exception as e:
@@ -578,6 +725,10 @@ class ExcelOrchestrator:
                                     "prompt_name": nodes[seq].prompt.get("prompt_name"),
                                     "prompt": nodes[seq].prompt["prompt"],
                                     "history": nodes[seq].prompt.get("history"),
+                                    "client": nodes[seq].prompt.get("client"),
+                                    "condition": nodes[seq].prompt.get("condition"),
+                                    "condition_result": None,
+                                    "condition_error": None,
                                     "response": None,
                                     "status": "failed",
                                     "attempts": 1,
@@ -592,7 +743,8 @@ class ExcelOrchestrator:
         self.results = state.results
 
         logger.info(
-            f"Parallel execution complete: {state.success_count} succeeded, {state.failed_count} failed"
+            f"Parallel execution complete: {state.success_count} succeeded, "
+            f"{state.failed_count} failed, {state.skipped_count} skipped"
         )
         return self.results
 
@@ -634,8 +786,9 @@ class ExcelOrchestrator:
 
         successful = sum(1 for r in self.results if r["status"] == "success")
         failed = sum(1 for r in self.results if r["status"] == "failed")
+        skipped = sum(1 for r in self.results if r["status"] == "skipped")
         logger.info(
-            f"Batch execution complete: {successful} succeeded, {failed} failed"
+            f"Batch execution complete: {successful} succeeded, {failed} failed, {skipped} skipped"
         )
         return self.results
 
@@ -653,8 +806,6 @@ class ExcelOrchestrator:
             batch_results = []
             batch_results_by_name: Dict[str, Dict[str, Any]] = {}
 
-            nodes = self._build_execution_graph()
-
             for prompt in self.prompts:
                 resolved_prompt = self._resolve_prompt_variables(prompt, data_row)
 
@@ -667,11 +818,29 @@ class ExcelOrchestrator:
                     "prompt": resolved_prompt["prompt"],
                     "history": resolved_prompt.get("history"),
                     "client": resolved_prompt.get("client"),
+                    "condition": resolved_prompt.get("condition"),
+                    "condition_result": None,
+                    "condition_error": None,
                     "response": None,
                     "status": "pending",
                     "attempts": 0,
                     "error": None,
                 }
+
+                evaluator = ConditionEvaluator(batch_results_by_name)
+                should_execute, cond_error = evaluator.evaluate(
+                    resolved_prompt.get("condition") or ""
+                )
+                result["condition_result"] = should_execute
+                result["condition_error"] = cond_error
+
+                if not should_execute:
+                    result["status"] = "skipped"
+                    result["attempts"] = 0
+                    batch_results.append(result)
+                    if result.get("prompt_name"):
+                        batch_results_by_name[result["prompt_name"]] = result
+                    continue
 
                 client_name = resolved_prompt.get("client")
 
@@ -853,9 +1022,14 @@ class ExcelOrchestrator:
             "total_prompts": len(self.results),
             "successful": sum(1 for r in self.results if r["status"] == "success"),
             "failed": sum(1 for r in self.results if r["status"] == "failed"),
+            "skipped": sum(1 for r in self.results if r["status"] == "skipped"),
             "total_attempts": sum(r["attempts"] for r in self.results),
             "workbook": self.workbook_path,
         }
+
+        condition_count = sum(1 for r in self.results if r.get("condition"))
+        if condition_count > 0:
+            summary["prompts_with_conditions"] = condition_count
 
         if self.is_batch_mode:
             batch_ids = set(r.get("batch_id", 0) for r in self.results)
