@@ -11,6 +11,7 @@ The Excel Orchestrator enables non-programmers to define and execute AI prompt w
 3. **Declarative** - Define *what* to execute, not *how*
 4. **Traceability** - Full history of executions in workbook
 5. **Flexibility** - Batch execution, multi-client support, templating
+6. **Document References** - Inject external documents into prompts
 
 ## Components
 
@@ -37,31 +38,48 @@ The Excel Orchestrator enables non-programmers to define and execute AI prompt w
 │   └─────────────────────────────────────────────────────────┘   │
 │                                                                  │
 │   ┌─────────────────────────────────────────────────────────┐   │
+│   │              _init_documents()                           │   │
+│   │  - Load documents from 'documents' sheet                 │   │
+│   │  - Initialize DocumentProcessor & DocumentRegistry       │   │
+│   │  - Validate all document paths exist                     │   │
+│   └─────────────────────────────────────────────────────────┘   │
+│                                                                  │
+│   ┌─────────────────────────────────────────────────────────┐   │
 │   │                    run()                                 │   │
 │   │                                                          │   │
 │   │   1. Initialize workbook (create if needed)              │   │
 │   │   2. Validate structure and dependencies                 │   │
 │   │   3. Check for batch mode (data sheet)                   │   │
 │   │   4. Check for multi-client mode (client column)         │   │
-│   │   5. Execute prompts (sequential/parallel/batch)         │   │
-│   │   6. Write results to new sheet                          │   │
+│   │   5. Check for document references (documents sheet)     │   │
+│   │   6. Execute prompts (sequential/parallel/batch)         │   │
+│   │   7. Write results to new sheet                          │   │
 │   │                                                          │   │
 │   └─────────────────────────────────────────────────────────┘   │
 │                                                                  │
 └──────────────────────────────┬──────────────────────────────────┘
                                │
-           ┌───────────────────┼───────────────────┐
-           │                   │                   │
-           ▼                   ▼                   ▼
-┌─────────────────┐  ┌─────────────────┐  ┌─────────────────────┐
-│ WorkbookBuilder │  │  ClientRegistry │  │        FFAI         │
-│                 │  │                 │  │                     │
-│ - load_config() │  │ - register()    │  │ - generate_response │
-│ - load_prompts()│  │ - get()         │  │ - history mgmt      │
-│ - load_data()   │  │ - clone()       │  │ - context assembly  │
-│ - load_clients()│  │                 │  │                     │
-│ - write_results │  └─────────────────┘  └─────────────────────┘
-└─────────────────┘
+         ┌─────────────────────┼─────────────────────┬─────────────────┐
+         │                     │                     │                 │
+         ▼                     ▼                     ▼                 ▼
+┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐
+│ WorkbookBuilder │  │  ClientRegistry │  │ DocumentRegistry│  │      FFAI       │
+│                 │  │                 │  │                 │  │                 │
+│ - load_config() │  │ - register()    │  │ - get_content() │  │ - generate_resp │
+│ - load_prompts()│  │ - get()         │  │ - inject_refs() │  │ - history mgmt  │
+│ - load_data()   │  │ - clone()       │  │ - validate()    │  │ - context assem │
+│ - load_clients()│  │                 │  │                 │  │                 │
+│ - load_documents│  └─────────────────┘  └────────┬────────┘  └─────────────────┘
+│ - write_results │                                │
+└─────────────────┘                                ▼
+                                    ┌─────────────────────────┐
+                                    │   DocumentProcessor     │
+                                    │                         │
+                                    │ - compute_checksum()    │
+                                    │ - parse_document()      │
+                                    │ - load_cached()         │
+                                    │ - save_to_parquet()     │
+                                    └─────────────────────────┘
 ```
 
 ## Workbook Structure
@@ -83,11 +101,12 @@ The Excel Orchestrator enables non-programmers to define and execute AI prompt w
 
 ### prompts Sheet
 
-| sequence | prompt_name | prompt | history | client |
-|----------|-------------|--------|---------|--------|
-| 1 | context | I run a coffee shop with 50 customers. | | |
-| 2 | problem | My electricity bill is too high. | | fast |
-| 3 | solution | Suggest 3 ways to reduce my bill based on {{region}}. | `["context", "problem"]` | |
+| sequence | prompt_name | prompt | history | client | references |
+|----------|-------------|--------|---------|--------|------------|
+| 1 | context | I run a coffee shop with 50 customers. | | | |
+| 2 | problem | My electricity bill is too high. | | fast | |
+| 3 | solution | Suggest 3 ways to reduce my bill based on {{region}}. | `["context", "problem"]` | | |
+| 4 | spec_analysis | Summarize the key features. | | | `["product_spec", "api_guide"]` |
 
 ### data Sheet (Optional)
 
@@ -103,12 +122,21 @@ The Excel Orchestrator enables non-programmers to define and execute AI prompt w
 | fast | mistral-small | MISTRALSMALL_KEY | | 0.3 |
 | smart | anthropic | ANTHROPIC_TOKEN | claude-3-5-sonnet | 0.7 |
 
+### documents Sheet (Optional)
+
+| reference_name | common_name | file_path | notes |
+|----------------|-------------|-----------|-------|
+| product_spec | Product Specification | library/product_spec.md | Main product docs |
+| api_guide | API Reference | library/api_reference.pdf | REST API documentation |
+| config | Configuration | library/config.json | System configuration |
+
 ### results_{timestamp} Sheet (Generated)
 
-| batch_id | batch_name | sequence | prompt_name | prompt | history | client | response | status | attempts | error |
-|----------|------------|----------|-------------|--------|---------|--------|----------|--------|----------|-------|
-| 1 | north_widget_a | 1 | context | I run... | | | Based on... | success | 1 | |
-| 2 | south_widget_b | 1 | context | I run... | | | Based on... | success | 1 | |
+| batch_id | batch_name | sequence | prompt_name | prompt | history | client | condition | condition_result | response | status | attempts | error | references |
+|----------|------------|----------|-------------|--------|---------|--------|-----------|------------------|----------|--------|----------|-------|------------|
+| 1 | north_widget_a | 1 | context | I run... | | | | | Based on... | success | 1 | | |
+| 2 | south_widget_b | 1 | context | I run... | | | | | Based on... | success | 1 | | |
+| 3 | | 4 | spec_analysis | Summarize... | | | | | Key features are... | success | 1 | | `["product_spec", "api_guide"]` |
 
 ## Data Flow
 
@@ -430,6 +458,123 @@ def _execute_prompt_isolated(self, prompt: Dict, state: ExecutionState):
     # ... execute with isolated client
 ```
 
+## Document Reference System
+
+### Overview
+
+The Document Reference System allows prompts to reference external documents. Documents are parsed, cached as parquet files, and injected into prompts at runtime.
+
+### Components
+
+**DocumentProcessor** (`document_processor.py`):
+- Computes SHA256 checksums (first 8 chars for filenames)
+- Parses documents using LlamaParse (or direct read for text files)
+- Stores parsed content as parquet files with checksum prefix
+
+**DocumentRegistry** (`document_registry.py`):
+- Loads document definitions from workbook sheet
+- Validates all document paths exist
+- Provides content lookup and prompt injection
+
+### Document Storage
+
+```
+workbook.xlsx
+doc_cache/
+  ├── a3f2b1c8|Technical_Spec.parquet
+  └── d7e8f9a2|API_Guide.parquet
+library/
+  ├── product_spec.md
+  ├── api_reference.pdf
+  └── config.json
+```
+
+### Parquet Schema
+
+| Column | Type | Description |
+|--------|------|-------------|
+| reference_name | string | Unique identifier |
+| common_name | string | Human-readable name |
+| original_path | string | Source file path |
+| checksum | string | Full SHA256 hash |
+| content | string | Parsed content (markdown) |
+| parsed_at | timestamp | Parse timestamp |
+| file_size | int64 | Original file size |
+
+### Reference Injection Format
+
+When a prompt references documents, they are injected as:
+
+```xml
+<REFERENCES>
+<DOC name='product_spec'>
+Document content here...
+</DOC>
+
+<DOC name='api_guide'>
+More content...
+</DOC>
+</REFERENCES>
+
+===
+Based on the documents above, please answer: [original prompt]
+```
+
+### Configuration
+
+| Config Field | Default | Description |
+|--------------|---------|-------------|
+| `document_cache_dir` | `{workbook_dir}/doc_cache` | Directory for parquet cache |
+
+### API Key
+
+LlamaParse requires `LLAMACLOUD_TOKEN` environment variable for parsing non-text files.
+
+### Error Handling
+
+| Error | Behavior |
+|-------|----------|
+| Missing file | Fail prompt immediately |
+| Parse failure | Raise exception with details |
+| Invalid reference | Fail validation at startup |
+| Checksum mismatch | Re-parse document |
+
+### Class Reference
+
+```python
+class DocumentProcessor:
+    def __init__(self, cache_dir: str, api_key: Optional[str] = None):
+        """Initialize with cache directory and optional LlamaParse API key."""
+    
+    def compute_checksum(self, file_path: str) -> str:
+        """Compute SHA256 checksum of file."""
+    
+    def needs_parsing(self, file_path: str, cache_dir: str) -> bool:
+        """Check if document needs re-parsing based on checksum."""
+    
+    def parse_document(self, file_path: str) -> str:
+        """Parse document to markdown (LlamaParse or direct read)."""
+    
+    def save_to_parquet(self, doc_info: Dict, content: str) -> str:
+        """Save parsed content to parquet file."""
+    
+    def load_cached(self, reference_name: str) -> Optional[str]:
+        """Load cached content from parquet."""
+
+class DocumentRegistry:
+    def __init__(self, documents: List[Dict], processor: DocumentProcessor, workbook_dir: str):
+        """Initialize with document definitions and processor."""
+    
+    def validate_documents(self) -> None:
+        """Validate all document paths exist."""
+    
+    def get_reference_names(self) -> List[str]:
+        """Get list of all reference names."""
+    
+    def inject_references_into_prompt(self, prompt: str, ref_names: List[str]) -> str:
+        """Inject document content into prompt."""
+```
+
 ## CLI Usage
 
 ### Options
@@ -480,9 +625,14 @@ if summary.get("batch_mode"):
 3. **ClientRegistry Tests** - Registration, retrieval, fallback
 4. **Batch Execution Tests** - Variable resolution, batch naming
 5. **Multi-Client Tests** - Per-prompt client selection
+6. **DocumentProcessor Tests** - Checksum, parsing, caching
+7. **DocumentRegistry Tests** - Validation, injection
 
 ### Test Workbook Generators
 
 - `create_test_workbook.py` - 31 prompts for parallel testing
 - `create_test_workbook_batch.py` - 35 prompts × 5 batches
 - `create_test_workbook_multiclient.py` - 13 prompts with multiple clients
+- `create_test_workbook_documents.py` - 7 prompts with document references
+- `create_test_workbook_conditional.py` - 30 prompts with conditional execution
+- `create_test_workbook_max.py` - 100 executions for stress testing

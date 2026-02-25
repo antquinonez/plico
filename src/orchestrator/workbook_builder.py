@@ -18,6 +18,7 @@ class WorkbookBuilder:
     PROMPTS_SHEET = "prompts"
     DATA_SHEET = "data"
     CLIENTS_SHEET = "clients"
+    DOCUMENTS_SHEET = "documents"
 
     CONFIG_FIELDS = [
         ("model", "mistral-small-2503"),
@@ -45,8 +46,15 @@ class WorkbookBuilder:
         "history",
         "client",
         "condition",
+        "references",
     ]
     REQUIRED_PROMPTS_HEADERS = ["sequence", "prompt_name", "prompt", "history"]
+    DOCUMENTS_HEADERS = [
+        "reference_name",
+        "common_name",
+        "file_path",
+        "notes",
+    ]
     CLIENTS_HEADERS = [
         "name",
         "client_type",
@@ -71,12 +79,14 @@ class WorkbookBuilder:
         "status",
         "attempts",
         "error",
+        "references",
     ]
 
     def __init__(self, workbook_path: str):
         self.workbook_path = workbook_path
         self._has_data_sheet: Optional[bool] = None
         self._has_clients_sheet: Optional[bool] = None
+        self._has_documents_sheet: Optional[bool] = None
 
     def has_data_sheet(self) -> bool:
         """Check if workbook has a data sheet for batch execution."""
@@ -104,8 +114,24 @@ class WorkbookBuilder:
         self._has_clients_sheet = self.CLIENTS_SHEET in wb.sheetnames
         return self._has_clients_sheet
 
+    def has_documents_sheet(self) -> bool:
+        """Check if workbook has a documents sheet for document references."""
+        if self._has_documents_sheet is not None:
+            return self._has_documents_sheet
+
+        if not os.path.exists(self.workbook_path):
+            self._has_documents_sheet = False
+            return False
+
+        wb = load_workbook(self.workbook_path)
+        self._has_documents_sheet = self.DOCUMENTS_SHEET in wb.sheetnames
+        return self._has_documents_sheet
+
     def create_template_workbook(
-        self, with_data_sheet: bool = False, with_clients_sheet: bool = False
+        self,
+        with_data_sheet: bool = False,
+        with_clients_sheet: bool = False,
+        with_documents_sheet: bool = False,
     ) -> str:
         """Create a new workbook with template structure."""
         logger.info(f"Creating template workbook: {self.workbook_path}")
@@ -142,6 +168,7 @@ class WorkbookBuilder:
         ws_prompts.column_dimensions["D"].width = 30
         ws_prompts.column_dimensions["E"].width = 15
         ws_prompts.column_dimensions["F"].width = 40
+        ws_prompts.column_dimensions["G"].width = 30
 
         if with_data_sheet:
             ws_data = wb.create_sheet(title=self.DATA_SHEET)
@@ -157,6 +184,16 @@ class WorkbookBuilder:
                 ws_clients.column_dimensions[get_column_letter(col_idx)].width = max(
                     15, len(header) + 5
                 )
+
+        if with_documents_sheet:
+            ws_documents = wb.create_sheet(title=self.DOCUMENTS_SHEET)
+            for col_idx, header in enumerate(self.DOCUMENTS_HEADERS, start=1):
+                ws_documents.cell(row=1, column=col_idx, value=header)
+                ws_documents.column_dimensions[get_column_letter(col_idx)].width = max(
+                    15, len(header) + 5
+                )
+            ws_documents.column_dimensions["C"].width = 50
+            ws_documents.column_dimensions["D"].width = 40
 
         wb.save(self.workbook_path)
         logger.info(f"Template workbook created: {self.workbook_path}")
@@ -252,6 +289,9 @@ class WorkbookBuilder:
                 else None,
                 "condition": str(row_dict.get("condition", "")).strip()
                 if row_dict.get("condition")
+                else None,
+                "references": self.parse_history_string(row_dict.get("references"))
+                if row_dict.get("references")
                 else None,
             }
 
@@ -349,6 +389,61 @@ class WorkbookBuilder:
         logger.info(f"Loaded {len(clients)} client configurations")
         return clients
 
+    def load_documents(self) -> List[Dict[str, Any]]:
+        """
+        Load document definitions from documents sheet.
+
+        Returns:
+            List of document config dictionaries with keys:
+            - reference_name: unique identifier for referencing in prompts
+            - common_name: human-readable name
+            - file_path: path to document (relative to workbook)
+            - notes: optional description
+        """
+        if not self.has_documents_sheet():
+            return []
+
+        wb = load_workbook(self.workbook_path)
+        ws = wb[self.DOCUMENTS_SHEET]
+
+        headers = []
+        for col in range(1, ws.max_column + 1):
+            header = ws.cell(row=1, column=col).value
+            headers.append(str(header).strip() if header else f"col_{col}")
+
+        documents = []
+        for row_idx in range(2, ws.max_row + 1):
+            row_data = {}
+            has_content = False
+            for col_idx, header in enumerate(headers, start=1):
+                value = ws.cell(row=row_idx, column=col_idx).value
+                row_data[header] = value
+                if value is not None:
+                    has_content = True
+
+            if (
+                has_content
+                and row_data.get("reference_name")
+                and row_data.get("file_path")
+            ):
+                documents.append(
+                    {
+                        "reference_name": str(
+                            row_data.get("reference_name", "")
+                        ).strip(),
+                        "common_name": str(row_data.get("common_name", "")).strip()
+                        if row_data.get("common_name")
+                        else row_data.get("reference_name", ""),
+                        "file_path": str(row_data.get("file_path", "")).strip(),
+                        "notes": str(row_data.get("notes", "")).strip()
+                        if row_data.get("notes")
+                        else None,
+                    }
+                )
+
+        logger.info(f"Loaded {len(documents)} document configurations")
+        return documents
+
     def parse_history_string(self, history_str: Any) -> Optional[List[str]]:
         """Parse history string like '["a", "b"]' into list."""
         if not history_str:
@@ -411,6 +506,10 @@ class WorkbookBuilder:
             ws.cell(row=row_idx, column=13, value=result.get("attempts"))
             ws.cell(row=row_idx, column=14, value=result.get("error"))
 
+            references = result.get("references")
+            references_str = json.dumps(references) if references else ""
+            ws.cell(row=row_idx, column=15, value=references_str)
+
         ws.column_dimensions["A"].width = 10
         ws.column_dimensions["B"].width = 25
         ws.column_dimensions["C"].width = 10
@@ -425,6 +524,7 @@ class WorkbookBuilder:
         ws.column_dimensions["L"].width = 10
         ws.column_dimensions["M"].width = 10
         ws.column_dimensions["N"].width = 40
+        ws.column_dimensions["O"].width = 30
 
         wb.save(self.workbook_path)
         logger.info(f"Results written to sheet: {sheet_name}")
@@ -448,47 +548,48 @@ class WorkbookBuilder:
 
         ws = wb.create_sheet(title=sheet_name)
 
-        headers = [
-            "sequence",
-            "prompt_name",
-            "prompt",
-            "history",
-            "condition",
-            "condition_result",
-            "response",
-            "status",
-            "attempts",
-            "error",
-        ]
-        for col_idx, header in enumerate(headers, start=1):
+        for col_idx, header in enumerate(self.RESULTS_HEADERS, start=1):
             ws.cell(row=1, column=col_idx, value=header)
 
         for row_idx, result in enumerate(results, start=2):
-            ws.cell(row=row_idx, column=1, value=result.get("sequence"))
-            ws.cell(row=row_idx, column=2, value=result.get("prompt_name"))
-            ws.cell(row=row_idx, column=3, value=result.get("prompt"))
+            ws.cell(row=row_idx, column=1, value=result.get("batch_id"))
+            ws.cell(row=row_idx, column=2, value=result.get("batch_name"))
+            ws.cell(row=row_idx, column=3, value=result.get("sequence"))
+            ws.cell(row=row_idx, column=4, value=result.get("prompt_name"))
+            ws.cell(row=row_idx, column=5, value=result.get("prompt"))
 
             history = result.get("history")
             history_str = json.dumps(history) if history else ""
-            ws.cell(row=row_idx, column=4, value=history_str)
+            ws.cell(row=row_idx, column=6, value=history_str)
 
-            ws.cell(row=row_idx, column=5, value=result.get("condition"))
-            ws.cell(row=row_idx, column=6, value=result.get("condition_result"))
-            ws.cell(row=row_idx, column=7, value=result.get("response"))
-            ws.cell(row=row_idx, column=8, value=result.get("status"))
-            ws.cell(row=row_idx, column=9, value=result.get("attempts"))
-            ws.cell(row=row_idx, column=10, value=result.get("error"))
+            ws.cell(row=row_idx, column=7, value=result.get("client"))
+            ws.cell(row=row_idx, column=8, value=result.get("condition"))
+            ws.cell(row=row_idx, column=9, value=result.get("condition_result"))
+            ws.cell(row=row_idx, column=10, value=result.get("condition_error"))
+            ws.cell(row=row_idx, column=11, value=result.get("response"))
+            ws.cell(row=row_idx, column=12, value=result.get("status"))
+            ws.cell(row=row_idx, column=13, value=result.get("attempts"))
+            ws.cell(row=row_idx, column=14, value=result.get("error"))
+
+            references = result.get("references")
+            references_str = json.dumps(references) if references else ""
+            ws.cell(row=row_idx, column=15, value=references_str)
 
         ws.column_dimensions["A"].width = 10
-        ws.column_dimensions["B"].width = 18
-        ws.column_dimensions["C"].width = 50
-        ws.column_dimensions["D"].width = 30
-        ws.column_dimensions["E"].width = 40
-        ws.column_dimensions["F"].width = 15
-        ws.column_dimensions["G"].width = 60
-        ws.column_dimensions["H"].width = 10
-        ws.column_dimensions["I"].width = 10
-        ws.column_dimensions["J"].width = 40
+        ws.column_dimensions["B"].width = 25
+        ws.column_dimensions["C"].width = 10
+        ws.column_dimensions["D"].width = 18
+        ws.column_dimensions["E"].width = 50
+        ws.column_dimensions["F"].width = 30
+        ws.column_dimensions["G"].width = 15
+        ws.column_dimensions["H"].width = 40
+        ws.column_dimensions["I"].width = 15
+        ws.column_dimensions["J"].width = 25
+        ws.column_dimensions["K"].width = 60
+        ws.column_dimensions["L"].width = 10
+        ws.column_dimensions["M"].width = 10
+        ws.column_dimensions["N"].width = 40
+        ws.column_dimensions["O"].width = 30
 
         wb.save(self.workbook_path)
         logger.info(f"Batch results written to sheet: {sheet_name}")

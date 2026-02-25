@@ -23,7 +23,7 @@ dependencies = [
     "duckdb",
     "requests",
     "pandas",
-    "polars-lts-cpu",
+    "polars[rtcompat]",
     "python-dotenv",
     "nest_asyncio",
     "matplotlib",
@@ -42,6 +42,9 @@ testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
 addopts = "-v --tb=short"
+markers = [
+    "llamaparse: tests requiring LlamaParse API access",
+]
 
 [tool.coverage.run]
 source = ["src"]

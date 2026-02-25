@@ -12,6 +12,8 @@ The Excel Orchestrator enables non-programmers to define and execute AI prompt w
 - Automatic retry on failure
 - **Batch execution with variable templating**
 - **Per-prompt client configuration**
+- **Document reference injection**
+- **Conditional execution**
 
 ## Quick Start
 
@@ -30,7 +32,7 @@ python scripts/run_orchestrator.py my_prompts.xlsx -c 4
 
 ## Workbook Structure
 
-The orchestrator supports up to four sheets: `config` (required), `prompts` (required), `data` (optional), and `clients` (optional).
+The orchestrator supports up to five sheets: `config` (required), `prompts` (required), `data` (optional), `clients` (optional), and `documents` (optional).
 
 ### config Sheet
 
@@ -62,7 +64,7 @@ Configuration for the orchestration run.
 
 ### prompts Sheet
 
-Prompt definitions with optional dependencies and client selection.
+Prompt definitions with optional dependencies, client selection, and document references.
 
 | Column | Description | Required |
 |--------|-------------|----------|
@@ -71,6 +73,8 @@ Prompt definitions with optional dependencies and client selection.
 | `prompt` | The prompt text (supports `{{variable}}` templating) | Yes |
 | `history` | JSON array of prompt_name dependencies | No |
 | `client` | Named client from `clients` sheet | No |
+| `references` | JSON array of document reference names | No |
+| `condition` | Conditional expression for execution | No |
 
 **Example:**
 
@@ -117,6 +121,35 @@ Named client configurations for per-prompt client selection.
 | fast | mistral-small | MISTRALSMALL_KEY | mistral-small-2503 | 0.3 | 100 |
 | smart | anthropic | ANTHROPIC_TOKEN | claude-3-5-sonnet | 0.7 | 4096 |
 | creative | mistral-small | MISTRALSMALL_KEY | | 0.9 | 500 |
+
+### documents Sheet (Optional)
+
+Document definitions for reference injection into prompts.
+
+| Column | Description |
+|--------|-------------|
+| `reference_name` | Unique identifier to reference in prompts |
+| `common_name` | Human-readable name |
+| `file_path` | Path to document (relative to workbook) |
+| `notes` | Optional description |
+
+**Example:**
+
+| reference_name | common_name | file_path | notes |
+|----------------|-------------|-----------|-------|
+| product_spec | Product Specification | library/product_spec.md | Main product docs |
+| api_guide | API Reference | library/api_reference.pdf | REST API documentation |
+| config | Configuration | library/config.json | System configuration |
+
+**How Documents Work:**
+
+1. Documents are parsed (text files read directly, others via LlamaParse)
+2. Parsed content is cached as parquet files with checksum-based deduplication
+3. When a prompt has `references`, the document content is injected into the prompt
+
+**Cache Directory:** `doc_cache/` (created next to workbook, or configured via `document_cache_dir` in config)
+
+**API Key:** Set `LLAMACLOUD_TOKEN` environment variable for LlamaParse (required for PDFs and other non-text files)
 
 ---
 
@@ -275,6 +308,85 @@ If a prompt references a client name that doesn't exist:
 
 ---
 
+## Document References
+
+### Overview
+
+Document references allow prompts to include content from external documents (PDFs, markdown files, JSON, etc.). Documents are parsed, cached, and injected into prompts at runtime.
+
+### How It Works
+
+1. Add a `documents` sheet with your document definitions
+2. Add a `references` column to your prompts sheet
+3. Reference documents by name in the `references` column
+
+### Example
+
+**documents sheet:**
+
+| reference_name | common_name | file_path | notes |
+|----------------|-------------|-----------|-------|
+| product_spec | Product Spec | library/product_spec.md | Main spec |
+| api_guide | API Reference | library/api_reference.pdf | REST API |
+
+**prompts sheet:**
+
+| sequence | prompt_name | prompt | references |
+|----------|-------------|--------|------------|
+| 1 | spec_summary | Summarize the key features. | `["product_spec"]` |
+| 2 | api_overview | List the available endpoints. | `["api_guide"]` |
+| 3 | combined | How does the API implement the spec? | `["product_spec", "api_guide"]` |
+
+### Reference Injection Format
+
+When documents are referenced, they are injected into the prompt as:
+
+```xml
+<REFERENCES>
+<DOC name='product_spec'>
+Document content here...
+</DOC>
+</REFERENCES>
+
+===
+Based on the documents above, please answer: [your prompt]
+```
+
+### Supported File Types
+
+| Type | Handling |
+|------|----------|
+| `.md`, `.txt` | Read directly |
+| `.json`, `.xml`, `.yaml` | Read directly |
+| `.pdf` | Parsed via LlamaParse |
+| `.docx`, `.pptx` | Parsed via LlamaParse |
+| Other | Parsed via LlamaParse |
+
+### Caching
+
+- Documents are cached as parquet files in `doc_cache/`
+- Filename format: `{checksum8}|{basename}.parquet`
+- Re-parsing only occurs if source file checksum changes
+- Set `document_cache_dir` in config sheet to customize location
+
+### Error Handling
+
+| Error | Behavior |
+|-------|----------|
+| Missing document file | Fail prompt immediately |
+| Invalid reference name | Fail validation at startup |
+| Parse failure | Raise exception with details |
+
+### API Key for LlamaParse
+
+Set the `LLAMACLOUD_TOKEN` environment variable for parsing non-text files:
+
+```bash
+export LLAMACLOUD_TOKEN="your-token-here"
+```
+
+---
+
 ## Execution
 
 ### Run Command
@@ -388,10 +500,14 @@ After execution, a new sheet is added to the workbook with a timestamped name (e
 | `prompt` | The prompt text (resolved if batch mode) |
 | `history` | Dependencies (JSON array) |
 | `client` | Client name used |
+| `condition` | Condition expression (if any) |
+| `condition_result` | Result of condition evaluation |
+| `condition_error` | Error if condition evaluation failed |
 | `response` | AI response |
-| `status` | `success` or `failed` |
+| `status` | `success`, `failed`, or `skipped` |
 | `attempts` | Number of retry attempts |
 | `error` | Error message (if failed) |
+| `references` | Document references (JSON array) |
 
 ---
 
@@ -493,6 +609,14 @@ python scripts/create_test_workbook_multiclient.py multiclient_test.xlsx
 
 13 prompts using different client configurations.
 
+### Document Reference Test Workbook
+
+```bash
+python scripts/create_test_workbook_documents.py documents_test.xlsx
+```
+
+7 prompts with document references, using documents from the `library/` folder.
+
 ---
 
 ## Best Practices
@@ -564,12 +688,20 @@ Check that the prompt_name exists and is defined before it's referenced.
 │  - Execute prompts (parallel/sequential)│
 │  - Batch execution with templating      │
 │  - Per-prompt client selection          │
+│  - Document reference injection         │
 └─────────────────────────────────────────┘
-          │           │           │
-          ▼           ▼           ▼
-┌──────────────┐ ┌──────────┐ ┌──────────────┐
-│WorkbookBuilder│ │ClientReg │ │    FFAI      │
-└──────────────┘ └──────────┘ └──────────────┘
+      │           │           │           │
+      ▼           ▼           ▼           ▼
+┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐
+│Workbook  │ │ClientReg │ │Document  │ │   FFAI   │
+│Builder   │ │          │ │Registry  │ │          │
+└──────────┘ └──────────┘ └────┬─────┘ └──────────┘
+                           │
+                           ▼
+                    ┌──────────────┐
+                    │Document      │
+                    │Processor     │
+                    └──────────────┘
 ```
 
 ---

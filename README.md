@@ -8,6 +8,7 @@ A declarative context handling API wrapper for AI clients with Excel-based orche
 - **Multiple AI Clients**: Support for Mistral AI models
 - **Excel Orchestration**: Define and execute prompt workflows via Excel workbooks
 - **History Management**: Track, search, and export conversation history to DataFrames
+- **Document References**: Inject external documents into prompts with automatic parsing and caching
 
 ## Installation
 

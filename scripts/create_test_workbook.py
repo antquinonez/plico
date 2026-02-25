@@ -50,7 +50,15 @@ def create_test_workbook(output_path: str):
     ws_config.column_dimensions["B"].width = 70
 
     ws_prompts = wb.create_sheet(title="prompts")
-    headers = ["sequence", "prompt_name", "prompt", "history"]
+    headers = [
+        "sequence",
+        "prompt_name",
+        "prompt",
+        "history",
+        "client",
+        "condition",
+        "references",
+    ]
     for col_idx, header in enumerate(headers, start=1):
         ws_prompts.cell(row=1, column=col_idx, value=header)
 
@@ -192,12 +200,18 @@ def create_test_workbook(output_path: str):
         ws_prompts.cell(row=row, column=2, value=name)
         ws_prompts.cell(row=row, column=3, value=prompt)
         ws_prompts.cell(row=row, column=4, value=history if history else "")
+        ws_prompts.cell(row=row, column=5, value="")
+        ws_prompts.cell(row=row, column=6, value="")
+        ws_prompts.cell(row=row, column=7, value="")
         row += 1
 
     ws_prompts.column_dimensions["A"].width = 10
     ws_prompts.column_dimensions["B"].width = 18
     ws_prompts.column_dimensions["C"].width = 75
     ws_prompts.column_dimensions["D"].width = 45
+    ws_prompts.column_dimensions["E"].width = 12
+    ws_prompts.column_dimensions["F"].width = 25
+    ws_prompts.column_dimensions["G"].width = 25
 
     wb.save(output_path)
 

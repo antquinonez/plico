@@ -1,0 +1,33 @@
+FFClients API Reference
+
+Authentication
+==============
+All API clients require authentication via API keys.
+Set keys in environment variables or pass directly to constructors.
+
+Client Types
+============
+1. FFMistral - Mistral AI integration
+2. FFMistralSmall - Mistral Small model
+3. FFAnthropic - Anthropic Claude integration
+4. FFOpenAI - OpenAI GPT integration
+5. FFGemini - Google Gemini integration
+6. FFAzure - Azure AI Inference
+
+Configuration Options
+=====================
+- model: Model identifier string
+- temperature: Sampling temperature (0.0-2.0)
+- max_tokens: Maximum response tokens
+- system_instructions: System prompt text
+
+Response Format
+===============
+All clients return response text as string.
+Errors raised as exceptions with detailed messages.
+
+Rate Limits
+-----------
+- Mistral: 60 requests/minute
+- Anthropic: 100 requests/minute
+- OpenAI: 500 requests/minute

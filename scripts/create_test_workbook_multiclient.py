@@ -105,7 +105,15 @@ def create_multiclient_test_workbook(output_path: str):
     # PROMPTS SHEET (with client column)
     # ==========================================
     ws_prompts = wb.create_sheet(title="prompts")
-    headers = ["sequence", "prompt_name", "prompt", "history", "client"]
+    headers = [
+        "sequence",
+        "prompt_name",
+        "prompt",
+        "history",
+        "client",
+        "condition",
+        "references",
+    ]
     for col_idx, header in enumerate(headers, start=1):
         ws_prompts.cell(row=1, column=col_idx, value=header)
 
@@ -223,12 +231,16 @@ def create_multiclient_test_workbook(output_path: str):
         ws_prompts.cell(row=row_idx, column=3, value=prompt)
         ws_prompts.cell(row=row_idx, column=4, value=history if history else "")
         ws_prompts.cell(row=row_idx, column=5, value=client if client else "")
+        ws_prompts.cell(row=row_idx, column=6, value="")
+        ws_prompts.cell(row=row_idx, column=7, value="")
 
     ws_prompts.column_dimensions["A"].width = 10
     ws_prompts.column_dimensions["B"].width = 20
     ws_prompts.column_dimensions["C"].width = 70
     ws_prompts.column_dimensions["D"].width = 40
     ws_prompts.column_dimensions["E"].width = 12
+    ws_prompts.column_dimensions["F"].width = 15
+    ws_prompts.column_dimensions["G"].width = 15
 
     wb.save(output_path)
 

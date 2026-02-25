@@ -1,0 +1,17 @@
+Client Information Report
+
+Client ID: CLI-001
+Name: Test Company LLC
+Status: Active
+
+Contact Information:
+- Email: contact@testcompany.com
+- Phone: +1-555-0100
+
+Account Details:
+- Tier: Premium
+- Created: 2024-01-15
+- Last Activity: 2024-06-01
+
+Notes:
+This is a test document for unit testing the document reference system.

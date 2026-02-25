@@ -100,6 +100,8 @@ FFClients is a declarative context handling API wrapper for AI models with Excel
 - `ExcelOrchestrator` - Main orchestration engine with parallel execution
 - `WorkbookBuilder` - Excel file creation, validation, and I/O
 - `ClientRegistry` - Client factory and multi-client support
+- `DocumentProcessor` - Document parsing and checksum-based caching
+- `DocumentRegistry` - Document lookup and reference injection
 
 **Features:**
 - Dependency-aware parallel execution
@@ -108,8 +110,24 @@ FFClients is a declarative context handling API wrapper for AI models with Excel
 - Thread-safe client isolation
 - Batch execution with variable templating
 - Per-prompt client configuration
+- Document reference injection with LlamaParse support
 
 **See:** [ORCHESTRATOR_ARCHITECTURE.md](./ORCHESTRATOR_ARCHITECTURE.md)
+
+### Subsystem 3: Document Reference System
+**Purpose:** Allow prompts to reference external documents that are parsed, cached, and injected at runtime.
+
+**Key Components:**
+- `DocumentProcessor` - Checksum computation, LlamaParse integration, parquet caching
+- `DocumentRegistry` - Document lookup, validation, and reference injection
+
+**Features:**
+- Automatic document parsing (text files read directly, others via LlamaParse)
+- Checksum-based caching with parquet storage
+- Deduplication via SHA256 hash prefix in filenames
+- XML-formatted reference injection into prompts
+
+**See:** [ORCHESTRATOR_ARCHITECTURE.md](./ORCHESTRATOR_ARCHITECTURE.md#document-reference-system)
 
 ## Subsystem Interaction
 
@@ -117,12 +135,14 @@ FFClients is a declarative context handling API wrapper for AI models with Excel
 ┌─────────────────────────────────────────────────────────────┐
 │                   Excel Orchestrator                         │
 │                                                              │
-│   1. Load workbook (config + prompts + data + clients)      │
+│   1. Load workbook (config + prompts + data + clients + docs)│
 │   2. Validate dependencies                                   │
 │   3. Resolve clients via ClientRegistry                      │
-│   4. For each prompt (or batch iteration):                   │
+│   4. Initialize documents via DocumentRegistry               │
+│   5. For each prompt (or batch iteration):                   │
+│      └─► Inject document references                          │
 │      └─► FFAI.generate_response(prompt, history=[...])      │
-│   5. Write results to new sheet                              │
+│   6. Write results to new sheet                              │
 │                                                              │
 └──────────────────────────┬──────────────────────────────────┘
                            │
@@ -207,7 +227,10 @@ FFClients/
 │       ├── __init__.py
 │       ├── excel_orchestrator.py      # Main orchestration engine
 │       ├── workbook_builder.py        # Excel I/O and validation
-│       └── client_registry.py         # Client factory and registry
+│       ├── client_registry.py         # Client factory and registry
+│       ├── document_processor.py      # Document parsing and caching
+│       ├── document_registry.py       # Document lookup and injection
+│       └── condition_evaluator.py     # Conditional expression evaluation
 │
 ├── scripts/
 │   ├── run_orchestrator.py            # CLI entry point for orchestrator
@@ -383,10 +406,19 @@ FFAI
 ExcelOrchestrator
   ├── FFAI (uses)
   ├── WorkbookBuilder
-  └── ClientRegistry
+  ├── ClientRegistry
+  ├── DocumentProcessor
+  └── DocumentRegistry
 
 ClientRegistry
   └── Client classes (imports lazily)
+
+DocumentProcessor
+  ├── polars (external)
+  └── llama-parse (optional, for non-text files)
+
+DocumentRegistry
+  └── DocumentProcessor
 
 WorkbookBuilder
   └── openpyxl (external)

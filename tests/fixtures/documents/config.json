@@ -1,0 +1,14 @@
+{
+  "product": "TestProduct",
+  "version": "2.1.0",
+  "features": [
+    "feature_a",
+    "feature_b",
+    "feature_c"
+  ],
+  "settings": {
+    "enabled": true,
+    "max_items": 100,
+    "timeout_seconds": 30
+  }
+}

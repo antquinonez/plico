@@ -1,0 +1,34 @@
+FFClients Troubleshooting Guide
+
+Common Issues and Solutions
+
+1. Import Errors
+   Problem: ModuleNotFoundError when importing FFClients
+   Solution: Ensure you're running from the project root or have installed the package
+   
+2. API Key Issues
+   Problem: Authentication failed errors
+   Solution: Check that API keys are set in environment variables:
+   - MISTRALSMALL_KEY for Mistral Small
+   - ANTHROPIC_KEY for Anthropic
+   - OPENAI_KEY for OpenAI
+   
+3. Excel File Locked
+   Problem: Permission denied when writing results
+   Solution: Close the Excel file before running the orchestrator
+   
+4. Dependency Errors
+   Problem: Missing required packages
+   Solution: Run: pip install -e ".[dev]"
+   
+5. Polars CPU Compatibility
+   Problem: Illegal instruction error with polars
+   Solution: Install polars[rtcompat] instead of standard polars
+
+Performance Tips
+- Use batch mode for processing multiple similar items
+- Set appropriate max_tokens to avoid truncation
+- Use concurrency=1 for debugging dependency issues
+
+Contact Support
+Email: support@farfiner.com

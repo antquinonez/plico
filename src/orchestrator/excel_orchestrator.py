@@ -12,6 +12,8 @@ from ..FFAIClientBase import FFAIClientBase
 from .workbook_builder import WorkbookBuilder
 from .client_registry import ClientRegistry
 from .condition_evaluator import ConditionEvaluator
+from .document_processor import DocumentProcessor
+from .document_registry import DocumentRegistry
 
 logger = logging.getLogger(__name__)
 
@@ -79,6 +81,9 @@ class ExcelOrchestrator:
         self.is_batch_mode: bool = False
         self.client_registry: Optional[ClientRegistry] = None
         self.has_multi_client: bool = False
+        self.document_processor: Optional[DocumentProcessor] = None
+        self.document_registry: Optional[DocumentRegistry] = None
+        self.has_documents: bool = False
 
     def _get_isolated_ffai(self, client_name: Optional[str] = None) -> FFAI:
         """Create an FFAI instance with isolated client but shared history."""
@@ -139,6 +144,68 @@ class ExcelOrchestrator:
                 )
             logger.info(f"Client registry initialized with {len(clients_data)} clients")
 
+    def _init_documents(self) -> None:
+        """Initialize document processor and registry for document references."""
+        documents_data = self.builder.load_documents()
+        if documents_data:
+            cache_dir = self.config.get(
+                "document_cache_dir",
+                os.path.join(os.path.dirname(self.workbook_path), "doc_cache"),
+            )
+            self.document_processor = DocumentProcessor(
+                cache_dir=cache_dir, api_key=os.environ.get("LLAMACLOUD_TOKEN")
+            )
+
+            self.document_registry = DocumentRegistry(
+                documents=documents_data,
+                processor=self.document_processor,
+                workbook_dir=os.path.dirname(self.workbook_path),
+            )
+            self.has_documents = True
+            self.document_registry.validate_documents()
+            logger.info(
+                f"Document registry initialized with {len(documents_data)} documents"
+            )
+
+    def _inject_references(self, prompt: Dict[str, Any]) -> str:
+        """
+        Inject document references into a prompt.
+
+        Args:
+            prompt: Prompt dictionary with optional 'references' field
+
+        Returns:
+            Prompt text with references injected, or original prompt if no references
+
+        Raises:
+            ValueError: If referenced document is not found
+        """
+        prompt_text = prompt.get("prompt", "")
+        references = prompt.get("references")
+
+        if not references or not self.has_documents:
+            return prompt_text
+
+        if not self.document_registry:
+            raise ValueError("Document registry not initialized")
+
+        ref_names = references if isinstance(references, list) else []
+
+        if not ref_names:
+            return prompt_text
+
+        missing = [
+            r
+            for r in ref_names
+            if r not in self.document_registry.get_reference_names()
+        ]
+        if missing:
+            raise ValueError(f"Referenced documents not found: {missing}")
+
+        return self.document_registry.inject_references_into_prompt(
+            prompt_text, ref_names
+        )
+
     def _create_result_dict(self, prompt: Dict[str, Any]) -> Dict[str, Any]:
         """Create a result dictionary for a prompt."""
         return {
@@ -154,6 +221,7 @@ class ExcelOrchestrator:
             "status": "pending",
             "attempts": 0,
             "error": None,
+            "references": prompt.get("references"),
         }
 
     def _validate_dependencies(self) -> None:
@@ -306,8 +374,10 @@ class ExcelOrchestrator:
                 isolated_client = self._get_isolated_client(client_name)
                 ffai = self._get_isolated_ffai(client_name)
 
+                injected_prompt = self._inject_references(prompt)
+
                 response = ffai.generate_response(
-                    prompt=prompt["prompt"],
+                    prompt=injected_prompt,
                     prompt_name=prompt.get("prompt_name"),
                     history=prompt.get("history"),
                     model=self.config.get("model"),
@@ -372,8 +442,10 @@ class ExcelOrchestrator:
                     + (f" with client '{client_name}'" if client_name else "")
                 )
 
+                injected_prompt = self._inject_references(prompt)
+
                 response = ffai.generate_response(
-                    prompt=prompt["prompt"],
+                    prompt=injected_prompt,
                     prompt_name=prompt.get("prompt_name"),
                     history=prompt.get("history"),
                     model=self.config.get("model"),
@@ -488,6 +560,7 @@ class ExcelOrchestrator:
             "status": "pending",
             "attempts": 0,
             "error": None,
+            "references": prompt.get("references"),
         }
 
         results_by_name = results_by_name or {}
@@ -518,8 +591,10 @@ class ExcelOrchestrator:
                     + (f" with client '{client_name}'" if client_name else "")
                 )
 
+                injected_prompt = self._inject_references(prompt)
+
                 response = ffai.generate_response(
-                    prompt=prompt["prompt"],
+                    prompt=injected_prompt,
                     prompt_name=prompt.get("prompt_name"),
                     history=prompt.get("history"),
                     model=self.config.get("model"),
@@ -676,6 +751,7 @@ class ExcelOrchestrator:
                                     "status": "failed",
                                     "attempts": 1,
                                     "error": str(e),
+                                    "references": nodes[seq].prompt.get("references"),
                                 }
                             )
                     finally:
@@ -768,6 +844,7 @@ class ExcelOrchestrator:
                     "status": "pending",
                     "attempts": 0,
                     "error": None,
+                    "references": resolved_prompt.get("references"),
                 }
 
                 evaluator = ConditionEvaluator(batch_results_by_name)
@@ -792,8 +869,10 @@ class ExcelOrchestrator:
                     try:
                         ffai = self._get_isolated_ffai(client_name)
 
+                        injected_prompt = self._inject_references(resolved_prompt)
+
                         response = ffai.generate_response(
-                            prompt=resolved_prompt["prompt"],
+                            prompt=injected_prompt,
                             prompt_name=resolved_prompt.get("prompt_name"),
                             history=resolved_prompt.get("history"),
                             model=self.config.get("model"),
@@ -895,6 +974,7 @@ class ExcelOrchestrator:
         self._validate_dependencies()
         self._init_client()
         self._init_client_registry()
+        self._init_documents()
 
         self.batch_data = self.builder.load_data()
         self.is_batch_mode = len(self.batch_data) > 0

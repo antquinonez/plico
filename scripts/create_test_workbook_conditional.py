@@ -123,7 +123,15 @@ def create_conditional_test_workbook(output_path: str):
     # PROMPTS SHEET
     # ============================================
     ws_prompts = wb.create_sheet(title="prompts")
-    headers = ["sequence", "prompt_name", "prompt", "history", "client", "condition"]
+    headers = [
+        "sequence",
+        "prompt_name",
+        "prompt",
+        "history",
+        "client",
+        "condition",
+        "references",
+    ]
     for col_idx, header in enumerate(headers, start=1):
         ws_prompts.cell(row=1, column=col_idx, value=header)
 
@@ -522,6 +530,7 @@ def create_conditional_test_workbook(output_path: str):
         ws_prompts.cell(row=row, column=4, value=history if history else "")
         ws_prompts.cell(row=row, column=5, value=client if client else "")
         ws_prompts.cell(row=row, column=6, value=condition if condition else "")
+        ws_prompts.cell(row=row, column=7, value="")
         row += 1
 
     ws_prompts.column_dimensions["A"].width = 10
@@ -530,6 +539,7 @@ def create_conditional_test_workbook(output_path: str):
     ws_prompts.column_dimensions["D"].width = 45
     ws_prompts.column_dimensions["E"].width = 10
     ws_prompts.column_dimensions["F"].width = 60
+    ws_prompts.column_dimensions["G"].width = 15
 
     wb.save(output_path)
 
