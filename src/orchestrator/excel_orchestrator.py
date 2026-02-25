@@ -5,7 +5,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Optional, List, Dict, Any, Set, Callable
+from typing import Optional, List, Dict, Any, Set, Callable, Tuple
 
 from ..FFAI import FFAI
 from ..FFAIClientBase import FFAIClientBase
@@ -72,11 +72,31 @@ class ExcelOrchestrator:
         self.results: List[Dict[str, Any]] = []
         self.ffai: Optional[FFAI] = None
 
+        self.shared_prompt_attr_history: List[Dict[str, Any]] = []
+        self.history_lock = threading.Lock()
+
         self.batch_data: List[Dict[str, Any]] = []
         self.is_batch_mode: bool = False
-
         self.client_registry: Optional[ClientRegistry] = None
         self.has_multi_client: bool = False
+
+    def _get_isolated_ffai(self, client_name: Optional[str] = None) -> FFAI:
+        """Create an FFAI instance with isolated client but shared history."""
+        if client_name and self.client_registry:
+            client = self.client_registry.clone(client_name)
+        else:
+            client = self.client.clone()
+        return FFAI(
+            client,
+            shared_prompt_attr_history=self.shared_prompt_attr_history,
+            history_lock=self.history_lock,
+        )
+
+    def _get_isolated_client(self, client_name: Optional[str] = None) -> FFAIClientBase:
+        """Get an isolated client (fresh clone) for execution."""
+        if client_name and self.client_registry:
+            return self.client_registry.clone(client_name)
+        return self.client.clone()
 
     def _init_workbook(self) -> None:
         """Initialize workbook - create if not exists, validate if exists."""
@@ -91,43 +111,50 @@ class ExcelOrchestrator:
         """Load configuration, apply overrides."""
         self.config = self.builder.load_config()
         self.config.update(self.config_overrides)
-
         logger.info(
-            f"Configuration loaded: model={self.config.get('model')}, max_retries={self.config.get('max_retries')}"
+            f"Configuration loaded: model={self.config.get('model')}, "
+            f"max_retries={self.config.get('max_retries')}"
         )
 
     def _init_client(self) -> None:
         """Initialize FFAI wrapper with configured client."""
-        self.ffai = FFAI(self.client)
+        self.ffai = FFAI(
+            self.client,
+            shared_prompt_attr_history=self.shared_prompt_attr_history,
+            history_lock=self.history_lock,
+        )
         logger.info("FFAI wrapper initialized")
 
     def _init_client_registry(self) -> None:
-        """Initialize client registry with clients from workbook."""
-        self.client_registry = ClientRegistry(self.client)
+        """Initialize client registry for multi-client support."""
+        clients_data = self.builder.load_clients()
+        if clients_data:
+            self.client_registry = ClientRegistry(default_client=self.client)
+            self.has_multi_client = True
+            for client_def in clients_data:
+                self.client_registry.register(
+                    name=client_def["name"],
+                    client_type=client_def.get("client_type", "mistral-small"),
+                    config=client_def,
+                )
+            logger.info(f"Client registry initialized with {len(clients_data)} clients")
 
-        if self.builder.has_clients_sheet():
-            clients = self.builder.load_clients()
-            for client_config in clients:
-                name = client_config.get("name")
-                client_type = client_config.get("client_type")
-                if name and client_type:
-                    config = {
-                        k: v
-                        for k, v in client_config.items()
-                        if k not in ("name", "client_type")
-                    }
-                    try:
-                        self.client_registry.register(name, client_type, config)
-                    except ValueError as e:
-                        logger.warning(f"Failed to register client '{name}': {e}")
-
-            logger.info(
-                f"Client registry initialized with {len(self.client_registry.get_registered_names())} clients"
-            )
-
-        self.has_multi_client = any(p.get("client") for p in self.prompts)
-        if self.has_multi_client:
-            logger.info("Multi-client mode enabled - prompts specify client names")
+    def _create_result_dict(self, prompt: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a result dictionary for a prompt."""
+        return {
+            "sequence": prompt["sequence"],
+            "prompt_name": prompt.get("prompt_name"),
+            "prompt": prompt["prompt"],
+            "history": prompt.get("history"),
+            "client": prompt.get("client"),
+            "condition": prompt.get("condition"),
+            "condition_result": None,
+            "condition_error": None,
+            "response": None,
+            "status": "pending",
+            "attempts": 0,
+            "error": None,
+        }
 
     def _validate_dependencies(self) -> None:
         """Validate all history dependencies reference existing prompt_names."""
@@ -171,135 +198,57 @@ class ExcelOrchestrator:
         if errors:
             raise ValueError("Dependency validation failed:\n" + "\n".join(errors))
 
-        self._validate_conditions(prompt_names)
         logger.info("Dependency validation passed")
 
-    def _validate_conditions(self, prompt_names: set) -> None:
-        """Validate condition syntax and references."""
-        errors = []
-
-        for prompt in self.prompts:
-            condition = prompt.get("condition")
-            if not condition:
-                continue
-
-            seq = prompt["sequence"]
-
-            refs = ConditionEvaluator.extract_referenced_names(condition)
-            for ref_tuple in refs:
-                ref_name = ref_tuple[0]  # Extract just the prompt name from tuple
-                if ref_name not in prompt_names:
-                    errors.append(
-                        f"Sequence {seq}: condition references unknown prompt '{ref_name}'"
-                    )
-                else:
-                    ref_seq = next(
-                        (
-                            p["sequence"]
-                            for p in self.prompts
-                            if p.get("prompt_name") == ref_name
-                        ),
-                        None,
-                    )
-                    if ref_seq and ref_seq >= seq:
-                        errors.append(
-                            f"Sequence {seq}: condition references '{ref_name}' (seq {ref_seq}) "
-                            f"which must be defined first"
-                        )
-
-            is_valid, syntax_error = ConditionEvaluator.validate_syntax(condition)
-            if not is_valid:
-                errors.append(
-                    f"Sequence {seq}: invalid condition syntax: {syntax_error}"
-                )
-
-        if errors:
-            raise ValueError("Condition validation failed:\n" + "\n".join(errors))
-
-        condition_count = sum(1 for p in self.prompts if p.get("condition"))
-        if condition_count > 0:
-            logger.info(f"Validated {condition_count} prompt conditions")
-
     def _build_execution_graph(self) -> Dict[int, PromptNode]:
-        """Build dependency graph and assign execution levels."""
-        name_to_sequence = {
-            p["prompt_name"]: p["sequence"]
-            for p in self.prompts
-            if p.get("prompt_name")
-        }
+        """Build dependency graph for parallel execution."""
+        nodes: Dict[int, PromptNode] = {}
+        prompt_by_name: Dict[str, int] = {}
 
-        nodes = {}
         for prompt in self.prompts:
             seq = prompt["sequence"]
-            deps = set()
+            nodes[seq] = PromptNode(sequence=seq, prompt=prompt)
+            name = prompt.get("prompt_name")
+            if name:
+                prompt_by_name[name] = seq
 
-            # Explicit history dependencies
-            if prompt.get("history"):
-                for dep_name in prompt["history"]:
-                    if dep_name in name_to_sequence:
-                        deps.add(name_to_sequence[dep_name])
+        for prompt in self.prompts:
+            seq = prompt["sequence"]
+            history = prompt.get("history") or []
+            for dep_name in history:
+                if dep_name in prompt_by_name:
+                    nodes[seq].dependencies.add(prompt_by_name[dep_name])
 
-            # Condition-based dependencies (implicit)
-            condition = prompt.get("condition")
-            if condition:
-                refs = ConditionEvaluator.extract_referenced_names(condition)
-                for ref_tuple in refs:
-                    ref_name = ref_tuple[0]  # Extract just the prompt name from tuple
-                    if ref_name in name_to_sequence:
-                        deps.add(name_to_sequence[ref_name])
-
-            nodes[seq] = PromptNode(
-                sequence=seq,
-                prompt=prompt,
-                dependencies=deps,
-                level=0,
+        def assign_levels(seq: int, visited: Set[int]) -> int:
+            if seq in visited:
+                return 0
+            visited.add(seq)
+            if not nodes[seq].dependencies:
+                nodes[seq].level = 0
+                return 0
+            max_dep_level = max(
+                assign_levels(dep, visited) for dep in nodes[seq].dependencies
             )
+            nodes[seq].level = max_dep_level + 1
+            return nodes[seq].level
 
-        for seq, node in nodes.items():
-            if node.dependencies:
-                max_dep_level = max(nodes[d].level for d in node.dependencies)
-                node.level = max_dep_level + 1
-
-        logger.debug(f"Built execution graph with {len(nodes)} nodes")
-        for seq, node in sorted(nodes.items()):
-            logger.debug(f"  Seq {seq}: level={node.level}, deps={node.dependencies}")
+        for seq in nodes:
+            assign_levels(seq, set())
 
         return nodes
 
     def _get_ready_prompts(
         self, state: ExecutionState, nodes: Dict[int, PromptNode]
     ) -> List[PromptNode]:
-        """Get prompts ready to execute (all dependencies met, not in progress)."""
+        """Get prompts ready for execution (all dependencies completed)."""
         ready = []
         for seq, node in nodes.items():
             if seq in state.completed or seq in state.in_progress:
                 continue
             if node.dependencies.issubset(state.completed):
                 ready.append(node)
-        return sorted(ready, key=lambda n: n.sequence)
-
-    def _create_result_dict(self, prompt: Dict[str, Any]) -> Dict[str, Any]:
-        """Create a result dictionary with all required fields."""
-        return {
-            "sequence": prompt["sequence"],
-            "prompt_name": prompt.get("prompt_name"),
-            "prompt": prompt["prompt"],
-            "history": prompt.get("history"),
-            "client": prompt.get("client"),
-            "condition": prompt.get("condition"),
-            "condition_result": None,
-            "condition_error": None,
-            "response": None,
-            "status": "pending",
-            "attempts": 0,
-            "error": None,
-        }
-
-    def _get_isolated_client(self, client_name: Optional[str] = None) -> FFAIClientBase:
-        """Get an isolated client (fresh clone) for execution."""
-        if client_name:
-            return self.client_registry.clone(client_name)
-        return self.client.clone()
+        ready.sort(key=lambda n: (n.level, n.sequence))
+        return ready
 
     def _evaluate_condition(
         self, prompt: Dict[str, Any], results_by_name: Dict[str, Dict[str, Any]]
@@ -355,19 +304,7 @@ class ExcelOrchestrator:
                 )
 
                 isolated_client = self._get_isolated_client(client_name)
-                ffai = FFAI(isolated_client)
-
-                with state.results_lock:
-                    for dep_name in prompt.get("history") or []:
-                        if dep_name in state.results_by_name:
-                            dep_result = state.results_by_name[dep_name]
-                            ffai.prompt_attr_history.append(
-                                {
-                                    "prompt_name": dep_name,
-                                    "prompt": dep_result.get("prompt"),
-                                    "response": dep_result.get("response"),
-                                }
-                            )
+                ffai = self._get_isolated_ffai(client_name)
 
                 response = ffai.generate_response(
                     prompt=prompt["prompt"],
@@ -424,8 +361,7 @@ class ExcelOrchestrator:
             return result
 
         client_name = prompt.get("client")
-        isolated_client = self._get_isolated_client(client_name)
-        ffai = FFAI(isolated_client)
+        ffai = self._get_isolated_ffai(client_name)
 
         for attempt in range(1, max_retries + 1):
             result["attempts"] = attempt
@@ -571,8 +507,7 @@ class ExcelOrchestrator:
             return result
 
         client_name = prompt.get("client")
-        isolated_client = self._get_isolated_client(client_name)
-        ffai = FFAI(isolated_client)
+        ffai = self._get_isolated_ffai(client_name)
 
         for attempt in range(1, max_retries + 1):
             result["attempts"] = attempt
@@ -614,12 +549,17 @@ class ExcelOrchestrator:
         return result
 
     def execute(self) -> List[Dict[str, Any]]:
-        """Execute all prompts in sequence."""
+        """Execute all prompts in sequence with dependency-aware ordering."""
         self.results = []
         results_by_name: Dict[str, Dict[str, Any]] = {}
         total = len(self.prompts)
 
-        for prompt in self.prompts:
+        nodes = self._build_execution_graph()
+        sorted_prompts = sorted(
+            self.prompts, key=lambda p: (nodes[p["sequence"]].level, p["sequence"])
+        )
+
+        for prompt in sorted_prompts:
             if self.progress_callback:
                 self.progress_callback(
                     len(self.results),
@@ -850,19 +790,7 @@ class ExcelOrchestrator:
                 for attempt in range(1, max_retries + 1):
                     result["attempts"] = attempt
                     try:
-                        isolated_client = self._get_isolated_client(client_name)
-                        ffai = FFAI(isolated_client)
-
-                        for dep_name in resolved_prompt.get("history") or []:
-                            if dep_name in batch_results_by_name:
-                                dep_result = batch_results_by_name[dep_name]
-                                ffai.prompt_attr_history.append(
-                                    {
-                                        "prompt_name": dep_name,
-                                        "prompt": dep_result.get("prompt"),
-                                        "response": dep_result.get("response"),
-                                    }
-                                )
+                        ffai = self._get_isolated_ffai(client_name)
 
                         response = ffai.generate_response(
                             prompt=resolved_prompt["prompt"],

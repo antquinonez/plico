@@ -61,6 +61,8 @@ class FFAI:
         persist_dir: str = "./ffai_data",
         persist_name: Optional[str] = None,
         auto_persist: bool = False,
+        shared_prompt_attr_history: Optional[list] = None,
+        history_lock: Optional["threading.Lock"] = None,
     ):
         logger.info("Initializing FFAI wrapper")
 
@@ -73,10 +75,16 @@ class FFAI:
         os.makedirs(self.persist_dir, exist_ok=True)
 
         self.client = client
+        self._history_lock = history_lock
 
         self.history = []
         self.clean_history = []
-        self.prompt_attr_history = []
+
+        if shared_prompt_attr_history is not None:
+            self.prompt_attr_history = shared_prompt_attr_history
+        else:
+            self.prompt_attr_history = []
+
         self.permanent_history = PermanentHistory()
         self.ordered_history = OrderedPromptHistory()
         self.clean_ordered_history = OrderedPromptHistory()
@@ -327,7 +335,7 @@ class FFAI:
             self.clean_history.append(interaction)
             logger.debug(f"Added new interaction to self.clean_history: {interaction}")
 
-            # Store in prompt_attr_history
+            # Store in prompt_attr_history (thread-safe if lock provided)
             if isinstance(cleaned_response, dict):
                 logger.debug("Response was JSON.")
                 for attr, value in cleaned_response.items():
@@ -344,14 +352,22 @@ class FFAI:
                         "history": history,
                     }
 
-                    self.prompt_attr_history.append(attr_interaction)
+                    if self._history_lock:
+                        with self._history_lock:
+                            self.prompt_attr_history.append(attr_interaction)
+                    else:
+                        self.prompt_attr_history.append(attr_interaction)
                     logger.debug(
                         f"Added new attr interaction to self.prompt_attr_history: {attr_interaction}"
                     )
             else:
-                self.prompt_attr_history.append(interaction)
+                if self._history_lock:
+                    with self._history_lock:
+                        self.prompt_attr_history.append(interaction)
+                else:
+                    self.prompt_attr_history.append(interaction)
                 logger.debug(
-                    f"Interaction was not JSON, saving original 'prompt' and 'response' to prompt_attr_history."
+                    "Interaction was not JSON, saving original 'prompt' and 'response' to prompt_attr_history."
                 )
                 logger.debug(
                     f"Added new interaction to self.prompt_attr_history: {interaction}"
@@ -824,42 +840,6 @@ class FFAI:
         logger.info(f"Search returned {len(df)} results")
         return df
 
-    # todo: fix date; returning 1970
-    def interaction_counts_by_date(self) -> pl.DataFrame:
-        """
-        Get counts of interactions grouped by date.
-
-        Returns:
-            pl.DataFrame: DataFrame with interaction counts by date
-        """
-        df = self.history_to_dataframe()
-
-        if df.is_empty() or "datetime" not in df.columns:
-            return pl.DataFrame({"date": [], "count": []})
-
-        try:
-            # Convert datetime column to date
-            # Handle both string datetime and actual datetime types
-            if (
-                isinstance(df["datetime"], pl.Series)
-                and df["datetime"].dtype == pl.Utf8
-            ):
-                # For string datetime, extract the date part (first 10 chars)
-                date_df = df.with_columns(
-                    pl.col("datetime").str.slice(0, 10).alias("date")
-                )
-            else:
-                # For datetime objects
-                date_df = df.with_columns(pl.col("datetime").dt.date().alias("date"))
-
-            # Group by date and count
-            result = date_df.group_by("date").count().sort("date")
-
-            return result
-        except Exception as e:
-            logger.error(f"Error counting interactions by date: {str(e)}")
-            return pl.DataFrame({"date": [], "count": []})
-
     def get_model_stats_df(self) -> pl.DataFrame:
         """
         Get statistics on model usage as a DataFrame.
@@ -884,7 +864,6 @@ class FFAI:
             {"prompt_name": list(stats.keys()), "count": list(stats.values())}
         )
 
-    # Optional: Add a helper method to get response length statistics
     def get_response_length_stats(self) -> pl.DataFrame:
         """
         Get statistics on response lengths by prompt name.
@@ -898,22 +877,17 @@ class FFAI:
             return pl.DataFrame()
 
         try:
-            # Convert to pandas for string length calculation
             import pandas as pd
 
             pd_df = df.to_pandas()
-
-            # Calculate response lengths
             pd_df["response_length"] = pd_df["response"].str.len()
 
-            # Group by prompt_name and calculate statistics
             grouped = (
                 pd_df.groupby("prompt_name")
                 .agg({"response_length": ["mean", "min", "max", "count"]})
                 .reset_index()
             )
 
-            # Flatten column names
             grouped.columns = [
                 "prompt_name",
                 "mean_length",
@@ -922,60 +896,7 @@ class FFAI:
                 "count",
             ]
 
-            # Sort by mean length descending
             grouped = grouped.sort_values("mean_length", ascending=False)
-
-            # Convert back to polars
-            result_df = pl.from_pandas(grouped)
-
-            return result_df
-
-        except Exception as e:
-            logger.error(f"Error calculating response length statistics: {str(e)}")
-            return pl.DataFrame()
-
-    # Optional: Add a helper method to get response length statistics
-    def get_response_length_stats(self) -> pl.DataFrame:
-        """
-        Get statistics on response lengths by prompt name.
-
-        Returns:
-            pl.DataFrame: DataFrame with response length statistics by prompt name
-        """
-        df = self.history_to_dataframe()
-
-        if df.is_empty():
-            return pl.DataFrame()
-
-        try:
-            # Convert to pandas for string length calculation
-            import pandas as pd
-
-            pd_df = df.to_pandas()
-
-            # Calculate response lengths
-            pd_df["response_length"] = pd_df["response"].str.len()
-
-            # Group by prompt_name and calculate statistics
-            grouped = (
-                pd_df.groupby("prompt_name")
-                .agg({"response_length": ["mean", "min", "max", "count"]})
-                .reset_index()
-            )
-
-            # Flatten column names
-            grouped.columns = [
-                "prompt_name",
-                "mean_length",
-                "min_length",
-                "max_length",
-                "count",
-            ]
-
-            # Sort by mean length descending
-            grouped = grouped.sort_values("mean_length", ascending=False)
-
-            # Convert back to polars
             result_df = pl.from_pandas(grouped)
 
             return result_df
