@@ -225,6 +225,7 @@ class TestExcelOrchestratorExecute:
         mock_ffmistralsmall.generate_response = MagicMock(
             side_effect=Exception("API Error")
         )
+        mock_ffmistralsmall.clone = MagicMock(return_value=mock_ffmistralsmall)
 
         orchestrator = ExcelOrchestrator(temp_workbook_with_data, mock_ffmistralsmall)
         orchestrator._init_workbook()
@@ -252,6 +253,7 @@ class TestExcelOrchestratorExecute:
             return "Success!"
 
         mock_ffmistralsmall.generate_response = flaky_generate
+        mock_ffmistralsmall.clone = MagicMock(return_value=mock_ffmistralsmall)
 
         orchestrator = ExcelOrchestrator(temp_workbook_with_data, mock_ffmistralsmall)
         orchestrator._init_workbook()

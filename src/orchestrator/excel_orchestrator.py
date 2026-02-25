@@ -295,6 +295,12 @@ class ExcelOrchestrator:
             "error": None,
         }
 
+    def _get_isolated_client(self, client_name: Optional[str] = None) -> FFAIClientBase:
+        """Get an isolated client (fresh clone) for execution."""
+        if client_name:
+            return self.client_registry.clone(client_name)
+        return self.client.clone()
+
     def _evaluate_condition(
         self, prompt: Dict[str, Any], results_by_name: Dict[str, Dict[str, Any]]
     ) -> Tuple[bool, Optional[str], Optional[str]]:
@@ -348,10 +354,7 @@ class ExcelOrchestrator:
                     + (f" with client '{client_name}'" if client_name else "")
                 )
 
-                if client_name:
-                    isolated_client = self.client_registry.clone(client_name)
-                else:
-                    isolated_client = self.client.clone()
+                isolated_client = self._get_isolated_client(client_name)
                 ffai = FFAI(isolated_client)
 
                 with state.results_lock:
@@ -421,8 +424,8 @@ class ExcelOrchestrator:
             return result
 
         client_name = prompt.get("client")
-        client = self.client_registry.get(client_name) if client_name else self.client
-        ffai = FFAI(client) if client_name else self.ffai
+        isolated_client = self._get_isolated_client(client_name)
+        ffai = FFAI(isolated_client)
 
         for attempt in range(1, max_retries + 1):
             result["attempts"] = attempt
@@ -568,8 +571,8 @@ class ExcelOrchestrator:
             return result
 
         client_name = prompt.get("client")
-        client = self.client_registry.get(client_name) if client_name else self.client
-        ffai = FFAI(client)
+        isolated_client = self._get_isolated_client(client_name)
+        ffai = FFAI(isolated_client)
 
         for attempt in range(1, max_retries + 1):
             result["attempts"] = attempt
@@ -847,10 +850,7 @@ class ExcelOrchestrator:
                 for attempt in range(1, max_retries + 1):
                     result["attempts"] = attempt
                     try:
-                        if client_name:
-                            isolated_client = self.client_registry.clone(client_name)
-                        else:
-                            isolated_client = self.client.clone()
+                        isolated_client = self._get_isolated_client(client_name)
                         ffai = FFAI(isolated_client)
 
                         for dep_name in resolved_prompt.get("history") or []:
