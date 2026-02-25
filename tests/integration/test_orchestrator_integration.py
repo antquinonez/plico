@@ -5,13 +5,12 @@ These tests verify end-to-end orchestrator functionality including
 execution order, results writing, retry mechanism, and failure handling.
 """
 
-import pytest
-import sys
 import os
+import sys
 
-sys.path.insert(
-    0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-)
+import pytest
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 
 class TestOrchestratorExecution:
@@ -21,9 +20,11 @@ class TestOrchestratorExecution:
         """
         Verify prompts execute in dependency order, not just sequence order.
         """
-        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
-        from openpyxl import load_workbook
         import json
+
+        from openpyxl import load_workbook
+
+        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
 
         wb = load_workbook(integration_workbook)
         ws = wb["prompts"]
@@ -36,9 +37,7 @@ class TestOrchestratorExecution:
         ws["D3"] = json.dumps(["first"])
         wb.save(integration_workbook)
 
-        orchestrator = ExcelOrchestrator(
-            integration_workbook, spy_client, concurrency=1
-        )
+        orchestrator = ExcelOrchestrator(integration_workbook, spy_client, concurrency=1)
         orchestrator.run()
 
         assert len(spy_client.calls) == 2
@@ -49,14 +48,13 @@ class TestOrchestratorExecution:
             "Second call should be 'second' (dependent)"
         )
 
-    def test_results_written_to_workbook(
-        self, integration_workbook, real_mistral_client
-    ):
+    def test_results_written_to_workbook(self, integration_workbook, real_mistral_client):
         """
         Verify results sheet has all expected columns and values.
         """
-        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
         from openpyxl import load_workbook
+
+        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
 
         wb = load_workbook(integration_workbook)
         ws = wb["prompts"]
@@ -65,9 +63,7 @@ class TestOrchestratorExecution:
         ws["C2"] = "Say hello."
         wb.save(integration_workbook)
 
-        orchestrator = ExcelOrchestrator(
-            integration_workbook, real_mistral_client, concurrency=1
-        )
+        orchestrator = ExcelOrchestrator(integration_workbook, real_mistral_client, concurrency=1)
         results_sheet = orchestrator.run()
 
         wb = load_workbook(integration_workbook)
@@ -96,8 +92,9 @@ class TestOrchestratorExecution:
         """
         Verify progress callback fires for each completed prompt.
         """
-        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
         from openpyxl import load_workbook
+
+        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
 
         progress_updates = []
 
@@ -144,8 +141,9 @@ class TestOrchestratorRetries:
         """
         Test that failed prompt retries and succeeds on second attempt.
         """
-        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
         from openpyxl import load_workbook
+
+        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
 
         wb = load_workbook(integration_workbook)
         ws = wb["prompts"]
@@ -177,9 +175,7 @@ class TestOrchestratorRetries:
                 self.conversation_history = []
 
         flaky_client = FlakyClient()
-        orchestrator = ExcelOrchestrator(
-            integration_workbook, flaky_client, concurrency=1
-        )
+        orchestrator = ExcelOrchestrator(integration_workbook, flaky_client, concurrency=1)
         results_sheet = orchestrator.run()
 
         wb = load_workbook(integration_workbook)
@@ -187,10 +183,8 @@ class TestOrchestratorRetries:
 
         for row in ws.iter_rows(min_row=2, values_only=True):
             if row[2] == 1:
-                assert row[11] == "success", f"Status should be success after retry"
-                assert call_count[0] >= 2, (
-                    f"Should have retried, got {call_count[0]} calls"
-                )
+                assert row[11] == "success", "Status should be success after retry"
+                assert call_count[0] >= 2, f"Should have retried, got {call_count[0]} calls"
                 return
 
         pytest.fail("Did not find result for prompt 1")
@@ -199,8 +193,9 @@ class TestOrchestratorRetries:
         """
         Test that after N failures, status is 'failed' with error message.
         """
-        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
         from openpyxl import load_workbook
+
+        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
 
         wb = load_workbook(integration_workbook)
         ws = wb["prompts"]
@@ -227,9 +222,7 @@ class TestOrchestratorRetries:
                 pass
 
         failing_client = AlwaysFailsClient()
-        orchestrator = ExcelOrchestrator(
-            integration_workbook, failing_client, concurrency=1
-        )
+        orchestrator = ExcelOrchestrator(integration_workbook, failing_client, concurrency=1)
         results_sheet = orchestrator.run()
 
         wb = load_workbook(integration_workbook)
@@ -237,7 +230,7 @@ class TestOrchestratorRetries:
 
         for row in ws.iter_rows(min_row=2, values_only=True):
             if row[2] == 1:
-                assert row[11] == "failed", f"Status should be failed"
+                assert row[11] == "failed", "Status should be failed"
                 assert row[13] is not None, "Should have error message"
                 assert "Permanent failure" in str(row[13]), (
                     f"Error message should contain 'Permanent failure', got {row[13]}"
@@ -254,9 +247,11 @@ class TestOrchestratorFailurePropagation:
         """
         If p1 fails and p2 depends on p1, p2 should fail or handle gracefully.
         """
-        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
-        from openpyxl import load_workbook
         import json
+
+        from openpyxl import load_workbook
+
+        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
 
         wb = load_workbook(integration_workbook)
         ws = wb["prompts"]
@@ -317,8 +312,9 @@ class TestOrchestratorRealAPI:
         """
         Complete workflow test with real API calls.
         """
-        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
         from openpyxl import load_workbook
+
+        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
 
         wb = load_workbook(integration_workbook)
         ws = wb["prompts"]
@@ -333,9 +329,7 @@ class TestOrchestratorRealAPI:
         ws["C4"] = "Say goodbye"
         wb.save(integration_workbook)
 
-        orchestrator = ExcelOrchestrator(
-            integration_workbook, real_mistral_client, concurrency=2
-        )
+        orchestrator = ExcelOrchestrator(integration_workbook, real_mistral_client, concurrency=2)
 
         results_sheet = orchestrator.run()
         summary = orchestrator.get_summary()
@@ -359,8 +353,9 @@ class TestOrchestratorRealAPI:
         """
         Test progress callback with real API.
         """
-        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
         from openpyxl import load_workbook
+
+        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
 
         progress_updates = []
 

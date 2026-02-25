@@ -97,7 +97,7 @@ def __init__(self, client, shared_history=None, history_lock=None):
 
 def add_interaction(self, prompt, response, ...):
     # ... build interaction dict ...
-    
+
     if self._history_lock:
         with self._history_lock:
             self.ordered_history.add_interaction(...)

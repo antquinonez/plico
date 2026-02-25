@@ -138,9 +138,7 @@ def create_multiclient_test_workbook(output_path: str):
             None,
         )
     )
-    prompts.append(
-        (3, "creative", "Write a one-line poem about clouds.", None, "creative")
-    )
+    prompts.append((3, "creative", "Write a one-line poem about clouds.", None, "creative"))
     prompts.append(
         (
             4,
@@ -150,9 +148,7 @@ def create_multiclient_test_workbook(output_path: str):
             "fast",
         )
     )
-    prompts.append(
-        (5, "expand", "Expand on this topic: 'Machine learning basics'", None, None)
-    )
+    prompts.append((5, "expand", "Expand on this topic: 'Machine learning basics'", None, None))
 
     # Level 1: Prompts with dependencies
     prompts.append(
@@ -173,9 +169,7 @@ def create_multiclient_test_workbook(output_path: str):
             "creative",
         )
     )
-    prompts.append(
-        (8, "poem_explain", "Explain the imagery in the poem.", '["creative"]', None)
-    )
+    prompts.append((8, "poem_explain", "Explain the imagery in the poem.", '["creative"]', None))
     prompts.append(
         (
             9,
@@ -247,22 +241,20 @@ def create_multiclient_test_workbook(output_path: str):
     print(f"\n{'=' * 70}")
     print(f"Created MULTI-CLIENT test workbook: {output_path}")
     print(f"{'=' * 70}")
-    print(f"\nClients defined:")
+    print("\nClients defined:")
     for name, client_type, _, model, temp, tokens in clients_data:
-        print(
-            f"  - {name}: {client_type} (model={model}, temp={temp}, tokens={tokens})"
-        )
+        print(f"  - {name}: {client_type} (model={model}, temp={temp}, tokens={tokens})")
 
     print(f"\nTotal prompts: {len(prompts)}")
-    print(f"\nPrompt client assignments:")
+    print("\nPrompt client assignments:")
     for seq, name, _, _, client in prompts:
         client_str = client if client else "(default)"
         print(f"  Seq {seq:2d} ({name:18s}): {client_str}")
 
-    print(f"\nPrompt Structure:")
-    print(f"  Level 0: 5 independent prompts (sequences 1-5)")
-    print(f"  Level 1: 5 prompts with 1 dependency (sequences 6-10)")
-    print(f"  Level 2: 3 synthesis prompts (sequences 11-13)")
+    print("\nPrompt Structure:")
+    print("  Level 0: 5 independent prompts (sequences 1-5)")
+    print("  Level 1: 5 prompts with 1 dependency (sequences 6-10)")
+    print("  Level 2: 3 synthesis prompts (sequences 11-13)")
 
     print(f"\n{'=' * 70}")
     print(f"Run with: python scripts/run_orchestrator.py {output_path} -c 2")

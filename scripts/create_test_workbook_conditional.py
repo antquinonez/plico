@@ -547,11 +547,9 @@ def create_conditional_test_workbook(output_path: str):
     print(f"Created conditional execution test workbook: {output_path}")
     print(f"{'=' * 70}")
 
-    print(f"\nClients defined:")
+    print("\nClients defined:")
     for name, client_type, _, model, temp, tokens in clients_data:
-        print(
-            f"  - {name}: {client_type} (model={model}, temp={temp}, tokens={tokens})"
-        )
+        print(f"  - {name}: {client_type} (model={model}, temp={temp}, tokens={tokens})")
 
     print(f"\nTotal prompts: {len(prompts)}")
 
@@ -560,37 +558,33 @@ def create_conditional_test_workbook(output_path: str):
     for p in prompts:
         c = p[4] or "default"
         client_counts[c] = client_counts.get(c, 0) + 1
-    print(f"\nClient usage:")
+    print("\nClient usage:")
     for c, count in sorted(client_counts.items()):
         print(f"  - {c}: {count} prompts")
 
-    print(f"\nConditional Patterns Tested:")
-    print(f"\n  SECTION 1 - Error Recovery Pattern (sequences 1-5):")
-    print(f"    - Status checks: {{fetch_data.status}} == 'success'")
-    print(f"    - OR branching: process_success OR process_failure")
-    print(f"\n  SECTION 2 - Classification Branching (sequences 6-11):")
-    print(f"    - Response content: 'positive' in lower({{response}})")
-    print(f"    - Multi-way branching based on content")
-    print(f"\n  SECTION 3 - Response Length Branching (sequences 12-16):")
-    print(f"    - Length checks: len({{response}}) < 100")
-    print(f"    - Range checks: len({{response}}) >= 100 and len({{response}}) <= 200")
-    print(f"\n  SECTION 4 - Retry Pattern (sequences 17-21):")
-    print(
-        f"    - Chained conditions: {{a.status}} == 'failed' and {{b.status}} == 'failed'"
-    )
-    print(f"    - Multiple OR conditions")
-    print(f"\n  SECTION 5 - Complex Boolean Logic (sequences 22-26):")
-    print(f"    - AND operator: check_a and check_b both pass")
-    print(f"    - OR operator: any check fails")
-    print(f"\n  SECTION 6 - Has Response Check (sequences 27-30):")
-    print(f"    - has_response property: {{prompt.has_response}} == True")
-    print(f"    - Fallback when no response")
+    print("\nConditional Patterns Tested:")
+    print("\n  SECTION 1 - Error Recovery Pattern (sequences 1-5):")
+    print("    - Status checks: {fetch_data.status} == 'success'")
+    print("    - OR branching: process_success OR process_failure")
+    print("\n  SECTION 2 - Classification Branching (sequences 6-11):")
+    print("    - Response content: 'positive' in lower({response})")
+    print("    - Multi-way branching based on content")
+    print("\n  SECTION 3 - Response Length Branching (sequences 12-16):")
+    print("    - Length checks: len({response}) < 100")
+    print("    - Range checks: len({response}) >= 100 and len({response}) <= 200")
+    print("\n  SECTION 4 - Retry Pattern (sequences 17-21):")
+    print("    - Chained conditions: {a.status} == 'failed' and {b.status} == 'failed'")
+    print("    - Multiple OR conditions")
+    print("\n  SECTION 5 - Complex Boolean Logic (sequences 22-26):")
+    print("    - AND operator: check_a and check_b both pass")
+    print("    - OR operator: any check fails")
+    print("\n  SECTION 6 - Has Response Check (sequences 27-30):")
+    print("    - has_response property: {prompt.has_response} == True")
+    print("    - Fallback when no response")
 
     print(f"\n{'=' * 70}")
     print(f"Run with: python scripts/run_orchestrator.py {output_path}")
-    print(
-        f"Or with parallel execution: python scripts/run_orchestrator.py {output_path} -c 3"
-    )
+    print(f"Or with parallel execution: python scripts/run_orchestrator.py {output_path} -c 3")
     print(f"{'=' * 70}\n")
 
 

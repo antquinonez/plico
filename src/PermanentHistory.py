@@ -10,8 +10,6 @@
 # filename: src/lib/AI/PermanentHistory.py
 
 import time
-import logging
-from typing import Optional, List
 from copy import deepcopy
 
 

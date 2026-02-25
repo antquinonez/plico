@@ -221,7 +221,7 @@ from typing import Any, Dict, Optional
 
 class ConditionEvaluator:
     """Safely evaluates condition expressions."""
-    
+
     ALLOWED_OPERATORS = {
         ast.Eq: operator.eq,
         ast.NotEq: operator.ne,
@@ -235,54 +235,54 @@ class ConditionEvaluator:
         ast.In: lambda a, b: a in b,
         ast.NotIn: lambda a, b: a not in b,
     }
-    
+
     ALLOWED_FUNCTIONS = {
         'len': len,
         'lower': lambda s: str(s).lower(),
         'upper': lambda s: str(s).upper(),
         'trim': lambda s: str(s).strip(),
     }
-    
+
     def __init__(self, results_by_name: Dict[str, Dict[str, Any]]):
         self.results_by_name = results_by_name
-    
+
     def evaluate(self, condition: str) -> tuple[bool, Optional[str]]:
         """
         Evaluate a condition expression.
-        
+
         Returns:
             Tuple of (result, error_message)
         """
         try:
             # Resolve {{name.property}} references
             resolved = self._resolve_variables(condition)
-            
+
             # Parse and evaluate
             tree = ast.parse(resolved, mode='eval')
             result = self._eval_node(tree.body)
-            
+
             return bool(result), None
-            
+
         except Exception as e:
             return False, str(e)
-    
+
     def _resolve_variables(self, text: str) -> str:
         """Replace {{name.property}} with actual values."""
         pattern = r'\{\{(\w+)\.(\w+)\}\}'
-        
+
         def replacer(match):
             name = match.group(1)
             prop = match.group(2)
-            
+
             if name not in self.results_by_name:
                 raise ValueError(f"Unknown prompt name: {name}")
-            
+
             result = self.results_by_name[name]
             value = result.get(prop)
-            
+
             if value is None:
                 return '""' if prop in ('response', 'error', 'status') else '0'
-            
+
             if isinstance(value, str):
                 # Escape quotes and wrap in quotes
                 escaped = value.replace('\\', '\\\\').replace('"', '\\"')
@@ -291,24 +291,24 @@ class ConditionEvaluator:
                 return 'True' if value else 'False'
             else:
                 return str(value)
-        
+
         return re.sub(pattern, replacer, text)
-    
+
     def _eval_node(self, node: ast.AST) -> Any:
         """Recursively evaluate AST node."""
-        
+
         if isinstance(node, ast.Constant):
             return node.value
-        
+
         if isinstance(node, ast.Str):  # Python < 3.8 compatibility
             return node.s
-        
+
         if isinstance(node, ast.Num):  # Python < 3.8 compatibility
             return node.n
-        
+
         if isinstance(node, ast.NameConstant):  # Python < 3.8
             return node.value
-        
+
         if isinstance(node, ast.Name):
             name = node.id
             if name in ('True', 'true'):
@@ -316,13 +316,13 @@ class ConditionEvaluator:
             if name in ('False', 'false'):
                 return False
             raise ValueError(f"Unknown name: {name}")
-        
+
         if isinstance(node, ast.Compare):
             left = self._eval_node(node.left)
-            
+
             for op, comparator in zip(node.ops, node.comparators):
                 right = self._eval_node(comparator)
-                
+
                 # Handle 'contains' as custom operator
                 if isinstance(op, ast.In):
                     if not isinstance(left, str) or not isinstance(right, str):
@@ -336,38 +336,38 @@ class ConditionEvaluator:
                     left = self.ALLOWED_OPERATORS[type(op)](left, right)
                 else:
                     raise ValueError(f"Unsupported operator: {type(op).__name__}")
-            
+
             return left
-        
+
         if isinstance(node, ast.BoolOp):
             values = [self._eval_node(v) for v in node.values]
-            
+
             if isinstance(node.op, ast.And):
                 return all(values)
             if isinstance(node.op, ast.Or):
                 return any(values)
-            
+
             raise ValueError(f"Unsupported boolean operator: {type(node.op).__name__}")
-        
+
         if isinstance(node, ast.UnaryOp):
             operand = self._eval_node(node.operand)
-            
+
             if isinstance(node.op, ast.Not):
                 return not operand
-            
+
             raise ValueError(f"Unsupported unary operator: {type(node.op).__name__}")
-        
+
         if isinstance(node, ast.Call):
             if not isinstance(node.func, ast.Name):
                 raise ValueError("Only named functions allowed")
-            
+
             func_name = node.func.id
             if func_name not in self.ALLOWED_FUNCTIONS:
                 raise ValueError(f"Unknown function: {func_name}")
-            
+
             args = [self._eval_node(arg) for arg in node.args]
             return self.ALLOWED_FUNCTIONS[func_name](*args)
-        
+
         # Handle 'matches' via method call syntax: {{x}} matches "pattern"
         if isinstance(node, ast.BinOp):
             if isinstance(node.op, ast.Mod):  # Using % as 'matches'
@@ -376,7 +376,7 @@ class ConditionEvaluator:
                 if isinstance(left, str) and isinstance(right, str):
                     return bool(re.search(right, left))
                 raise ValueError("'matches' requires strings")
-        
+
         raise ValueError(f"Unsupported expression: {type(node).__name__}")
 ```
 
@@ -387,35 +387,35 @@ For environments where AST parsing is too complex, a simpler regex-based approac
 ```python
 class SimpleConditionEvaluator:
     """Simplified condition evaluator using regex."""
-    
+
     def __init__(self, results_by_name: Dict[str, Dict[str, Any]]):
         self.results_by_name = results_by_name
-    
+
     def evaluate(self, condition: str) -> tuple[bool, Optional[str]]:
         try:
             resolved = self._resolve_variables(condition)
-            
+
             # Handle boolean operators
             if ' or ' in resolved.lower():
                 parts = re.split(r'\s+or\s+', resolved, flags=re.IGNORECASE)
                 return any(self._evaluate_simple(p.strip())[0] for p in parts), None
-            
+
             if ' and ' in resolved.lower():
                 parts = re.split(r'\s+and\s+', resolved, flags=re.IGNORECASE)
                 return all(self._evaluate_simple(p.strip())[0] for p in parts), None
-            
+
             return self._evaluate_simple(resolved)
-            
+
         except Exception as e:
             return False, str(e)
-    
+
     def _evaluate_simple(self, expr: str) -> tuple[bool, Optional[str]]:
         """Evaluate a simple comparison expression."""
-        
+
         # Pattern: "value" == "other"
         # Pattern: "value" contains "substring"
         # Pattern: number > number
-        
+
         patterns = [
             (r'^"([^"]*)"\s*==\s*"([^"]*)"$', lambda a, b: a == b),
             (r'^"([^"]*)"\s*!=\s*"([^"]*)"$', lambda a, b: a != b),
@@ -423,12 +423,12 @@ class SimpleConditionEvaluator:
             (r'^"([^"]*)"\s+not\s+contains\s+"([^"]*)"$', lambda a, b: b not in a),
             (r'^(\d+)\s*(>=|>|<=|<|==|!=)\s*(\d+)$', self._numeric_compare),
         ]
-        
+
         for pattern, comparator in patterns:
             match = re.match(pattern, expr, re.IGNORECASE)
             if match:
                 return comparator(*match.groups()), None
-        
+
         return False, f"Cannot parse: {expr}"
 ```
 
@@ -442,19 +442,19 @@ class SimpleConditionEvaluator:
 def execute(self) -> List[Dict[str, Any]]:
     self.results = []
     results_by_name: Dict[str, Dict] = {}
-    
+
     for prompt in self.prompts:
         # Check condition
         should_execute = True
         condition_result = None
         condition_error = None
-        
+
         condition = prompt.get("condition")
         if condition:
             evaluator = ConditionEvaluator(results_by_name)
             should_execute, condition_error = evaluator.evaluate(condition)
             condition_result = should_execute
-        
+
         result = {
             "sequence": prompt["sequence"],
             "prompt_name": prompt.get("prompt_name"),
@@ -469,7 +469,7 @@ def execute(self) -> List[Dict[str, Any]]:
             "attempts": 0,
             "error": None,
         }
-        
+
         if should_execute:
             # Execute the prompt
             exec_result = self._execute_prompt(prompt)
@@ -478,12 +478,12 @@ def execute(self) -> List[Dict[str, Any]]:
             # Skip the prompt
             result["status"] = "skipped"
             logger.info(f"Skipped sequence {prompt['sequence']}: condition evaluated to False")
-        
+
         self.results.append(result)
-        
+
         if result.get("prompt_name"):
             results_by_name[result["prompt_name"]] = result
-    
+
     return self.results
 ```
 
@@ -499,25 +499,25 @@ Condition evaluation adds complexity to parallel execution:
 ```python
 def _build_execution_graph(self) -> Dict[int, PromptNode]:
     """Build dependency graph, including condition-based dependencies."""
-    
+
     # Extract explicit history dependencies
     name_to_sequence = {
         p["prompt_name"]: p["sequence"]
         for p in self.prompts
         if p.get("prompt_name")
     }
-    
+
     nodes = {}
     for prompt in self.prompts:
         seq = prompt["sequence"]
         deps = set()
-        
+
         # Explicit history dependencies
         if prompt.get("history"):
             for dep_name in prompt["history"]:
                 if dep_name in name_to_sequence:
                     deps.add(name_to_sequence[dep_name])
-        
+
         # Condition-based dependencies (implicit)
         condition = prompt.get("condition")
         if condition:
@@ -526,20 +526,20 @@ def _build_execution_graph(self) -> Dict[int, PromptNode]:
             for ref_name in refs:
                 if ref_name in name_to_sequence:
                     deps.add(name_to_sequence[ref_name])
-        
+
         nodes[seq] = PromptNode(
             sequence=seq,
             prompt=prompt,
             dependencies=deps,
             level=0,
         )
-    
+
     # Calculate levels
     for seq, node in sorted(nodes.items()):
         if node.dependencies:
             max_dep_level = max(nodes[d].level for d in node.dependencies)
             node.level = max_dep_level + 1
-    
+
     return nodes
 ```
 
@@ -552,7 +552,7 @@ def _build_execution_graph(self) -> Dict[int, PromptNode]:
 ```python
 PROMPTS_HEADERS = [
     "sequence",
-    "prompt_name", 
+    "prompt_name",
     "prompt",
     "history",
     "client",
@@ -601,12 +601,12 @@ def _validate_conditions(self) -> List[str]:
     """Validate condition syntax and references."""
     errors = []
     prompt_names = {p["prompt_name"] for p in self.prompts if p.get("prompt_name")}
-    
+
     for prompt in self.prompts:
         condition = prompt.get("condition")
         if not condition:
             continue
-        
+
         # Extract referenced prompt names
         refs = re.findall(r'\{\{(\w+)\.\w+\}\}', condition)
         for ref_name in refs:
@@ -615,7 +615,7 @@ def _validate_conditions(self) -> List[str]:
                     f"Sequence {prompt['sequence']}: condition references "
                     f"unknown prompt '{ref_name}'"
                 )
-            
+
             # Check that referenced prompt comes before this one
             ref_seq = next(
                 (p["sequence"] for p in self.prompts if p.get("prompt_name") == ref_name),
@@ -626,7 +626,7 @@ def _validate_conditions(self) -> List[str]:
                     f"Sequence {prompt['sequence']}: condition references "
                     f"'{ref_name}' (seq {ref_seq}) which must be defined first"
                 )
-        
+
         # Validate condition syntax (dry-run evaluation)
         try:
             ConditionEvaluator({})._resolve_variables(condition)
@@ -634,7 +634,7 @@ def _validate_conditions(self) -> List[str]:
             errors.append(
                 f"Sequence {prompt['sequence']}: invalid condition syntax: {e}"
             )
-    
+
     return errors
 ```
 
@@ -657,7 +657,7 @@ Validating workbook...
 
 Condition summary:
   - Sequence 2: {{fetch.status}} == "success"
-  - Sequence 3: {{fetch.status}} == "failed"  
+  - Sequence 3: {{fetch.status}} == "failed"
   - Sequence 7: len({{analyze.response}}) > 100
 
 Would execute 15 prompts (some may be skipped based on conditions)

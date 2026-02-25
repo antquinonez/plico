@@ -1,6 +1,6 @@
-import pytest
 import os
-import json
+
+import pytest
 from openpyxl import load_workbook
 
 
@@ -109,8 +109,9 @@ class TestWorkbookBuilderValidate:
 
     def test_validate_workbook_missing_config(self, temp_workbook):
         """Test validating workbook missing config sheet."""
-        from src.orchestrator.workbook_builder import WorkbookBuilder
         from openpyxl import Workbook
+
+        from src.orchestrator.workbook_builder import WorkbookBuilder
 
         wb = Workbook()
         wb.create_sheet("prompts")
@@ -124,8 +125,9 @@ class TestWorkbookBuilderValidate:
 
     def test_validate_workbook_missing_prompts(self, temp_workbook):
         """Test validating workbook missing prompts sheet."""
-        from src.orchestrator.workbook_builder import WorkbookBuilder
         from openpyxl import Workbook
+
+        from src.orchestrator.workbook_builder import WorkbookBuilder
 
         wb = Workbook()
         wb.create_sheet("config")
@@ -139,8 +141,9 @@ class TestWorkbookBuilderValidate:
 
     def test_validate_workbook_missing_columns(self, temp_workbook):
         """Test validating workbook missing required columns."""
-        from src.orchestrator.workbook_builder import WorkbookBuilder
         from openpyxl import Workbook
+
+        from src.orchestrator.workbook_builder import WorkbookBuilder
 
         wb = Workbook()
         wb.create_sheet("config")
@@ -173,8 +176,9 @@ class TestWorkbookBuilderLoadConfig:
 
     def test_load_config_type_conversion(self, temp_workbook):
         """Test that config values are converted to correct types."""
-        from src.orchestrator.workbook_builder import WorkbookBuilder
         from openpyxl import Workbook
+
+        from src.orchestrator.workbook_builder import WorkbookBuilder
 
         wb = Workbook()
         ws = wb.active
@@ -559,8 +563,9 @@ class TestWorkbookBuilderClientsSheet:
 
     def test_has_clients_sheet_true(self, temp_workbook):
         """Test has_clients_sheet returns True when clients sheet exists."""
-        from src.orchestrator.workbook_builder import WorkbookBuilder
         from openpyxl import Workbook
+
+        from src.orchestrator.workbook_builder import WorkbookBuilder
 
         wb = Workbook()
         wb.create_sheet("config")
@@ -581,8 +586,9 @@ class TestWorkbookBuilderClientsSheet:
 
     def test_load_clients(self, temp_workbook):
         """Test loading clients from clients sheet."""
-        from src.orchestrator.workbook_builder import WorkbookBuilder
         from openpyxl import Workbook
+
+        from src.orchestrator.workbook_builder import WorkbookBuilder
 
         wb = Workbook()
         wb.create_sheet("config")
@@ -635,8 +641,9 @@ class TestWorkbookBuilderClientsSheet:
 
     def test_load_prompts_with_client_column(self, temp_workbook):
         """Test loading prompts that include client column."""
-        from src.orchestrator.workbook_builder import WorkbookBuilder
         from openpyxl import Workbook
+
+        from src.orchestrator.workbook_builder import WorkbookBuilder
 
         wb = Workbook()
         wb.create_sheet("config")

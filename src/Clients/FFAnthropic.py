@@ -9,10 +9,9 @@
 # Contact: antquinonez@farfiner.com
 # filename: src/lib/AI/FFAnthropic.py
 
-import os
-import time
 import logging
-from typing import Optional, List
+import os
+
 from anthropic import Anthropic
 from dotenv import load_dotenv
 
@@ -23,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 
 class FFAnthropic:
-    def __init__(self, config: Optional[dict] = None, **kwargs):
+    def __init__(self, config: dict | None = None, **kwargs):
         logger.info("Initializing FFAnthropic")
 
         # DEFAULT VALUES
@@ -61,9 +60,7 @@ class FFAnthropic:
 
         # Set default values if not set
         self.api_key = getattr(self, "api_key", os.getenv("ANTHROPIC_TOKEN"))
-        self.model = getattr(
-            self, "model", os.getenv("ANTHROPIC_MODEL", defaults["model"])
-        )
+        self.model = getattr(self, "model", os.getenv("ANTHROPIC_MODEL", defaults["model"]))
         self.temperature = getattr(
             self,
             "temperature",
@@ -130,9 +127,7 @@ class FFAnthropic:
                 )
 
             assistant_response = response.content[0].text
-            self.conversation_history.append(
-                {"role": "assistant", "content": assistant_response}
-            )
+            self.conversation_history.append({"role": "assistant", "content": assistant_response})
 
             logger.info("Response generated successfully")
             return assistant_response
@@ -152,11 +147,11 @@ class FFAnthropic:
         logger.info("Clearing conversation history")
         self.conversation_history = []
 
-    def get_conversation_history(self) -> List[dict]:
+    def get_conversation_history(self) -> list[dict]:
         """Get the conversation history."""
         return self.conversation_history
 
-    def set_conversation_history(self, history: List[dict]) -> None:
+    def set_conversation_history(self, history: list[dict]) -> None:
         """Set the conversation history."""
         self.conversation_history = history
 

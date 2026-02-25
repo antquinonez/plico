@@ -60,12 +60,12 @@ Conditions are evaluated at runtime, just before prompt execution:
 def _should_execute(self, prompt: Dict, completed_results: Dict) -> bool:
     if "condition" not in prompt or not prompt["condition"]:
         return True  # No condition = always execute
-    
+
     condition = prompt["condition"]
-    
+
     # Resolve {{name.property}} references
     resolved = self._resolve_condition_variables(condition, completed_results)
-    
+
     # Safely evaluate the expression
     return self._evaluate_condition(resolved)
 ```

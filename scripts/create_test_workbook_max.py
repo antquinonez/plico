@@ -480,22 +480,20 @@ def create_max_test_workbook(output_path: str):
     print("FEATURES COMBINED:")
     print(f"{'=' * 70}")
 
-    print(f"\n1. BATCH MODE:")
+    print("\n1. BATCH MODE:")
     print(f"   - {len(batch_data)} data rows")
-    print(f"   - Each row processes through all 20 prompts")
+    print("   - Each row processes through all 20 prompts")
     print(f"   - Total executions: {len(batch_data) * len(prompts)} prompt calls")
 
-    print(f"\n2. MULTI-CLIENT:")
+    print("\n2. MULTI-CLIENT:")
     for name, _, _, model, temp, tokens in clients_data:
         count = sum(1 for p in prompts if p[4] == name)
         print(f"   - {name}: temp={temp}, tokens={tokens}, {count} prompts")
 
-    print(f"\n3. CONDITIONAL EXECUTION:")
+    print("\n3. CONDITIONAL EXECUTION:")
     cond_count = sum(1 for p in prompts if p[5])
     print(f"   - {cond_count} prompts with conditions")
-    print(
-        f"   - Conditions include: sentiment branching, urgency levels, issue detection"
-    )
+    print("   - Conditions include: sentiment branching, urgency levels, issue detection")
 
     print(f"\n{'=' * 70}")
     print("BATCH DATA:")
@@ -507,11 +505,11 @@ def create_max_test_workbook(output_path: str):
     print(f"\n{'=' * 70}")
     print("PROMPT STRUCTURE:")
     print(f"{'=' * 70}")
-    print(f"  Section 1 (Seq 1-3):  Input Classification")
-    print(f"  Section 2 (Seq 4-8):  Conditional Branching (sentiment + urgency)")
-    print(f"  Section 3 (Seq 9-12): Issue Resolution")
-    print(f"  Section 4 (Seq 13-16): Response Assembly")
-    print(f"  Section 5 (Seq 17-20): Final Reporting")
+    print("  Section 1 (Seq 1-3):  Input Classification")
+    print("  Section 2 (Seq 4-8):  Conditional Branching (sentiment + urgency)")
+    print("  Section 3 (Seq 9-12): Issue Resolution")
+    print("  Section 4 (Seq 13-16): Response Assembly")
+    print("  Section 5 (Seq 17-20): Final Reporting")
 
     print(f"\n{'=' * 70}")
     print(f"Run with: python scripts/run_orchestrator.py {output_path} -c 3")

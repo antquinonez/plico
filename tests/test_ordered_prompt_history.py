@@ -1,5 +1,4 @@
-import pytest
-from src.OrderedPromptHistory import OrderedPromptHistory, Interaction
+from src.OrderedPromptHistory import Interaction, OrderedPromptHistory
 
 
 class TestInteraction:

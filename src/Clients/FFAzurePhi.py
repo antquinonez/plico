@@ -28,7 +28,9 @@ class FFAzurePhi(FFAzureClientBase):
 
     @property
     def _default_instructions(self) -> str:
-        return "You are a helpful assistant. Respond accurately to user queries. Be concise and clear."
+        return (
+            "You are a helpful assistant. Respond accurately to user queries. Be concise and clear."
+        )
 
     @property
     def _env_key_prefix(self) -> str:

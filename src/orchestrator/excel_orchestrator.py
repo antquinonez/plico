@@ -1,49 +1,87 @@
+"""Excel-based AI prompt orchestration engine.
+
+This module provides the ExcelOrchestrator class for executing AI prompt
+workflows defined in Excel workbooks with support for:
+- Sequential and parallel execution
+- Batch execution with variable templating
+- Multi-client support
+- Document reference injection
+- Conditional execution
+"""
+
+import logging
 import os
 import re
-import logging
 import threading
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Optional, List, Dict, Any, Set, Callable, Tuple
+from typing import Any
 
 from ..FFAI import FFAI
 from ..FFAIClientBase import FFAIClientBase
-from .workbook_builder import WorkbookBuilder
 from .client_registry import ClientRegistry
 from .condition_evaluator import ConditionEvaluator
 from .document_processor import DocumentProcessor
 from .document_registry import DocumentRegistry
+from .workbook_builder import WorkbookBuilder
 
 logger = logging.getLogger(__name__)
 
 
 @dataclass
 class PromptNode:
+    """Represents a prompt in the execution dependency graph.
+
+    Attributes:
+        sequence: The prompt's sequence number.
+        prompt: The prompt dictionary.
+        dependencies: Set of sequence numbers this prompt depends on.
+        level: The execution level (0 = no dependencies).
+
+    """
+
     sequence: int
-    prompt: Dict[str, Any]
-    dependencies: Set[int] = field(default_factory=set)
+    prompt: dict[str, Any]
+    dependencies: set[int] = field(default_factory=set)
     level: int = 0
 
 
 @dataclass
 class ExecutionState:
-    completed: Set[int] = field(default_factory=set)
-    in_progress: Set[int] = field(default_factory=set)
-    pending: Dict[int, PromptNode] = field(default_factory=dict)
-    results: List[Dict[str, Any]] = field(default_factory=list)
+    """Tracks state during parallel execution.
+
+    Attributes:
+        completed: Set of completed sequence numbers.
+        in_progress: Set of currently executing sequence numbers.
+        pending: Dict of pending PromptNodes by sequence number.
+        results: List of execution results.
+        results_lock: Thread lock for result access.
+        success_count: Number of successful executions.
+        failed_count: Number of failed executions.
+        skipped_count: Number of skipped executions.
+        results_by_name: Results indexed by prompt name.
+        current_name: Name of currently executing prompt.
+        running_count: Number of currently running tasks.
+
+    """
+
+    completed: set[int] = field(default_factory=set)
+    in_progress: set[int] = field(default_factory=set)
+    pending: dict[int, PromptNode] = field(default_factory=dict)
+    results: list[dict[str, Any]] = field(default_factory=list)
     results_lock: threading.Lock = field(default_factory=threading.Lock)
     success_count: int = 0
     failed_count: int = 0
     skipped_count: int = 0
-    results_by_name: Dict[str, Dict[str, Any]] = field(default_factory=dict)
+    results_by_name: dict[str, dict[str, Any]] = field(default_factory=dict)
     current_name: str = ""
     running_count: int = 0
 
 
 class ExcelOrchestrator:
-    """
-    Orchestrates AI prompt execution via Excel workbook.
+    """Orchestrates AI prompt execution via Excel workbook.
 
     Usage:
         from src.Clients.FFMistralSmall import FFMistralSmall
@@ -58,10 +96,20 @@ class ExcelOrchestrator:
         self,
         workbook_path: str,
         client: FFAIClientBase,
-        config_overrides: Optional[Dict[str, Any]] = None,
+        config_overrides: dict[str, Any] | None = None,
         concurrency: int = 2,
-        progress_callback: Optional[Callable[..., None]] = None,
-    ):
+        progress_callback: Callable[..., None] | None = None,
+    ) -> None:
+        """Initialize the ExcelOrchestrator.
+
+        Args:
+            workbook_path: Path to the Excel workbook.
+            client: Default AI client for prompt execution.
+            config_overrides: Optional config overrides from workbook.
+            concurrency: Maximum concurrent API calls (1-10).
+            progress_callback: Optional callback for progress updates.
+
+        """
         self.workbook_path = workbook_path
         self.client = client
         self.config_overrides = config_overrides or {}
@@ -69,23 +117,23 @@ class ExcelOrchestrator:
         self.progress_callback = progress_callback
         self.builder = WorkbookBuilder(workbook_path)
 
-        self.config: Dict[str, Any] = {}
-        self.prompts: List[Dict[str, Any]] = []
-        self.results: List[Dict[str, Any]] = []
-        self.ffai: Optional[FFAI] = None
+        self.config: dict[str, Any] = {}
+        self.prompts: list[dict[str, Any]] = []
+        self.results: list[dict[str, Any]] = []
+        self.ffai: FFAI | None = None
 
-        self.shared_prompt_attr_history: List[Dict[str, Any]] = []
+        self.shared_prompt_attr_history: list[dict[str, Any]] = []
         self.history_lock = threading.Lock()
 
-        self.batch_data: List[Dict[str, Any]] = []
+        self.batch_data: list[dict[str, Any]] = []
         self.is_batch_mode: bool = False
-        self.client_registry: Optional[ClientRegistry] = None
+        self.client_registry: ClientRegistry | None = None
         self.has_multi_client: bool = False
-        self.document_processor: Optional[DocumentProcessor] = None
-        self.document_registry: Optional[DocumentRegistry] = None
+        self.document_processor: DocumentProcessor | None = None
+        self.document_registry: DocumentRegistry | None = None
         self.has_documents: bool = False
 
-    def _get_isolated_ffai(self, client_name: Optional[str] = None) -> FFAI:
+    def _get_isolated_ffai(self, client_name: str | None = None) -> FFAI:
         """Create an FFAI instance with isolated client but shared history."""
         if client_name and self.client_registry:
             client = self.client_registry.clone(client_name)
@@ -97,7 +145,7 @@ class ExcelOrchestrator:
             history_lock=self.history_lock,
         )
 
-    def _get_isolated_client(self, client_name: Optional[str] = None) -> FFAIClientBase:
+    def _get_isolated_client(self, client_name: str | None = None) -> FFAIClientBase:
         """Get an isolated client (fresh clone) for execution."""
         if client_name and self.client_registry:
             return self.client_registry.clone(client_name)
@@ -163,13 +211,10 @@ class ExcelOrchestrator:
             )
             self.has_documents = True
             self.document_registry.validate_documents()
-            logger.info(
-                f"Document registry initialized with {len(documents_data)} documents"
-            )
+            logger.info(f"Document registry initialized with {len(documents_data)} documents")
 
-    def _inject_references(self, prompt: Dict[str, Any]) -> str:
-        """
-        Inject document references into a prompt.
+    def _inject_references(self, prompt: dict[str, Any]) -> str:
+        """Inject document references into a prompt.
 
         Args:
             prompt: Prompt dictionary with optional 'references' field
@@ -179,6 +224,7 @@ class ExcelOrchestrator:
 
         Raises:
             ValueError: If referenced document is not found
+
         """
         prompt_text = prompt.get("prompt", "")
         references = prompt.get("references")
@@ -194,19 +240,13 @@ class ExcelOrchestrator:
         if not ref_names:
             return prompt_text
 
-        missing = [
-            r
-            for r in ref_names
-            if r not in self.document_registry.get_reference_names()
-        ]
+        missing = [r for r in ref_names if r not in self.document_registry.get_reference_names()]
         if missing:
             raise ValueError(f"Referenced documents not found: {missing}")
 
-        return self.document_registry.inject_references_into_prompt(
-            prompt_text, ref_names
-        )
+        return self.document_registry.inject_references_into_prompt(prompt_text, ref_names)
 
-    def _create_result_dict(self, prompt: Dict[str, Any]) -> Dict[str, Any]:
+    def _create_result_dict(self, prompt: dict[str, Any]) -> dict[str, Any]:
         """Create a result dictionary for a prompt."""
         return {
             "sequence": prompt["sequence"],
@@ -250,11 +290,7 @@ class ExcelOrchestrator:
                     )
                 else:
                     dep_sequence = next(
-                        (
-                            p["sequence"]
-                            for p in self.prompts
-                            if p.get("prompt_name") == dep_name
-                        ),
+                        (p["sequence"] for p in self.prompts if p.get("prompt_name") == dep_name),
                         None,
                     )
                     if dep_sequence and dep_sequence >= seq:
@@ -268,10 +304,10 @@ class ExcelOrchestrator:
 
         logger.info("Dependency validation passed")
 
-    def _build_execution_graph(self) -> Dict[int, PromptNode]:
+    def _build_execution_graph(self) -> dict[int, PromptNode]:
         """Build dependency graph for parallel execution."""
-        nodes: Dict[int, PromptNode] = {}
-        prompt_by_name: Dict[str, int] = {}
+        nodes: dict[int, PromptNode] = {}
+        prompt_by_name: dict[str, int] = {}
 
         for prompt in self.prompts:
             seq = prompt["sequence"]
@@ -287,16 +323,14 @@ class ExcelOrchestrator:
                 if dep_name in prompt_by_name:
                     nodes[seq].dependencies.add(prompt_by_name[dep_name])
 
-        def assign_levels(seq: int, visited: Set[int]) -> int:
+        def assign_levels(seq: int, visited: set[int]) -> int:
             if seq in visited:
                 return 0
             visited.add(seq)
             if not nodes[seq].dependencies:
                 nodes[seq].level = 0
                 return 0
-            max_dep_level = max(
-                assign_levels(dep, visited) for dep in nodes[seq].dependencies
-            )
+            max_dep_level = max(assign_levels(dep, visited) for dep in nodes[seq].dependencies)
             nodes[seq].level = max_dep_level + 1
             return nodes[seq].level
 
@@ -306,8 +340,8 @@ class ExcelOrchestrator:
         return nodes
 
     def _get_ready_prompts(
-        self, state: ExecutionState, nodes: Dict[int, PromptNode]
-    ) -> List[PromptNode]:
+        self, state: ExecutionState, nodes: dict[int, PromptNode]
+    ) -> list[PromptNode]:
         """Get prompts ready for execution (all dependencies completed)."""
         ready = []
         for seq, node in nodes.items():
@@ -319,13 +353,13 @@ class ExcelOrchestrator:
         return ready
 
     def _evaluate_condition(
-        self, prompt: Dict[str, Any], results_by_name: Dict[str, Dict[str, Any]]
-    ) -> Tuple[bool, Optional[str], Optional[str]]:
-        """
-        Evaluate a prompt's condition.
+        self, prompt: dict[str, Any], results_by_name: dict[str, dict[str, Any]]
+    ) -> tuple[bool, str | None, str | None]:
+        """Evaluate a prompt's condition.
 
         Returns:
             Tuple of (should_execute, condition_result, condition_error)
+
         """
         condition = prompt.get("condition")
 
@@ -338,8 +372,8 @@ class ExcelOrchestrator:
         return result, result, error
 
     def _execute_prompt_isolated(
-        self, prompt: Dict[str, Any], state: ExecutionState
-    ) -> Dict[str, Any]:
+        self, prompt: dict[str, Any], state: ExecutionState
+    ) -> dict[str, Any]:
         """Execute a single prompt with completely isolated client clone."""
         max_retries = self.config.get("max_retries", 3)
 
@@ -357,9 +391,7 @@ class ExcelOrchestrator:
         if not should_execute:
             result["status"] = "skipped"
             result["attempts"] = 0
-            logger.info(
-                f"Sequence {prompt['sequence']} skipped: condition evaluated to False"
-            )
+            logger.info(f"Sequence {prompt['sequence']} skipped: condition evaluated to False")
             return result
 
         for attempt in range(1, max_retries + 1):
@@ -371,7 +403,6 @@ class ExcelOrchestrator:
                     + (f" with client '{client_name}'" if client_name else "")
                 )
 
-                isolated_client = self._get_isolated_client(client_name)
                 ffai = self._get_isolated_ffai(client_name)
 
                 injected_prompt = self._inject_references(prompt)
@@ -392,9 +423,7 @@ class ExcelOrchestrator:
 
             except Exception as e:
                 result["error"] = str(e)
-                logger.warning(
-                    f"Sequence {prompt['sequence']} failed (attempt {attempt}): {e}"
-                )
+                logger.warning(f"Sequence {prompt['sequence']} failed (attempt {attempt}): {e}")
 
                 if attempt == max_retries:
                     result["status"] = "failed"
@@ -406,9 +435,9 @@ class ExcelOrchestrator:
 
     def _execute_prompt(
         self,
-        prompt: Dict[str, Any],
-        results_by_name: Optional[Dict[str, Dict[str, Any]]] = None,
-    ) -> Dict[str, Any]:
+        prompt: dict[str, Any],
+        results_by_name: dict[str, dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
         """Execute a single prompt with retry logic."""
         max_retries = self.config.get("max_retries", 3)
 
@@ -416,18 +445,14 @@ class ExcelOrchestrator:
 
         results_by_name = results_by_name or {}
 
-        should_execute, cond_result, cond_error = self._evaluate_condition(
-            prompt, results_by_name
-        )
+        should_execute, cond_result, cond_error = self._evaluate_condition(prompt, results_by_name)
         result["condition_result"] = cond_result
         result["condition_error"] = cond_error
 
         if not should_execute:
             result["status"] = "skipped"
             result["attempts"] = 0
-            logger.info(
-                f"Sequence {prompt['sequence']} skipped: condition evaluated to False"
-            )
+            logger.info(f"Sequence {prompt['sequence']} skipped: condition evaluated to False")
             return result
 
         client_name = prompt.get("client")
@@ -460,9 +485,7 @@ class ExcelOrchestrator:
 
             except Exception as e:
                 result["error"] = str(e)
-                logger.warning(
-                    f"Sequence {prompt['sequence']} failed (attempt {attempt}): {e}"
-                )
+                logger.warning(f"Sequence {prompt['sequence']} failed (attempt {attempt}): {e}")
 
                 if attempt == max_retries:
                     result["status"] = "failed"
@@ -472,14 +495,14 @@ class ExcelOrchestrator:
 
         return result
 
-    def _resolve_variables(self, text: str, data_row: Dict[str, Any]) -> str:
+    def _resolve_variables(self, text: str, data_row: dict[str, Any]) -> str:
         """Replace {{variable}} placeholders with values from data row."""
         if not text:
             return text
 
         pattern = r"\{\{(\w+)\}\}"
 
-        def replacer(match):
+        def replacer(match: re.Match[str]) -> str:
             var_name = match.group(1)
             if var_name in data_row and data_row[var_name] is not None:
                 return str(data_row[var_name])
@@ -489,18 +512,16 @@ class ExcelOrchestrator:
         return re.sub(pattern, replacer, text)
 
     def _resolve_prompt_variables(
-        self, prompt: Dict[str, Any], data_row: Dict[str, Any]
-    ) -> Dict[str, Any]:
+        self, prompt: dict[str, Any], data_row: dict[str, Any]
+    ) -> dict[str, Any]:
         """Resolve all {{variable}} placeholders in a prompt."""
         resolved = dict(prompt)
         resolved["prompt"] = self._resolve_variables(prompt.get("prompt", ""), data_row)
         if prompt.get("prompt_name"):
-            resolved["prompt_name"] = self._resolve_variables(
-                prompt["prompt_name"], data_row
-            )
+            resolved["prompt_name"] = self._resolve_variables(prompt["prompt_name"], data_row)
         return resolved
 
-    def _resolve_batch_name(self, data_row: Dict[str, Any], batch_id: int) -> str:
+    def _resolve_batch_name(self, data_row: dict[str, Any], batch_id: int) -> str:
         """Generate batch name from data row or default."""
         if "batch_name" in data_row and data_row["batch_name"]:
             name = self._resolve_variables(str(data_row["batch_name"]), data_row)
@@ -508,11 +529,11 @@ class ExcelOrchestrator:
         return f"batch_{batch_id}"
 
     def _execute_single_batch(
-        self, batch_id: int, data_row: Dict[str, Any], batch_name: str
-    ) -> List[Dict[str, Any]]:
+        self, batch_id: int, data_row: dict[str, Any], batch_name: str
+    ) -> list[dict[str, Any]]:
         """Execute all prompts for a single batch with resolved variables."""
         results = []
-        results_by_name: Dict[str, Dict[str, Any]] = {}
+        results_by_name: dict[str, dict[str, Any]] = {}
 
         for prompt in self.prompts:
             resolved_prompt = self._resolve_prompt_variables(prompt, data_row)
@@ -528,20 +549,18 @@ class ExcelOrchestrator:
             if result["status"] == "failed":
                 on_error = self.config.get("on_batch_error", "continue")
                 if on_error == "stop":
-                    logger.error(
-                        f"Stopping batch execution due to failure at batch {batch_id}"
-                    )
+                    logger.error(f"Stopping batch execution due to failure at batch {batch_id}")
                     break
 
         return results
 
     def _execute_prompt_with_batch(
         self,
-        prompt: Dict[str, Any],
+        prompt: dict[str, Any],
         batch_id: int,
         batch_name: str,
-        results_by_name: Optional[Dict[str, Dict[str, Any]]] = None,
-    ) -> Dict[str, Any]:
+        results_by_name: dict[str, dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
         """Execute a single prompt and tag with batch info."""
         max_retries = self.config.get("max_retries", 3)
 
@@ -565,9 +584,7 @@ class ExcelOrchestrator:
 
         results_by_name = results_by_name or {}
 
-        should_execute, cond_result, cond_error = self._evaluate_condition(
-            prompt, results_by_name
-        )
+        should_execute, cond_result, cond_error = self._evaluate_condition(prompt, results_by_name)
         result["condition_result"] = cond_result
         result["condition_error"] = cond_error
 
@@ -604,9 +621,7 @@ class ExcelOrchestrator:
 
                 result["response"] = response
                 result["status"] = "success"
-                logger.info(
-                    f"Batch {batch_id}, sequence {prompt['sequence']} succeeded"
-                )
+                logger.info(f"Batch {batch_id}, sequence {prompt['sequence']} succeeded")
                 break
 
             except Exception as e:
@@ -623,10 +638,10 @@ class ExcelOrchestrator:
 
         return result
 
-    def execute(self) -> List[Dict[str, Any]]:
+    def execute(self) -> list[dict[str, Any]]:
         """Execute all prompts in sequence with dependency-aware ordering."""
         self.results = []
-        results_by_name: Dict[str, Dict[str, Any]] = {}
+        results_by_name: dict[str, dict[str, Any]] = {}
         total = len(self.prompts)
 
         nodes = self._build_execution_graph()
@@ -669,14 +684,14 @@ class ExcelOrchestrator:
         )
         return self.results
 
-    def execute_parallel(self) -> List[Dict[str, Any]]:
+    def execute_parallel(self) -> list[dict[str, Any]]:
         """Execute prompts in parallel with dependency-aware scheduling."""
         nodes = self._build_execution_graph()
         state = ExecutionState(pending=dict(nodes))
 
         total = len(nodes)
 
-        def update_progress():
+        def update_progress() -> None:
             if self.progress_callback:
                 self.progress_callback(
                     len(state.completed),
@@ -694,9 +709,7 @@ class ExcelOrchestrator:
                 ready = self._get_ready_prompts(state, nodes)
 
                 if not ready and not state.in_progress:
-                    logger.error(
-                        "Deadlock detected: no ready prompts and none in progress"
-                    )
+                    logger.error("Deadlock detected: no ready prompts and none in progress")
                     break
 
                 futures = {}
@@ -704,9 +717,7 @@ class ExcelOrchestrator:
                     if len(state.in_progress) >= self.concurrency:
                         break
                     state.in_progress.add(node.sequence)
-                    future = executor.submit(
-                        self._execute_prompt_isolated, node.prompt, state
-                    )
+                    future = executor.submit(self._execute_prompt_isolated, node.prompt, state)
                     futures[future] = node.sequence
 
                 for future in as_completed(futures):
@@ -716,15 +727,11 @@ class ExcelOrchestrator:
                         with state.results_lock:
                             state.results.append(result)
                             state.completed.add(seq)
-                            state.current_name = (
-                                result.get("prompt_name") or f"seq_{seq}"
-                            )
+                            state.current_name = result.get("prompt_name") or f"seq_{seq}"
                             if result["status"] == "success":
                                 state.success_count += 1
                                 if result.get("prompt_name"):
-                                    state.results_by_name[result["prompt_name"]] = (
-                                        result
-                                    )
+                                    state.results_by_name[result["prompt_name"]] = result
                             elif result["status"] == "skipped":
                                 state.skipped_count += 1
                             else:
@@ -767,7 +774,7 @@ class ExcelOrchestrator:
         )
         return self.results
 
-    def execute_batch(self) -> List[Dict[str, Any]]:
+    def execute_batch(self) -> list[dict[str, Any]]:
         """Execute all prompts for each batch row sequentially."""
         self.results = []
         total_batches = len(self.batch_data)
@@ -785,9 +792,7 @@ class ExcelOrchestrator:
             if batch_failed > 0:
                 on_error = self.config.get("on_batch_error", "continue")
                 if on_error == "stop":
-                    logger.error(
-                        f"Stopping at batch {batch_idx} due to {batch_failed} failures"
-                    )
+                    logger.error(f"Stopping at batch {batch_idx} due to {batch_failed} failures")
                     break
 
             if self.progress_callback:
@@ -811,7 +816,7 @@ class ExcelOrchestrator:
         )
         return self.results
 
-    def execute_batch_parallel(self) -> List[Dict[str, Any]]:
+    def execute_batch_parallel(self) -> list[dict[str, Any]]:
         """Execute batches in parallel, with dependency-aware prompt execution within each batch."""
         total_batches = len(self.batch_data)
         total_prompts = len(self.prompts)
@@ -820,10 +825,12 @@ class ExcelOrchestrator:
         state = ExecutionState()
         results_lock = threading.Lock()
 
-        def execute_single_batch_isolated(batch_idx: int, data_row: Dict[str, Any]):
+        def execute_single_batch_isolated(
+            batch_idx: int, data_row: dict[str, Any]
+        ) -> list[dict[str, Any]]:
             batch_name = self._resolve_batch_name(data_row, batch_idx)
             batch_results = []
-            batch_results_by_name: Dict[str, Dict[str, Any]] = {}
+            batch_results_by_name: dict[str, dict[str, Any]] = {}
 
             for prompt in self.prompts:
                 resolved_prompt = self._resolve_prompt_variables(prompt, data_row)
@@ -903,16 +910,12 @@ class ExcelOrchestrator:
         all_results = []
         failed_batches = []
 
-        logger.info(
-            f"Starting parallel batch execution with concurrency={self.concurrency}"
-        )
+        logger.info(f"Starting parallel batch execution with concurrency={self.concurrency}")
 
         with ThreadPoolExecutor(max_workers=self.concurrency) as executor:
             futures = {}
             for batch_idx, data_row in enumerate(self.batch_data, start=1):
-                future = executor.submit(
-                    execute_single_batch_isolated, batch_idx, data_row
-                )
+                future = executor.submit(execute_single_batch_isolated, batch_idx, data_row)
                 futures[future] = batch_idx
 
             for future in as_completed(futures):
@@ -939,9 +942,7 @@ class ExcelOrchestrator:
                             running=len([f for f in futures if not f.done()]),
                         )
 
-                    batch_failed = sum(
-                        1 for r in batch_results if r["status"] == "failed"
-                    )
+                    batch_failed = sum(1 for r in batch_results if r["status"] == "failed")
                     if batch_failed > 0:
                         failed_batches.append(batch_idx)
 
@@ -962,11 +963,11 @@ class ExcelOrchestrator:
         return self.results
 
     def run(self) -> str:
-        """
-        Main entry point. Initialize, validate, execute, write results.
+        """Initialize, validate, execute prompts, and write results.
 
         Returns:
             Name of the results sheet created.
+
         """
         self._init_workbook()
         self._load_config()
@@ -1004,7 +1005,7 @@ class ExcelOrchestrator:
 
     def _write_separate_batch_results(self) -> str:
         """Write results to separate sheets per batch."""
-        batches: Dict[int, List[Dict[str, Any]]] = {}
+        batches: dict[int, list[dict[str, Any]]] = {}
         for result in self.results:
             batch_id = result.get("batch_id", 0)
             if batch_id not in batches:
@@ -1021,7 +1022,7 @@ class ExcelOrchestrator:
         logger.info(f"Wrote {len(sheet_names)} batch result sheets")
         return ", ".join(sheet_names)
 
-    def get_summary(self) -> Dict[str, Any]:
+    def get_summary(self) -> dict[str, Any]:
         """Get execution summary."""
         if not self.results:
             return {"status": "not_run"}
@@ -1040,7 +1041,7 @@ class ExcelOrchestrator:
             summary["prompts_with_conditions"] = condition_count
 
         if self.is_batch_mode:
-            batch_ids = set(r.get("batch_id", 0) for r in self.results)
+            batch_ids = {r.get("batch_id", 0) for r in self.results}
             summary["total_batches"] = len(batch_ids)
             summary["batch_mode"] = True
 

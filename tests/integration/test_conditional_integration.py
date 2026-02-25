@@ -5,26 +5,24 @@ These tests verify that conditional expressions control prompt execution
 correctly, including status checks, content checks, and boolean logic.
 """
 
-import pytest
-import sys
 import os
+import sys
 
-sys.path.insert(
-    0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-)
+import pytest
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 
 class TestConditionalExecution:
     """Tests for conditional execution."""
 
-    def test_condition_skip_on_status(
-        self, integration_workbook_with_conditions, spy_client
-    ):
+    def test_condition_skip_on_status(self, integration_workbook_with_conditions, spy_client):
         """
         Verify that {{p1.status}} == "success" works correctly.
         """
-        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
         from openpyxl import load_workbook
+
+        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
 
         orchestrator = ExcelOrchestrator(
             integration_workbook_with_conditions, spy_client, concurrency=1
@@ -44,13 +42,9 @@ class TestConditionalExecution:
                     "condition_result": row[8],
                 }
 
-        assert results["check1"]["status"] == "success", (
-            "check1 should succeed (no condition)"
-        )
+        assert results["check1"]["status"] == "success", "check1 should succeed (no condition)"
 
-        assert results["proceed"]["status"] == "success", (
-            "proceed should run (condition true)"
-        )
+        assert results["proceed"]["status"] == "success", "proceed should run (condition true)"
 
         assert results["combined"]["status"] == "success", (
             "combined should run (both conditions true)"
@@ -60,14 +54,13 @@ class TestConditionalExecution:
             "never_runs should be skipped (condition false)"
         )
 
-    def test_condition_boolean_combination(
-        self, integration_workbook_with_conditions, spy_client
-    ):
+    def test_condition_boolean_combination(self, integration_workbook_with_conditions, spy_client):
         """
         Verify that and/or combinations work.
         """
-        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
         from openpyxl import load_workbook
+
+        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
 
         orchestrator = ExcelOrchestrator(
             integration_workbook_with_conditions, spy_client, concurrency=1
@@ -80,9 +73,7 @@ class TestConditionalExecution:
 
         for row in ws.iter_rows(min_row=2, values_only=True):
             if row[0] is not None and row[1] == "combined":
-                assert row[6] == True, (
-                    f"combined condition_result should be True, got {row[6]}"
-                )
+                assert row[6] == True, f"combined condition_result should be True, got {row[6]}"
                 assert row[8] == "success", f"combined should run, got status {row[8]}"
 
     def test_condition_implies_dependency(self, integration_workbook, spy_client):
@@ -92,8 +83,9 @@ class TestConditionalExecution:
         If p2 has condition {{p1.status}} == "success", then p2
         should wait for p1 to complete, even without explicit history.
         """
-        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
         from openpyxl import load_workbook
+
+        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
 
         wb = load_workbook(integration_workbook)
         ws = wb["prompts"]
@@ -106,9 +98,7 @@ class TestConditionalExecution:
         ws["E3"] = '{{first.status}} == "success"'
         wb.save(integration_workbook)
 
-        orchestrator = ExcelOrchestrator(
-            integration_workbook, spy_client, concurrency=1
-        )
+        orchestrator = ExcelOrchestrator(integration_workbook, spy_client, concurrency=1)
         orchestrator.run()
 
         first_prompt = spy_client.calls[0]["prompt"]
@@ -121,8 +111,9 @@ class TestConditionalExecution:
         """
         Verify that "text" in {{p.response}} works.
         """
-        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
         from openpyxl import load_workbook
+
+        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
 
         class ResponseSpyClient:
             def __init__(self):
@@ -195,8 +186,9 @@ class TestConditionalExecution:
         """
         Verify that len({{p.response}}) > 10 works.
         """
-        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
         from openpyxl import load_workbook
+
+        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
 
         class LengthSpyClient:
             def __init__(self):
@@ -238,21 +230,18 @@ class TestConditionalExecution:
 
         for row in ws.iter_rows(min_row=2, values_only=True):
             if row[2] is not None and row[3] == "check_length":
-                assert row[11] == "success", (
-                    f"check_length should run (len > 10), got {row[11]}"
-                )
+                assert row[11] == "success", f"check_length should run (len > 10), got {row[11]}"
                 return
 
         pytest.fail("check_length result not found")
 
-    def test_skipped_status_recorded(
-        self, integration_workbook_with_conditions, spy_client
-    ):
+    def test_skipped_status_recorded(self, integration_workbook_with_conditions, spy_client):
         """
         Verify that skipped prompts have status="skipped".
         """
-        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
         from openpyxl import load_workbook
+
+        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
 
         orchestrator = ExcelOrchestrator(
             integration_workbook_with_conditions, spy_client, concurrency=1
@@ -268,9 +257,7 @@ class TestConditionalExecution:
                 assert row[11] == "skipped", (
                     f"never_runs should have status 'skipped', got {row[11]}"
                 )
-                assert row[8] == False, (
-                    f"never_runs condition_result should be False, got {row[8]}"
-                )
+                assert row[8] == False, f"never_runs condition_result should be False, got {row[8]}"
                 return
 
         pytest.fail("never_runs result not found")
@@ -285,8 +272,9 @@ class TestConditionalRealAPI:
         """
         Full conditional execution test with real API.
         """
-        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
         from openpyxl import load_workbook
+
+        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
 
         orchestrator = ExcelOrchestrator(
             integration_workbook_with_conditions, real_mistral_client, concurrency=2
@@ -328,8 +316,9 @@ class TestConditionalRealAPI:
         """
         Test condition based on actual response content with real API.
         """
+        from openpyxl import Workbook, load_workbook
+
         from src.orchestrator.excel_orchestrator import ExcelOrchestrator
-        from openpyxl import load_workbook, Workbook
 
         workbook_path = str(tmp_path / "response_cond.xlsx")
 
@@ -368,16 +357,12 @@ class TestConditionalRealAPI:
 
         wb.save(workbook_path)
 
-        orchestrator = ExcelOrchestrator(
-            workbook_path, real_mistral_client, concurrency=1
-        )
+        orchestrator = ExcelOrchestrator(workbook_path, real_mistral_client, concurrency=1)
 
         results_sheet = orchestrator.run()
         summary = orchestrator.get_summary()
 
-        assert summary["successful"] == 2, (
-            f"Should have 2 successful, got {summary['successful']}"
-        )
+        assert summary["successful"] == 2, f"Should have 2 successful, got {summary['successful']}"
 
         wb = load_workbook(workbook_path)
         ws = wb[results_sheet]

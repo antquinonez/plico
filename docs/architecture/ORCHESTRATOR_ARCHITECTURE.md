@@ -159,7 +159,7 @@ The Excel Orchestrator enables non-programmers to define and execute AI prompt w
    clients sheet → WorkbookBuilder.load_clients()
                    └─► For each client config:
                        ClientRegistry.register(name, type, config)
-   
+
 4. PROMPT LOADING
    prompts sheet → WorkbookBuilder.load_prompts()
                    └─► Read all rows
@@ -208,13 +208,13 @@ The Excel Orchestrator enables non-programmers to define and execute AI prompt w
 class ExcelOrchestrator:
     """
     Orchestrates AI prompt execution via Excel workbook.
-    
+
     Features:
     - Sequential and parallel execution
     - Batch execution with variable templating
     - Per-prompt client configuration
     """
-    
+
     def __init__(
         self,
         workbook_path: str,
@@ -225,7 +225,7 @@ class ExcelOrchestrator:
     ):
         """
         Initialize orchestrator.
-        
+
         Args:
             workbook_path: Path to Excel workbook
             client: Default AI client
@@ -233,37 +233,37 @@ class ExcelOrchestrator:
             concurrency: Maximum concurrent API calls (default: 2, max: 10)
             progress_callback: Optional callback for progress updates
         """
-    
+
     def run(self) -> str:
         """
         Main entry point. Execute all prompts and write results.
-        
+
         Returns:
             Name of the results sheet created.
         """
-    
+
     def execute(self) -> List[Dict[str, Any]]:
         """Execute all prompts sequentially."""
-    
+
     def execute_parallel(self) -> List[Dict[str, Any]]:
         """Execute prompts in parallel with dependency-aware scheduling."""
-    
+
     def execute_batch(self) -> List[Dict[str, Any]]:
         """Execute all prompts for each batch row sequentially."""
-    
+
     def execute_batch_parallel(self) -> List[Dict[str, Any]]:
         """Execute batches in parallel."""
-    
+
     def get_summary(self) -> Dict[str, Any]:
         """Get execution summary including batch info if applicable."""
-    
+
     # Variable resolution
     def _resolve_variables(self, text: str, data_row: Dict) -> str:
         """Replace {{variable}} placeholders with values from data row."""
-    
+
     def _resolve_batch_name(self, data_row: Dict, batch_id: int) -> str:
         """Generate batch name from template or default."""
-    
+
     # Client registry
     def _init_client_registry(self) -> None:
         """Initialize client registry from clients sheet."""
@@ -275,10 +275,10 @@ class ExcelOrchestrator:
 class ClientRegistry:
     """
     Registry for AI clients with lazy instantiation.
-    
+
     Supports per-prompt client selection via named configurations.
     """
-    
+
     CLIENT_MAP: Dict[str, Type[FFAIClientBase]] = {
         "mistral": FFMistral,
         "mistral-small": FFMistralSmall,
@@ -289,35 +289,35 @@ class ClientRegistry:
         "azure-mistral": FFAzureMistral,
         # ... more clients
     }
-    
+
     def __init__(self, default_client: FFAIClientBase):
         """Initialize registry with a default client."""
-    
+
     def register(
-        self, 
-        name: str, 
-        client_type: str, 
+        self,
+        name: str,
+        client_type: str,
         config: Optional[Dict[str, Any]] = None
     ) -> None:
         """
         Register a named client configuration.
-        
+
         Args:
             name: Unique identifier
             client_type: Type from CLIENT_MAP
             config: Optional configuration (api_key_env, model, temperature, etc.)
         """
-    
+
     def get(self, name: Optional[str] = None) -> FFAIClientBase:
         """
         Get client by name or default.
-        
+
         If name not found, returns default client with warning.
         """
-    
+
     def clone(self, name: Optional[str] = None) -> FFAIClientBase:
         """Get a fresh clone for parallel execution."""
-    
+
     @classmethod
     def get_available_client_types(cls) -> list:
         """Get list of available client types."""
@@ -328,51 +328,51 @@ class ClientRegistry:
 ```python
 class WorkbookBuilder:
     """Creates and validates Excel workbooks for prompt orchestration."""
-    
+
     CONFIG_SHEET = "config"
     PROMPTS_SHEET = "prompts"
     DATA_SHEET = "data"
     CLIENTS_SHEET = "clients"
-    
+
     def create_template_workbook(
-        self, 
+        self,
         with_data_sheet: bool = False,
         with_clients_sheet: bool = False
     ) -> str:
         """Create a new workbook with template structure."""
-    
+
     def validate_workbook(self) -> bool:
         """Validate workbook has required structure."""
-    
+
     def load_config(self) -> Dict[str, Any]:
         """Load configuration from config sheet."""
-    
+
     def load_prompts(self) -> List[Dict[str, Any]]:
         """
         Load prompts from prompts sheet.
-        
+
         Returns prompts with: sequence, prompt_name, prompt, history, client
         """
-    
+
     def load_data(self) -> List[Dict[str, Any]]:
         """Load batch data from data sheet."""
-    
+
     def load_clients(self) -> List[Dict[str, Any]]:
         """Load client configurations from clients sheet."""
-    
+
     def has_data_sheet(self) -> bool:
         """Check if workbook has a data sheet."""
-    
+
     def has_clients_sheet(self) -> bool:
         """Check if workbook has a clients sheet."""
-    
+
     def write_results(
-        self, 
-        results: List[Dict[str, Any]], 
+        self,
+        results: List[Dict[str, Any]],
         sheet_name: str
     ) -> str:
         """Write execution results to a new sheet."""
-    
+
     def write_batch_results(
         self,
         results: List[Dict[str, Any]],
@@ -392,13 +392,13 @@ Variables in prompts use `{{variable}}` syntax:
 def _resolve_variables(self, text: str, data_row: Dict[str, Any]) -> str:
     """Replace {{variable}} placeholders with values from data row."""
     pattern = r'\{\{(\w+)\}\}'
-    
+
     def replacer(match):
         var_name = match.group(1)
         if var_name in data_row and data_row[var_name] is not None:
             return str(data_row[var_name])
         return match.group(0)  # Keep placeholder if not found
-    
+
     return re.sub(pattern, replacer, text)
 ```
 
@@ -448,12 +448,12 @@ ClientRegistry.get("fast")
 ```python
 def _execute_prompt_isolated(self, prompt: Dict, state: ExecutionState):
     client_name = prompt.get("client")
-    
+
     if client_name:
         isolated_client = self.client_registry.clone(client_name)
     else:
         isolated_client = self.client.clone()
-    
+
     ffai = FFAI(isolated_client)
     # ... execute with isolated client
 ```
@@ -545,32 +545,32 @@ LlamaParse requires `LLAMACLOUD_TOKEN` environment variable for parsing non-text
 class DocumentProcessor:
     def __init__(self, cache_dir: str, api_key: Optional[str] = None):
         """Initialize with cache directory and optional LlamaParse API key."""
-    
+
     def compute_checksum(self, file_path: str) -> str:
         """Compute SHA256 checksum of file."""
-    
+
     def needs_parsing(self, file_path: str, cache_dir: str) -> bool:
         """Check if document needs re-parsing based on checksum."""
-    
+
     def parse_document(self, file_path: str) -> str:
         """Parse document to markdown (LlamaParse or direct read)."""
-    
+
     def save_to_parquet(self, doc_info: Dict, content: str) -> str:
         """Save parsed content to parquet file."""
-    
+
     def load_cached(self, reference_name: str) -> Optional[str]:
         """Load cached content from parquet."""
 
 class DocumentRegistry:
     def __init__(self, documents: List[Dict], processor: DocumentProcessor, workbook_dir: str):
         """Initialize with document definitions and processor."""
-    
+
     def validate_documents(self) -> None:
         """Validate all document paths exist."""
-    
+
     def get_reference_names(self) -> List[str]:
         """Get list of all reference names."""
-    
+
     def inject_references_into_prompt(self, prompt: str, ref_names: List[str]) -> str:
         """Inject document content into prompt."""
 ```
@@ -590,8 +590,8 @@ class DocumentRegistry:
 ### Supported Client Types
 
 ```
-mistral, mistral-small, anthropic, anthropic-cached, gemini, 
-perplexity, nvidia-deepseek, azure-mistral, azure-mistral-small, 
+mistral, mistral-small, anthropic, anthropic-cached, gemini,
+perplexity, nvidia-deepseek, azure-mistral, azure-mistral-small,
 azure-codestral, azure-deepseek, azure-deepseek-v3, azure-phi
 ```
 

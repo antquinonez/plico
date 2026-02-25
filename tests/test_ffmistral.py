@@ -1,6 +1,7 @@
-import pytest
-from unittest.mock import MagicMock, patch
 import os
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 
 class TestFFMistralInit:
@@ -91,9 +92,7 @@ class TestFFMistralGenerateResponse:
             with pytest.raises(ValueError, match="Empty prompt"):
                 client.generate_response("   ")
 
-    def test_generate_response_with_system_instructions_override(
-        self, mock_mistral_client
-    ):
+    def test_generate_response_with_system_instructions_override(self, mock_mistral_client):
         """Test overriding system instructions."""
         with patch("src.Clients.FFMistral.Mistral") as MockMistral:
             MockMistral.return_value = mock_mistral_client
@@ -127,9 +126,7 @@ class TestFFMistralGenerateResponse:
             from src.Clients.FFMistral import FFMistral
 
             client = FFMistral(api_key="test-key")
-            client.generate_response(
-                "Give me JSON", response_format={"type": "json_object"}
-            )
+            client.generate_response("Give me JSON", response_format={"type": "json_object"})
 
             call_args = mock_mistral_client.chat.complete.call_args
             assert call_args.kwargs["response_format"] == {"type": "json_object"}
@@ -193,9 +190,7 @@ class TestFFMistralToolCalls:
             mock_tool_response.choices[0].message.content = "Using tools"
             mock_tool_response.choices[0].message.tool_calls = [MagicMock()]
             mock_tool_response.choices[0].message.tool_calls[0].id = "call_123"
-            mock_tool_response.choices[0].message.tool_calls[
-                0
-            ].function.name = "get_weather"
+            mock_tool_response.choices[0].message.tool_calls[0].function.name = "get_weather"
             mock_tool_response.choices[0].message.tool_calls[
                 0
             ].function.arguments = '{"city": "London"}'
@@ -240,9 +235,7 @@ class TestFFMistralConnectionTest:
     def test_test_connection_failure(self, mock_mistral_client):
         """Test failed connection test."""
         with patch("src.Clients.FFMistral.Mistral") as MockMistral:
-            mock_mistral_client.chat.complete.side_effect = Exception(
-                "Connection failed"
-            )
+            mock_mistral_client.chat.complete.side_effect = Exception("Connection failed")
             MockMistral.return_value = mock_mistral_client
 
             from src.Clients.FFMistral import FFMistral

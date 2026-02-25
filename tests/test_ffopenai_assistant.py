@@ -1,6 +1,7 @@
-import pytest
-from unittest.mock import MagicMock, patch
 import os
+from unittest.mock import MagicMock, patch
+
+import pytest
 
 
 @pytest.fixture
@@ -90,9 +91,7 @@ class TestFFOpenAIAssistantInit:
             MockOpenAI.return_value = mock_openai_assistant_client
             from src.Clients.FFOpenAIAssistant import FFOpenAIAssistant
 
-            client = FFOpenAIAssistant(
-                api_key="test-key", assistant_id="existing-assistant-id"
-            )
+            client = FFOpenAIAssistant(api_key="test-key", assistant_id="existing-assistant-id")
 
             assert client.assistant_id == "asst_test123"
             mock_openai_assistant_client.beta.assistants.retrieve.assert_called_once()
@@ -137,9 +136,7 @@ class TestFFOpenAIAssistantGenerateResponse:
 
             mock_openai_assistant_client.beta.threads.create.assert_not_called()
 
-    def test_generate_response_adds_message_to_thread(
-        self, mock_openai_assistant_client
-    ):
+    def test_generate_response_adds_message_to_thread(self, mock_openai_assistant_client):
         """Test that user message is added to thread."""
         with patch("src.Clients.FFOpenAIAssistant.OpenAI") as MockOpenAI:
             MockOpenAI.return_value = mock_openai_assistant_client
@@ -189,9 +186,7 @@ class TestFFOpenAIAssistantCreation:
             MockOpenAI.return_value = mock_openai_assistant_client
             from src.Clients.FFOpenAIAssistant import FFOpenAIAssistant
 
-            client = FFOpenAIAssistant(
-                api_key="test-key", assistant_name="my-assistant"
-            )
+            client = FFOpenAIAssistant(api_key="test-key", assistant_name="my-assistant")
 
             assert client.assistant_id == "existing-asst-id"
             mock_openai_assistant_client.beta.assistants.create.assert_not_called()
@@ -202,9 +197,7 @@ class TestFFOpenAIAssistantErrorHandling:
 
     def test_generate_response_api_error(self, mock_openai_assistant_client):
         """Test handling API error during response generation."""
-        mock_openai_assistant_client.beta.threads.runs.create.side_effect = Exception(
-            "API Error"
-        )
+        mock_openai_assistant_client.beta.threads.runs.create.side_effect = Exception("API Error")
 
         with patch("src.Clients.FFOpenAIAssistant.OpenAI") as MockOpenAI:
             MockOpenAI.return_value = mock_openai_assistant_client
@@ -226,7 +219,5 @@ class TestFFOpenAIAssistantErrorHandling:
                 MockOpenAI.return_value = mock_openai_assistant_client
                 from src.Clients.FFOpenAIAssistant import FFOpenAIAssistant
 
-                with pytest.raises(
-                    RuntimeError, match="Error creating OpenAI assistant"
-                ):
+                with pytest.raises(RuntimeError, match="Error creating OpenAI assistant"):
                     FFOpenAIAssistant(api_key="test-key")

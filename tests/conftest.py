@@ -1,8 +1,8 @@
 import os
 import sys
-import pytest
 from unittest.mock import MagicMock, patch
-from typing import List, Dict, Any
+
+import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -239,9 +239,7 @@ def sample_batch_data():
 
 
 @pytest.fixture
-def temp_workbook_with_batch_data(
-    temp_workbook, sample_prompts, sample_config, sample_batch_data
-):
+def temp_workbook_with_batch_data(temp_workbook, sample_prompts, sample_config, sample_batch_data):
     """Create a workbook with sample data including batch data sheet."""
     from openpyxl import Workbook
 

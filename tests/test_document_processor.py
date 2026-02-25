@@ -1,8 +1,7 @@
 import os
-import json
-import pytest
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+
+import pytest
 
 from src.orchestrator.document_processor import DocumentProcessor
 
@@ -175,15 +174,11 @@ class TestParseDocument:
 
 
 class TestStoreDocument:
-    def test_store_document_creates_parquet(
-        self, processor, fixtures_dir, temp_cache_dir
-    ):
+    def test_store_document_creates_parquet(self, processor, fixtures_dir, temp_cache_dir):
         file_path = fixtures_dir / "client_info.txt"
         content = processor.parse_document(str(file_path))
 
-        parquet_path = processor.store_document(
-            str(file_path), "test_ref", "Test Doc", content
-        )
+        parquet_path = processor.store_document(str(file_path), "test_ref", "Test Doc", content)
 
         assert os.path.exists(parquet_path)
         assert parquet_path.endswith(".parquet")
@@ -193,9 +188,7 @@ class TestStoreDocument:
 
         file_path = fixtures_dir / "client_info.txt"
         content = "test content"
-        parquet_path = processor.store_document(
-            str(file_path), "test_ref", "Test Doc", content
-        )
+        parquet_path = processor.store_document(str(file_path), "test_ref", "Test Doc", content)
 
         df = pl.read_parquet(parquet_path)
 
@@ -212,9 +205,7 @@ class TestLoadDocument:
     def test_load_document_returns_dict(self, processor, fixtures_dir):
         file_path = fixtures_dir / "client_info.txt"
         content = "test content for loading"
-        parquet_path = processor.store_document(
-            str(file_path), "load_test", "Load Test", content
-        )
+        parquet_path = processor.store_document(str(file_path), "load_test", "Load Test", content)
 
         doc_data = processor.load_document(parquet_path)
 
@@ -228,21 +219,15 @@ class TestGetDocumentContent:
     def test_get_document_content_parses_first_time(self, processor, fixtures_dir):
         file_path = fixtures_dir / "client_info.txt"
 
-        content = processor.get_document_content(
-            str(file_path), "client_info", "Client Info"
-        )
+        content = processor.get_document_content(str(file_path), "client_info", "Client Info")
 
         assert "Client Information Report" in content
 
     def test_get_document_content_uses_cache(self, processor, fixtures_dir, tmp_path):
         file_path = fixtures_dir / "client_info.txt"
-        content1 = processor.get_document_content(
-            str(file_path), "cached_doc", "Cached Doc"
-        )
+        content1 = processor.get_document_content(str(file_path), "cached_doc", "Cached Doc")
 
-        content2 = processor.get_document_content(
-            str(file_path), "cached_doc", "Cached Doc"
-        )
+        content2 = processor.get_document_content(str(file_path), "cached_doc", "Cached Doc")
 
         assert content1 == content2
 

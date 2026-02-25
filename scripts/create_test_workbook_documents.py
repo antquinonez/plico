@@ -14,7 +14,6 @@ Usage:
 
 import os
 import sys
-import json
 from datetime import datetime
 from pathlib import Path
 
@@ -75,9 +74,7 @@ def create_test_workbook(output_path: str):
         ),
     ]
 
-    for row_idx, (ref_name, common_name, file_path, notes) in enumerate(
-        documents, start=2
-    ):
+    for row_idx, (ref_name, common_name, file_path, notes) in enumerate(documents, start=2):
         ws_documents.cell(row=row_idx, column=1, value=ref_name)
         ws_documents.cell(row=row_idx, column=2, value=common_name)
         ws_documents.cell(row=row_idx, column=3, value=file_path)
@@ -195,8 +192,8 @@ def create_test_workbook(output_path: str):
     for ref_name, common_name, _, _ in documents:
         print(f"  - {ref_name}: {common_name}")
     print(f"\nPrompts defined: {len(prompts)}")
-    print(f"  - 6 prompts with document references")
-    print(f"  - 1 prompt without references")
+    print("  - 6 prompts with document references")
+    print("  - 1 prompt without references")
     print(f"\n{'=' * 60}")
     print(f"Run with: python scripts/run_orchestrator.py {output_path}")
     print(f"{'=' * 60}\n")

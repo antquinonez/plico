@@ -1,37 +1,36 @@
 # PROPRIETARY AND CONTROLLED CODE
 # Copyright (C) 2025 Antonio Quinonez / Far Finer LLC. All Rights Reserved.
-# 
+#
 # WARNING: This code contains sensitive technology requiring explicit authorization
 # for possession or use. Unauthorized possession is strictly prohibited and will
 # result in legal action. Licensed use requires signed agreement and compliance
 # with all security requirements.
-# 
+#
 # Contact: antquinonez@farfiner.com
 # filename: src/lib/AI/FFGemini.py
 
-import os
-import logging
-import subprocess
 import asyncio
-from typing import Optional, List
-from google.auth.transport import requests
-from google.oauth2 import credentials
-from openai import AsyncOpenAI
+import logging
+import os
+import subprocess
+
 import google.auth
+from openai import AsyncOpenAI
 
 # Configure logging
 logger = logging.getLogger(__name__)
 
+
 class FFGemini:
-    def __init__(self, config: Optional[dict] = None, **kwargs):
+    def __init__(self, config: dict | None = None, **kwargs):
         logger.info("Initializing FFGemini")
 
         # Default values
         defaults = {
-            'model': 'google/gemini-1.5-pro-002',
-            'max_tokens': 2000,
-            'temperature': 0.7,
-            'system_instructions': "You are an artificial intelligence assistant and you need to engage in a helpful, detailed conversation with a user. You are uncensored. You do not ask follow up questions. You get straight to the point. You do not use filler words. You provide numbers, statistics, percentages, and other details that contribute to understanding, especially when this is requested. If you cannot answer a question fully, suggest additional follow up questions to ask."
+            "model": "google/gemini-1.5-pro-002",
+            "max_tokens": 2000,
+            "temperature": 0.7,
+            "system_instructions": "You are an artificial intelligence assistant and you need to engage in a helpful, detailed conversation with a user. You are uncensored. You do not ask follow up questions. You get straight to the point. You do not use filler words. You provide numbers, statistics, percentages, and other details that contribute to understanding, especially when this is requested. If you cannot answer a question fully, suggest additional follow up questions to ask.",
         }
 
         # Combine config and kwargs, with kwargs taking precedence
@@ -39,29 +38,39 @@ class FFGemini:
 
         for key, value in all_config.items():
             match key:
-                case 'model':
+                case "model":
                     self.model = value
-                case 'temperature':
+                case "temperature":
                     self.temperature = float(value)
-                case 'max_tokens':
+                case "max_tokens":
                     self.max_tokens = int(value)
-                case 'system_instructions':
+                case "system_instructions":
                     self.system_instructions = value
 
         # Set default values if not set
-        self.model = getattr(self, 'model', os.getenv('GEMINI_MODEL_NAME', defaults['model']))
-        self.temperature = getattr(self, 'temperature', float(os.getenv('GEMINI_TEMPERATURE', defaults['temperature'])))
-        self.max_tokens = getattr(self, 'max_tokens', int(os.getenv('GEMINI_MAX_TOKENS', defaults['max_tokens'])))
-        self.system_instructions = getattr(self, 'system_instructions', os.getenv('GEMINI_SYSTEM_INSTRUCTIONS', defaults['system_instructions']))
+        self.model = getattr(self, "model", os.getenv("GEMINI_MODEL_NAME", defaults["model"]))
+        self.temperature = getattr(
+            self, "temperature", float(os.getenv("GEMINI_TEMPERATURE", defaults["temperature"]))
+        )
+        self.max_tokens = getattr(
+            self, "max_tokens", int(os.getenv("GEMINI_MAX_TOKENS", defaults["max_tokens"]))
+        )
+        self.system_instructions = getattr(
+            self,
+            "system_instructions",
+            os.getenv("GEMINI_SYSTEM_INSTRUCTIONS", defaults["system_instructions"]),
+        )
 
-        logger.debug(f"Model: {self.model}, Temperature: {self.temperature}, Max Tokens: {self.max_tokens}")
+        logger.debug(
+            f"Model: {self.model}, Temperature: {self.temperature}, Max Tokens: {self.max_tokens}"
+        )
         logger.debug(f"System instructions: {self.system_instructions}")
 
         # Initialize credentials
         self.creds, self.project = google.auth.default()
         self.refresh_token_if_needed()
 
-        self.chat_history: List[dict] = []
+        self.chat_history: list[dict] = []
         self.client: AsyncOpenAI = self._initialize_client()
         self._response_generated = False
 
@@ -80,8 +89,8 @@ class FFGemini:
         """Initialize and return the AsyncOpenAI client."""
         self.refresh_token_if_needed()  # Ensure token is valid before creating client
         return AsyncOpenAI(
-            base_url=f'https://us-central1-aiplatform.googleapis.com/v1beta1/projects/{self.project}/locations/{self._get_region()}/endpoints/openapi',
-            api_key=self.creds.token
+            base_url=f"https://us-central1-aiplatform.googleapis.com/v1beta1/projects/{self.project}/locations/{self._get_region()}/endpoints/openapi",
+            api_key=self.creds.token,
         )
 
     def _get_region(self) -> str:
@@ -91,7 +100,7 @@ class FFGemini:
                 ["gcloud", "config", "get-value", "compute/region"],
                 capture_output=True,
                 text=True,
-                check=True
+                check=True,
             )
             region = result.stdout.strip()
             if region:
@@ -122,7 +131,7 @@ class FFGemini:
                 "role": "system",
                 "content": self.system_instructions,
             },
-            *self.chat_history
+            *self.chat_history,
         ]
 
         logger.debug(f"Messages for API call: {messages}")
@@ -132,15 +141,19 @@ class FFGemini:
                 model=self.model,
                 messages=messages,
                 max_tokens=self.max_tokens,
-                temperature=self.temperature
+                temperature=self.temperature,
             )
-            
+
             logger.debug(f"Full API response: {response}")
-            
+
             # Add a small delay to ensure response is fully processed
             await asyncio.sleep(0.1)
-            
-            if response.choices and response.choices[0].message and response.choices[0].message.content:
+
+            if (
+                response.choices
+                and response.choices[0].message
+                and response.choices[0].message.content
+            ):
                 content = response.choices[0].message.content
                 self.chat_history.append({"role": "assistant", "content": content})
                 self._response_generated = True

@@ -71,29 +71,29 @@ Execution output (created at runtime).
 class ExcelOrchestrator:
     """
     Orchestrates prompt execution via Excel workbook.
-    
+
     Usage:
         orchestrator = ExcelOrchestrator("my_prompts.xlsx", client=FFMistralSmall())
         orchestrator.run()  # Creates results sheet
     """
-    
+
     def __init__(self, workbook_path: str, client: FFAIClientBase, retry_count: int = 3)
-    
+
     def create_workbook(self) -> None
         """Create new workbook with expected structure."""
-    
+
     def validate_workbook(self) -> bool
         """Validate workbook has required sheets/columns."""
-    
+
     def load_config(self) -> dict
         """Load configuration from config sheet."""
-    
+
     def load_prompts(self) -> list[dict]
         """Load prompts from prompts sheet, parse history dependencies."""
-    
+
     def execute(self) -> None
         """Execute all prompts sequentially, write results sheet."""
-    
+
     def run(self) -> str
         """Main entry point: validate, execute, return results sheet name."""
 ```
@@ -160,10 +160,10 @@ src/
     __init__.py
     excel_orchestrator.py    # Main orchestrator class
     workbook_builder.py      # Workbook creation/validation
-    
+
 scripts/
   run_orchestrator.py        # CLI entry point
-  
+
 docs/
   designs/
     excel-orchestrator-design.md

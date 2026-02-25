@@ -1,10 +1,10 @@
-import os
-import time
-import logging
 import json
-from typing import Optional, List, Dict, Any, Union
-from mistralai import Mistral
+import logging
+import os
+from typing import Any
+
 from dotenv import load_dotenv
+from mistralai import Mistral
 
 from ..FFAIClientBase import FFAIClientBase
 
@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 class FFMistralSmall(FFAIClientBase):
-    def __init__(self, config: Optional[dict] = None, **kwargs):
+    def __init__(self, config: dict | None = None, **kwargs):
         logger.info("Initializing FFMistralSmall")
 
         # DEFAULT VALUES
@@ -37,17 +37,13 @@ class FFMistralSmall(FFAIClientBase):
                 case "temperature":
                     self.temperature = float(value)
                 case "max_tokens":
-                    self.max_tokens = (
-                        int(value) if value is not None else defaults["max_tokens"]
-                    )
+                    self.max_tokens = int(value) if value is not None else defaults["max_tokens"]
                 case "system_instructions":
                     self.system_instructions = value
 
         # Set default values if not set
         self.api_key = getattr(self, "api_key", os.getenv("MISTRALSMALL_KEY"))
-        self.model = getattr(
-            self, "model", os.getenv("MISTRALSMALL_MODEL", defaults["model"])
-        )
+        self.model = getattr(self, "model", os.getenv("MISTRALSMALL_MODEL", defaults["model"]))
         self.temperature = getattr(
             self,
             "temperature",
@@ -86,11 +82,11 @@ class FFMistralSmall(FFAIClientBase):
 
         return client
 
-    def get_conversation_history(self) -> List[Dict[str, str]]:
+    def get_conversation_history(self) -> list[dict[str, str]]:
         """Get the conversation history."""
         return self.conversation_history
 
-    def set_conversation_history(self, history: List[Dict[str, str]]) -> None:
+    def set_conversation_history(self, history: list[dict[str, str]]) -> None:
         """Set the conversation history."""
         self.conversation_history = history
 
@@ -104,7 +100,7 @@ class FFMistralSmall(FFAIClientBase):
             system_instructions=self.system_instructions,
         )
 
-    def _convert_history_to_messages(self) -> List[Dict[str, str]]:
+    def _convert_history_to_messages(self) -> list[dict[str, str]]:
         """Convert conversation history to Mistral message format."""
         messages = []
 
@@ -115,9 +111,7 @@ class FFMistralSmall(FFAIClientBase):
         # Add conversation history
         for message in self.conversation_history:
             if message["role"] in ["user", "assistant", "tool"]:
-                messages.append(
-                    {"role": message["role"], "content": message["content"]}
-                )
+                messages.append({"role": message["role"], "content": message["content"]})
 
                 # Add tool_call_id if present for tool messages
                 if message["role"] == "tool" and "tool_call_id" in message:
@@ -128,19 +122,19 @@ class FFMistralSmall(FFAIClientBase):
     def generate_response(
         self,
         prompt: str,
-        model: Optional[str] = None,
-        system_instructions: Optional[str] = None,
-        temperature: Optional[float] = None,
-        max_tokens: Optional[int] = None,
-        max_completion_tokens: Optional[int] = None,
-        top_p: Optional[float] = None,
-        presence_penalty: Optional[float] = None,
-        frequency_penalty: Optional[float] = None,
-        stop: Optional[List[str]] = None,
-        response_format: Optional[Union[str, Dict]] = None,
-        tools: Optional[List[Dict]] = None,
-        tool_choice: Optional[str] = None,
-        safe_mode: Optional[bool] = None,
+        model: str | None = None,
+        system_instructions: str | None = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+        max_completion_tokens: int | None = None,
+        top_p: float | None = None,
+        presence_penalty: float | None = None,
+        frequency_penalty: float | None = None,
+        stop: list[str] | None = None,
+        response_format: str | dict | None = None,
+        tools: list[dict] | None = None,
+        tool_choice: str | None = None,
+        safe_mode: bool | None = None,
         **kwargs,
     ) -> str:
         """
@@ -180,9 +174,7 @@ class FFMistralSmall(FFAIClientBase):
             try:
                 used_max_tokens = int(max_completion_tokens)
             except (ValueError, TypeError):
-                logger.warning(
-                    f"Invalid max_completion_tokens value: {max_completion_tokens}"
-                )
+                logger.warning(f"Invalid max_completion_tokens value: {max_completion_tokens}")
 
         if used_max_tokens is None and max_tokens is not None:
             try:
@@ -248,10 +240,7 @@ class FFMistralSmall(FFAIClientBase):
             if response_format:
                 if isinstance(response_format, dict):
                     api_params["response_format"] = response_format
-                elif (
-                    isinstance(response_format, str)
-                    and "json" in response_format.lower()
-                ):
+                elif isinstance(response_format, str) and "json" in response_format.lower():
                     api_params["response_format"] = {"type": "json_object"}
 
             if tools and isinstance(tools, list):

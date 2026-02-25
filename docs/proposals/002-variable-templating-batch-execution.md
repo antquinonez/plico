@@ -173,13 +173,13 @@ def _resolve_variables(self, text: str, data_row: Dict) -> str:
     """Replace {{variable}} placeholders with values from data row."""
     import re
     pattern = r'\{\{(\w+)\}\}'
-    
+
     def replacer(match):
         var_name = match.group(1)
         if var_name in data_row:
             return str(data_row[var_name])
         raise ValueError(f"Variable '{var_name}' not found in data row")
-    
+
     return re.sub(pattern, replacer, text)
 ```
 
@@ -190,15 +190,15 @@ def execute_batch(self) -> List[Dict]:
     """Execute prompts for each row in data sheet."""
     data_rows = self.workbook_builder.load_data()
     all_results = []
-    
+
     for batch_id, row in enumerate(data_rows, start=1):
         # Resolve variables in prompts
         resolved_prompts = self._resolve_prompt_variables(self.prompts, row)
-        
+
         # Execute the chain
         results = self._execute_chain(resolved_prompts, batch_id=batch_id)
         all_results.extend(results)
-    
+
     return all_results
 ```
 
@@ -209,10 +209,10 @@ With `--concurrency 4`, up to 4 batch rows execute in parallel:
 ```python
 def execute_batch_parallel(self, concurrency: int) -> List[Dict]:
     from concurrent.futures import ThreadPoolExecutor, as_completed
-    
+
     data_rows = self.workbook_builder.load_data()
     all_results = []
-    
+
     with ThreadPoolExecutor(max_workers=concurrency) as executor:
         futures = {
             executor.submit(
@@ -223,11 +223,11 @@ def execute_batch_parallel(self, concurrency: int) -> List[Dict]:
             ): batch_id
             for batch_id, row in enumerate(data_rows, start=1)
         }
-        
+
         for future in as_completed(futures):
             results = future.result()
             all_results.extend(results)
-    
+
     return all_results
 ```
 

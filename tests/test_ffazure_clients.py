@@ -1,6 +1,7 @@
-import pytest
-from unittest.mock import MagicMock, patch
 import os
+from unittest.mock import patch
+
+import pytest
 
 
 class TestFFAzureMistralInit:
@@ -12,9 +13,7 @@ class TestFFAzureMistralInit:
             MockClient.return_value = mock_azure_client
             from src.Clients.FFAzureMistral import FFAzureMistral
 
-            client = FFAzureMistral(
-                api_key="test-key", endpoint="https://test.endpoint.com"
-            )
+            client = FFAzureMistral(api_key="test-key", endpoint="https://test.endpoint.com")
 
             assert client.api_key == "test-key"
             assert client.endpoint == "https://test.endpoint.com"
@@ -39,9 +38,7 @@ class TestFFAzureMistralGenerateResponse:
             MockClient.return_value = mock_azure_client
             from src.Clients.FFAzureMistral import FFAzureMistral
 
-            client = FFAzureMistral(
-                api_key="test-key", endpoint="https://test.endpoint.com"
-            )
+            client = FFAzureMistral(api_key="test-key", endpoint="https://test.endpoint.com")
             response = client.generate_response("Hello!")
 
             assert response == "This is a test response."
@@ -53,9 +50,7 @@ class TestFFAzureMistralGenerateResponse:
             MockClient.return_value = mock_azure_client
             from src.Clients.FFAzureMistral import FFAzureMistral
 
-            client = FFAzureMistral(
-                api_key="test-key", endpoint="https://test.endpoint.com"
-            )
+            client = FFAzureMistral(api_key="test-key", endpoint="https://test.endpoint.com")
             client.generate_response("Hello!", model="custom-model")
 
             call_kwargs = mock_azure_client.complete.call_args.kwargs
@@ -71,9 +66,7 @@ class TestFFAzureMistralSmallInit:
             MockClient.return_value = mock_azure_client
             from src.Clients.FFAzureMistralSmall import FFAzureMistralSmall
 
-            client = FFAzureMistralSmall(
-                api_key="test-key", endpoint="https://test.endpoint.com"
-            )
+            client = FFAzureMistralSmall(api_key="test-key", endpoint="https://test.endpoint.com")
 
             assert client.api_key == "test-key"
             assert "mistral" in client.model.lower()
@@ -88,9 +81,7 @@ class TestFFAzureCodestralInit:
             MockClient.return_value = mock_azure_client
             from src.Clients.FFAzureCodestral import FFAzureCodestral
 
-            client = FFAzureCodestral(
-                api_key="test-key", endpoint="https://test.endpoint.com"
-            )
+            client = FFAzureCodestral(api_key="test-key", endpoint="https://test.endpoint.com")
 
             assert client.api_key == "test-key"
             assert "codestral" in client.model.lower()
@@ -101,9 +92,7 @@ class TestFFAzureCodestralInit:
             MockClient.return_value = mock_azure_client
             from src.Clients.FFAzureCodestral import FFAzureCodestral
 
-            client = FFAzureCodestral(
-                api_key="test-key", endpoint="https://test.endpoint.com"
-            )
+            client = FFAzureCodestral(api_key="test-key", endpoint="https://test.endpoint.com")
             response = client.generate_code("Write a hello world", language="python")
 
             assert response == "This is a test response."
@@ -114,9 +103,7 @@ class TestFFAzureCodestralInit:
             MockClient.return_value = mock_azure_client
             from src.Clients.FFAzureCodestral import FFAzureCodestral
 
-            client = FFAzureCodestral(
-                api_key="test-key", endpoint="https://test.endpoint.com"
-            )
+            client = FFAzureCodestral(api_key="test-key", endpoint="https://test.endpoint.com")
             response = client.explain_code("print('hello')")
 
             assert response == "This is a test response."
@@ -127,9 +114,7 @@ class TestFFAzureCodestralInit:
             MockClient.return_value = mock_azure_client
             from src.Clients.FFAzureCodestral import FFAzureCodestral
 
-            client = FFAzureCodestral(
-                api_key="test-key", endpoint="https://test.endpoint.com"
-            )
+            client = FFAzureCodestral(api_key="test-key", endpoint="https://test.endpoint.com")
             response = client.explain_code("print('hello')")
 
             assert response == "This is a test response."
@@ -140,9 +125,7 @@ class TestFFAzureCodestralInit:
             MockClient.return_value = mock_azure_client
             from src.Clients.FFAzureCodestral import FFAzureCodestral
 
-            client = FFAzureCodestral(
-                api_key="test-key", endpoint="https://test.endpoint.com"
-            )
+            client = FFAzureCodestral(api_key="test-key", endpoint="https://test.endpoint.com")
             response = client.explain_code("print('hello')")
 
             assert response == "This is a test response."
@@ -157,9 +140,7 @@ class TestFFAzureDeepSeekInit:
             MockClient.return_value = mock_azure_client
             from src.Clients.FFAzureDeepSeek import FFAzureDeepSeek
 
-            client = FFAzureDeepSeek(
-                api_key="test-key", endpoint="https://test.endpoint.com"
-            )
+            client = FFAzureDeepSeek(api_key="test-key", endpoint="https://test.endpoint.com")
 
             assert client.api_key == "test-key"
             assert "deepseek" in client.model.lower()
@@ -174,9 +155,7 @@ class TestFFAzureDeepSeekV3Init:
             MockClient.return_value = mock_azure_client
             from src.Clients.FFAzureDeepSeekV3 import FFAzureDeepSeekV3
 
-            client = FFAzureDeepSeekV3(
-                api_key="test-key", endpoint="https://test.endpoint.com"
-            )
+            client = FFAzureDeepSeekV3(api_key="test-key", endpoint="https://test.endpoint.com")
 
             assert client.api_key == "test-key"
             assert "deepseek" in client.model.lower()
@@ -187,15 +166,11 @@ class TestFFAzureMSDeepSeekR1Init:
 
     def test_init_with_api_key_and_endpoint(self, mock_azure_client):
         """Test initialization with explicit credentials."""
-        with patch(
-            "src.Clients.FFAzureMSDeepSeekR1.ChatCompletionsClient"
-        ) as MockClient:
+        with patch("src.Clients.FFAzureMSDeepSeekR1.ChatCompletionsClient") as MockClient:
             MockClient.return_value = mock_azure_client
             from src.Clients.FFAzureMSDeepSeekR1 import FFAzureMSDeepSeekR1
 
-            client = FFAzureMSDeepSeekR1(
-                api_key="test-key", endpoint="https://test.endpoint.com"
-            )
+            client = FFAzureMSDeepSeekR1(api_key="test-key", endpoint="https://test.endpoint.com")
 
             assert client.api_key == "test-key"
             assert "mai-ds-r1" in client.model.lower()
@@ -210,9 +185,7 @@ class TestFFAzurePhiInit:
             MockClient.return_value = mock_azure_client
             from src.Clients.FFAzurePhi import FFAzurePhi
 
-            client = FFAzurePhi(
-                api_key="test-key", endpoint="https://test.endpoint.com"
-            )
+            client = FFAzurePhi(api_key="test-key", endpoint="https://test.endpoint.com")
 
             assert client.api_key == "test-key"
             assert "phi" in client.model.lower()
@@ -227,9 +200,7 @@ class TestFFAzureClientCommonMethods:
             MockClient.return_value = mock_azure_client
             from src.Clients.FFAzureMistral import FFAzureMistral
 
-            client = FFAzureMistral(
-                api_key="test-key", endpoint="https://test.endpoint.com"
-            )
+            client = FFAzureMistral(api_key="test-key", endpoint="https://test.endpoint.com")
 
             client.set_conversation_history([{"role": "user", "content": "test"}])
             history = client.get_conversation_history()
@@ -244,9 +215,7 @@ class TestFFAzureClientCommonMethods:
             MockClient.return_value = mock_azure_client
             from src.Clients.FFAzureMistral import FFAzureMistral
 
-            client = FFAzureMistral(
-                api_key="test-key", endpoint="https://test.endpoint.com"
-            )
+            client = FFAzureMistral(api_key="test-key", endpoint="https://test.endpoint.com")
 
             result = client.test_connection()
             assert result is True
@@ -259,9 +228,7 @@ class TestFFAzureClientCommonMethods:
 
             from src.Clients.FFAzureMistral import FFAzureMistral
 
-            client = FFAzureMistral(
-                api_key="test-key", endpoint="https://test.endpoint.com"
-            )
+            client = FFAzureMistral(api_key="test-key", endpoint="https://test.endpoint.com")
 
             result = client.test_connection()
             assert result is False
@@ -272,9 +239,7 @@ class TestFFAzureClientCommonMethods:
             MockClient.return_value = mock_azure_client
             from src.Clients.FFAzureMistral import FFAzureMistral
 
-            client = FFAzureMistral(
-                api_key="test-key", endpoint="https://test.endpoint.com"
-            )
+            client = FFAzureMistral(api_key="test-key", endpoint="https://test.endpoint.com")
 
             client.add_tool_result("call_123", {"result": "success"})
 
@@ -294,9 +259,7 @@ class TestFFAzureClientErrorHandling:
 
             from src.Clients.FFAzureMistral import FFAzureMistral
 
-            client = FFAzureMistral(
-                api_key="test-key", endpoint="https://test.endpoint.com"
-            )
+            client = FFAzureMistral(api_key="test-key", endpoint="https://test.endpoint.com")
 
             with pytest.raises(RuntimeError, match="Error generating response"):
                 client.generate_response("Hello!")

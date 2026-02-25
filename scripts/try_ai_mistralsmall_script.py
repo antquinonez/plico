@@ -8,15 +8,13 @@
 #
 # Contact: antquinonez@farfiner.com
 
-import os
-import sys
 import logging
-import pandas as pd
-import matplotlib.pyplot as plt
-from dotenv import load_dotenv
+import os
 
-from src.FFAI import FFAI as AI
+import matplotlib.pyplot as plt
+
 from src.Clients.FFMistralSmall import FFMistralSmall as LLM
+from src.FFAI import FFAI as AI
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -32,11 +30,12 @@ azure_client = LLM(
 logger.info("Azure client created")
 
 # Create the wrapper
-ffai = AI(azure_client,
-          persist_dir="./ffai_data",
-          persist_name="mistral_session",
-          auto_persist=True  # Change to True for immediate persistence
-    )
+ffai = AI(
+    azure_client,
+    persist_dir="./ffai_data",
+    persist_name="mistral_session",
+    auto_persist=True,  # Change to True for immediate persistence
+)
 logger.info("AI wrapper created with persistence support")
 
 
@@ -52,9 +51,7 @@ logger.info(f"Response to greeting: {response}")
 response = ffai.generate_response("what is 2 +2?", prompt_name="math")
 logger.info(f"Response to math question: {response}")
 
-response = ffai.generate_response(
-    "concatenate these words: cat, dog ", prompt_name="pet"
-)
+response = ffai.generate_response("concatenate these words: cat, dog ", prompt_name="pet")
 logger.info(f"Response to concatenation: {response}")
 
 ffai.clear_conversation()
@@ -314,12 +311,8 @@ if not history_df.is_empty():
         pd_df["response_length"] = pd_df["response"].str.len()
 
         # Group by prompt_name and calculate average response length
-        response_lengths = (
-            pd_df.groupby("prompt_name")["response_length"].mean().reset_index()
-        )
-        response_lengths = response_lengths.sort_values(
-            "response_length", ascending=False
-        )
+        response_lengths = pd_df.groupby("prompt_name")["response_length"].mean().reset_index()
+        response_lengths = response_lengths.sort_values("response_length", ascending=False)
 
         logger.info("Average response length by prompt name:")
         logger.info(response_lengths)
@@ -344,16 +337,12 @@ if not history_df.is_empty():
             .mean()
             .reset_index()
         )
-        response_by_prompt = response_by_prompt.sort_values(
-            "response_length", ascending=False
-        )
+        response_by_prompt = response_by_prompt.sort_values("response_length", ascending=False)
 
         if len(response_by_prompt) > 0:
             # Create simple bar chart
             plt.figure(figsize=(10, 6))
-            plt.bar(
-                response_by_prompt["prompt_name"], response_by_prompt["response_length"]
-            )
+            plt.bar(response_by_prompt["prompt_name"], response_by_prompt["response_length"])
             plt.title("Average Response Length by Prompt Name")
             plt.xlabel("Prompt Name")
             plt.ylabel("Average Response Length (chars)")

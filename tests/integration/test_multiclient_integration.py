@@ -5,27 +5,26 @@ These tests verify that different clients can be used for different
 prompts within the same workbook.
 """
 
-import pytest
-import sys
 import os
+import sys
 
-sys.path.insert(
-    0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-)
+import pytest
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 
 class TestMultiClientExecution:
     """Tests for multi-client execution."""
 
-    def test_correct_client_per_prompt(
-        self, integration_workbook_with_clients, spy_client
-    ):
+    def test_correct_client_per_prompt(self, integration_workbook_with_clients, spy_client):
         """
         Verify that prompt with client="fast" uses fast client config.
         """
-        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
-        from openpyxl import load_workbook
         from unittest.mock import patch
+
+        from openpyxl import load_workbook
+
+        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
 
         def mock_create_client(registry_self, name):
             config = registry_self._client_configs[name]["config"]
@@ -69,8 +68,9 @@ class TestMultiClientExecution:
         """
         Verify that prompt without 'client' uses default client.
         """
-        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
         from unittest.mock import patch
+
+        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
 
         def mock_create_client(registry_self, name):
             config = registry_self._client_configs[name]["config"]
@@ -96,8 +96,8 @@ class TestMultiClientExecution:
         """
         Verify that named client clones don't share history.
         """
-        from src.orchestrator.client_registry import ClientRegistry
         from src.Clients.FFMistralSmall import FFMistralSmall
+        from src.orchestrator.client_registry import ClientRegistry
 
         api_key = os.getenv("MISTRALSMALL_KEY")
         if not api_key:
@@ -108,9 +108,7 @@ class TestMultiClientExecution:
         )
 
         registry = ClientRegistry(default_client)
-        registry.register(
-            "test_client", "mistral-small", {"temperature": 0.3, "max_tokens": 50}
-        )
+        registry.register("test_client", "mistral-small", {"temperature": 0.3, "max_tokens": 50})
 
         clone1 = registry.clone("test_client")
         clone2 = registry.clone("test_client")
@@ -121,9 +119,7 @@ class TestMultiClientExecution:
         assert len(clone1.conversation_history) == 4, (
             "clone1 should have 4 messages (2 user + 2 assistant)"
         )
-        assert len(clone2.conversation_history) == 0, (
-            "clone2 should have empty history (isolated)"
-        )
+        assert len(clone2.conversation_history) == 0, "clone2 should have empty history (isolated)"
 
 
 class TestMultiClientRealAPI:
@@ -135,8 +131,9 @@ class TestMultiClientRealAPI:
         """
         Full multi-client execution test with real API.
         """
-        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
         from openpyxl import load_workbook
+
+        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
 
         orchestrator = ExcelOrchestrator(
             integration_workbook_with_clients, real_mistral_client, concurrency=2
@@ -145,9 +142,7 @@ class TestMultiClientRealAPI:
         results_sheet = orchestrator.run()
         summary = orchestrator.get_summary()
 
-        assert summary["successful"] == 3, (
-            f"Expected 3 successful, got {summary['successful']}"
-        )
+        assert summary["successful"] == 3, f"Expected 3 successful, got {summary['successful']}"
         assert summary["failed"] == 0, f"Expected 0 failed, got {summary['failed']}"
 
         wb = load_workbook(integration_workbook_with_clients)
@@ -163,9 +158,7 @@ class TestMultiClientRealAPI:
                 }
 
         for task_name, data in results.items():
-            assert data["status"] == "success", (
-                f"{task_name} should succeed, got {data['status']}"
-            )
+            assert data["status"] == "success", f"{task_name} should succeed, got {data['status']}"
             assert data["response"] is not None, f"{task_name} should have response"
 
     def test_real_api_different_temperatures(self, tmp_path, real_mistral_client):
@@ -175,9 +168,10 @@ class TestMultiClientRealAPI:
         Note: This test verifies that client configs are respected,
         but doesn't strictly verify temperature differences (LLM outputs vary).
         """
+
+        from openpyxl import Workbook
+
         from src.orchestrator.excel_orchestrator import ExcelOrchestrator
-        from openpyxl import load_workbook, Workbook
-        import json
 
         workbook_path = str(tmp_path / "temp_test.xlsx")
 
@@ -223,9 +217,7 @@ class TestMultiClientRealAPI:
 
         wb.save(workbook_path)
 
-        orchestrator = ExcelOrchestrator(
-            workbook_path, real_mistral_client, concurrency=1
-        )
+        orchestrator = ExcelOrchestrator(workbook_path, real_mistral_client, concurrency=1)
 
         results_sheet = orchestrator.run()
         summary = orchestrator.get_summary()

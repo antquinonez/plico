@@ -9,33 +9,50 @@
 # Contact: antquinonez@farfiner.com
 # filename: src/lib/AI/OrderedPromptHistory.py
 
-from typing import Optional, List, Dict, Any
+"""Ordered prompt-response history management with named references.
+
+This module provides the OrderedPromptHistory class for managing AI
+interactions with named prompt references, enabling declarative context
+assembly in the FFAI wrapper.
+"""
+
+import logging
+import re
+import time
 from collections import OrderedDict
 from copy import deepcopy
 from dataclasses import dataclass
-import time
 from datetime import datetime
-import re
+from typing import Any
 
-import logging
-
-# Configure logging
 logger = logging.getLogger(__name__)
 
 
 @dataclass
 class Interaction:
-    """Represents a single prompt-response interaction"""
+    """Represents a single prompt-response interaction.
+
+    Attributes:
+        sequence_number: Sequential identifier for this interaction.
+        model: The AI model used for this interaction.
+        timestamp: Unix timestamp of when the interaction occurred.
+        prompt_name: Optional name/key for the prompt.
+        prompt: The actual prompt text.
+        response: The AI's response text.
+        history: Optional list of prompt names that form the history chain.
+
+    """
 
     sequence_number: int
     model: str
     timestamp: float
-    prompt_name: Optional[str]
+    prompt_name: str | None
     prompt: str
     response: str
-    history: Optional[List[str]] = None  # Added history field
+    history: list[str] | None = None
 
-    def to_dict(self) -> Dict[str, Any]:
+    def to_dict(self) -> dict[str, Any]:
+        """Convert the interaction to a dictionary representation."""
         return {
             "sequence_number": self.sequence_number,
             "model": self.model,
@@ -43,18 +60,32 @@ class Interaction:
             "prompt_name": self.prompt_name,
             "prompt": self.prompt,
             "response": self.response,
-            "history": self.history,  # Include history in dict representation
+            "history": self.history,
             "datetime": datetime.fromtimestamp(self.timestamp).isoformat(),
         }
 
 
 class OrderedPromptHistory:
-    def __init__(self):
-        self.prompt_dict: OrderedDict[str, List[Interaction]] = OrderedDict()
+    """Manages ordered prompt-response history with named references.
+
+    This class provides:
+    - Named prompt storage for declarative context assembly
+    - Sequential ordering of interactions
+    - Query capabilities by prompt name, model, etc.
+    - History chain tracking for dependency resolution
+
+    Attributes:
+        prompt_dict: OrderedDict mapping prompt names to interaction lists.
+
+    """
+
+    def __init__(self) -> None:
+        """Initialize an empty OrderedPromptHistory."""
+        self.prompt_dict: OrderedDict[str, list[Interaction]] = OrderedDict()
         self._current_sequence = 0
 
-    def _clean_text(self, text: Any) -> str:
-        """Clean text by removing RAG tags, PROMPT sections, and extra whitespace"""
+    def _clean_text(self, text: Any) -> str:  # noqa: ANN401
+        """Clean text by removing RAG tags, PROMPT sections, and extra whitespace."""
         if not isinstance(text, str):
             return str(text)
 
@@ -72,17 +103,26 @@ class OrderedPromptHistory:
 
         return "\n".join(cleaned_lines).strip()
 
-    def get_effective_prompt_name(self, prompt_name: Any) -> str:
-        logger.debug(f"Running: get_effective_prompt_name()")
+    def get_effective_prompt_name(self, prompt_name: Any) -> str:  # noqa: ANN401
+        """Get the effective prompt name from various input types.
+
+        Args:
+            prompt_name: Can be a string, tuple, or other type.
+
+        Returns:
+            The cleaned prompt name as a string.
+
+        """
+        logger.debug("Running: get_effective_prompt_name()")
         logger.debug(f"prompt_name: {prompt_name} | type: {type(prompt_name)}")
 
-        if type(prompt_name) == str:
+        if isinstance(prompt_name, str):
             # Clean prompt_name
             cleaned_prompt = self._clean_text(prompt_name)
 
             logger.debug(f"returning effective_prompt: {cleaned_prompt} | type: str")
             return cleaned_prompt
-        elif type(prompt_name) == tuple:
+        elif isinstance(prompt_name, tuple):
             values = []
 
             # Iterate through the tuple
@@ -103,9 +143,7 @@ class OrderedPromptHistory:
                 return tuple(values)[0]
             # return multiple item tuple
             else:
-                logger.debug(
-                    f"returning effective_prompt: {tuple(values)} | type: tuple"
-                )
+                logger.debug(f"returning effective_prompt: {tuple(values)} | type: tuple")
                 return tuple(values)
 
     def add_interaction(
@@ -113,11 +151,10 @@ class OrderedPromptHistory:
         model: str,
         prompt: str,
         response: str,
-        prompt_name: Optional[str] = None,
-        history: Optional[List[str]] = None,
+        prompt_name: str | None = None,
+        history: list[str] | None = None,
     ) -> Interaction:
-        """
-        Add a new interaction to the history, storing cleaned versions of prompt and response
+        """Add a new interaction to the history, storing cleaned versions of prompt and response.
 
         Args:
             model: The model used for the interaction
@@ -128,9 +165,10 @@ class OrderedPromptHistory:
 
         Returns:
             The created Interaction object
+
         """
         logger.info("***************************************************************")
-        logger.info(f"Running: add_interaction()")
+        logger.info("Running: add_interaction()")
         logger.info("***************************************************************")
         logger.info(f"prompt: {prompt} | type: {type(prompt)}")
         logger.info(f"prompt_name: {prompt_name} | type: {type(prompt_name)}")
@@ -148,9 +186,7 @@ class OrderedPromptHistory:
         logger.debug(f"cleaned_response: {cleaned_response}")
 
         # GET PROMPT NAME
-        effective_prompt_name = (
-            self.get_effective_prompt_name(prompt_name) or cleaned_prompt
-        )
+        effective_prompt_name = self.get_effective_prompt_name(prompt_name) or cleaned_prompt
         logger.debug(f"effective_prompt_name: {effective_prompt_name}")
 
         interaction = Interaction(
@@ -169,23 +205,21 @@ class OrderedPromptHistory:
         self.prompt_dict[effective_prompt_name].append(interaction)
         return interaction
 
-    def get_interactions_by_prompt_name(self, prompt_name: str) -> List[Interaction]:
-        """Get all interactions for a specific prompt name"""
+    def get_interactions_by_prompt_name(self, prompt_name: str) -> list[Interaction]:
+        """Get all interactions for a specific prompt name."""
         logger.debug(f"Getting interactions for prompt_name: {prompt_name}")
 
         return deepcopy(self.prompt_dict.get(prompt_name, []))
 
-    def get_latest_interaction_by_prompt_name(
-        self, prompt_name: str
-    ) -> Optional[Interaction]:
-        """Get the most recent interaction for a specific prompt name"""
+    def get_latest_interaction_by_prompt_name(self, prompt_name: str) -> Interaction | None:
+        """Get the most recent interaction for a specific prompt name."""
         logger.debug(f"Getting latest interaction for prompt_name: {prompt_name}")
 
         interactions = self.prompt_dict.get(prompt_name, [])
         return deepcopy(interactions[-1]) if interactions else None
 
-    def get_all_prompt_names(self) -> List[str]:
-        """Get a list of all prompt names in order of first appearance"""
+    def get_all_prompt_names(self) -> list[str]:
+        """Get a list of all prompt names in order of first appearance."""
         if hasattr(self, "prompt_dict"):
             all_prompt_names = self.prompt_dict.keys()
             logger.debug(f"Returning all prompt names: {all_prompt_names}")
@@ -194,8 +228,8 @@ class OrderedPromptHistory:
             logger.warning("prompt_dict is not initialized")
             return []  # or handle the error case differently
 
-    def get_all_interactions(self) -> List[Interaction]:
-        """Get all interactions in sequence order"""
+    def get_all_interactions(self) -> list[Interaction]:
+        """Get all interactions in sequence order."""
         logger.debug("Getting all interactions")
         logger.debug(f"Object Prompt dict: {self.prompt_dict}")
 
@@ -205,25 +239,23 @@ class OrderedPromptHistory:
             all_interactions.extend(interactions)
         return sorted(deepcopy(all_interactions), key=lambda x: x.sequence_number)
 
-    def get_prompt_name_usage_stats(self) -> Dict[str, int]:
-        """Get statistics on prompt name usage"""
-        return {
-            name: len(interactions) for name, interactions in self.prompt_dict.items()
-        }
+    def get_prompt_name_usage_stats(self) -> dict[str, int]:
+        """Get statistics on prompt name usage."""
+        return {name: len(interactions) for name, interactions in self.prompt_dict.items()}
 
     def get_interactions_by_model_and_prompt_name(
         self, model: str, prompt_name: str
-    ) -> List[Interaction]:
-        """Get all interactions for a specific model and prompt name combination"""
+    ) -> list[Interaction]:
+        """Get all interactions for a specific model and prompt name combination."""
         interactions = self.prompt_dict.get(prompt_name, [])
         return deepcopy([i for i in interactions if i.model == model])
 
     def merge_histories(self, other: "OrderedPromptHistory") -> None:
-        """
-        Merge another OrderedPromptHistory into this one
+        """Merge another OrderedPromptHistory into this one.
 
         Args:
             other: Another OrderedPromptHistory instance to merge
+
         """
         for prompt_name, interactions in other.prompt_dict.items():
             if prompt_name not in self.prompt_dict:
@@ -244,25 +276,24 @@ class OrderedPromptHistory:
                 history=interaction.history,  # Preserve history when resequencing
             )
 
-    def to_dict(self) -> Dict[str, List[Dict[str, Any]]]:
-        """Convert the entire history to a dictionary organized by prompt names"""
+    def to_dict(self) -> dict[str, list[dict[str, Any]]]:
+        """Convert the entire history to a dictionary organized by prompt names."""
         return {
             prompt_name: [i.to_dict() for i in interactions]
             for prompt_name, interactions in self.prompt_dict.items()
         }
 
-    def get_interaction_by_prompt(self, prompt: str) -> Optional[Interaction]:
-        """
-        Get an interaction by its exact prompt text
-        Useful when prompt was used as the prompt_name
+    def get_interaction_by_prompt(self, prompt: str) -> Interaction | None:
+        """Get an interaction by its exact prompt text.
+
+        Useful when prompt was used as the prompt_name.
         """
         return self.get_latest_interaction_by_prompt_name(prompt)
 
     def get_latest_responses_by_prompt_names(
-        self, prompt_names: List[str]
-    ) -> Dict[str, Dict[str, str]]:
-        """
-        Get the latest prompt and response for each specified prompt name.
+        self, prompt_names: list[str]
+    ) -> dict[str, dict[str, str]]:
+        """Get the latest prompt and response for each specified prompt name.
 
         Args:
             prompt_names: List of prompt names to retrieve
@@ -270,6 +301,7 @@ class OrderedPromptHistory:
         Returns:
             Dictionary with prompt names as keys and dictionaries containing
             'prompt' and 'response' as values
+
         """
         result = {}
         for prompt_name in prompt_names:
@@ -281,21 +313,20 @@ class OrderedPromptHistory:
                 }
         return result
 
-    def get_formatted_responses(self, prompt_names: List[str]) -> str:
-        """
-        Format the latest prompts and responses in the specified format,
-        including recursive history chains.
+    def get_formatted_responses(self, prompt_names: list[str]) -> str:
+        """Format the latest prompts and responses including recursive history chains.
 
         Args:
-            prompt_names: List of prompt names to include in the formatted output
+            prompt_names: List of prompt names to include in the formatted output.
 
         Returns:
-            Formatted string containing all prompts and responses
+            Formatted string containing all prompts and responses.
+
         """
         formatted_outputs = []
         processed_prompts = set()  # To prevent infinite loops
 
-        def process_prompt_chain(prompt_name: str):
+        def process_prompt_chain(prompt_name: str) -> None:
             if prompt_name in processed_prompts:
                 return
 
@@ -311,7 +342,9 @@ class OrderedPromptHistory:
                 # Then add this prompt's formatted output
                 if latest.prompt and latest.response:
                     # Use the cleaned prompt text for the tag, not the prompt_name
-                    formatted_output = f"<prompt:{latest.prompt}>{latest.response}</prompt:{latest.prompt}>"
+                    formatted_output = (
+                        f"<prompt:{latest.prompt}>{latest.response}</prompt:{latest.prompt}>"
+                    )
                     formatted_outputs.append(formatted_output)
 
         # Process all prompt chains

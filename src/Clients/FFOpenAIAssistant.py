@@ -1,25 +1,26 @@
 # PROPRIETARY AND CONTROLLED CODE
 # Copyright (C) 2025 Antonio Quinonez / Far Finer LLC. All Rights Reserved.
-# 
+#
 # WARNING: This code contains sensitive technology requiring explicit authorization
 # for possession or use. Unauthorized possession is strictly prohibited and will
 # result in legal action. Licensed use requires signed agreement and compliance
 # with all security requirements.
-# 
+#
 # Contact: antquinonez@farfiner.com
 # filename: src/lib/AI/FFOpenAIAssistant.py
 
+import logging
 import os
 import time
-import logging
-from typing import Optional
-from openai import OpenAI
+
 from dotenv import load_dotenv
+from openai import OpenAI
 
 load_dotenv()
 
 # Configure logging
 logger = logging.getLogger(__name__)
+
 
 class FFOpenAIAssistant:
     """
@@ -38,7 +39,7 @@ class FFOpenAIAssistant:
         assistant_id (str): The ID of the assistant being used.
         thread_id (str): The ID of the current conversation thread.
         client (OpenAI): The OpenAI client instance.
-        response_format (str): The format of the response. Defaults to "auto". Options: 
+        response_format (str): The format of the response. Defaults to "auto". Options:
             {"type": "json_object"}
             {"type": "text"}
             'auto'
@@ -63,7 +64,7 @@ class FFOpenAIAssistant:
 
     """
 
-    def __init__(self, config: Optional[dict] = None, **kwargs):
+    def __init__(self, config: dict | None = None, **kwargs):
         """
         Initialize the FFOpenAI instance.
 
@@ -81,12 +82,12 @@ class FFOpenAIAssistant:
 
         # DEFAULT VALUES
         defaults = {
-            'model': "gpt-4o-mini",
-            'max_tokens': 1000,
-            'temperature': 0.5,
-            'assistant_name': "default",
-            'response_format': "auto",
-            'system_instructions': "Respond accurately to user queries. Be thorough but not repetitive. Be helpful and obliging."
+            "model": "gpt-4o-mini",
+            "max_tokens": 1000,
+            "temperature": 0.5,
+            "assistant_name": "default",
+            "response_format": "auto",
+            "system_instructions": "Respond accurately to user queries. Be thorough but not repetitive. Be helpful and obliging.",
         }
 
         # Combine config and kwargs, with kwargs taking precedence
@@ -95,37 +96,53 @@ class FFOpenAIAssistant:
         # Set attributes based on the combined configuration
         for key, value in all_config.items():
             match key:
-                case 'api_key':
-                    self.api_key = value or os.getenv('OPENAI_TOKEN')
-                case 'model':
+                case "api_key":
+                    self.api_key = value or os.getenv("OPENAI_TOKEN")
+                case "model":
                     self.model = value
-                case 'temperature':
+                case "temperature":
                     self.temperature = float(value)
-                case 'max_tokens':
+                case "max_tokens":
                     self.max_tokens = int(value)
-                case 'system_instructions':
+                case "system_instructions":
                     self.system_instructions = value
-                case 'assistant_name':
+                case "assistant_name":
                     self.assistant_name = value
-                case 'assistant_id':
+                case "assistant_id":
                     self.assistant_id = value
-                case 'thread_id':
+                case "thread_id":
                     self.thread_id = value
-                case 'response_format':
+                case "response_format":
                     self.response_format = value
 
         # Set default values if not set
-        self.api_key = getattr(self, 'api_key', os.getenv('OPENAI_TOKEN'))
-        self.model = getattr(self, 'model', os.getenv('OPENAI_MODEL', defaults['model']))
-        self.temperature = getattr(self, 'temperature', float(os.getenv('OPENAI_TEMPERATURE', defaults['temperature'])))
-        self.max_tokens = getattr(self, 'max_tokens', int(os.getenv('OPENAI_MAX_TOKENS', defaults['max_tokens'])))
-        self.system_instructions = getattr(self, 'system_instructions', os.getenv('OPENAI_ASSISTANT_INSTRUCTIONS', defaults['system_instructions']))
-        self.assistant_name = getattr(self, 'assistant_name', os.getenv('OPENAI_ASSISTANT_NAME', defaults['assistant_name']))
-        self.assistant_id = getattr(self, 'assistant_id', None)
-        self.thread_id = getattr(self, 'thread_id', None)
-        self.response_format = getattr(self, 'response_format', os.getenv('OPENAI_RESPONSE_FORMAT', defaults['response_format']))
+        self.api_key = getattr(self, "api_key", os.getenv("OPENAI_TOKEN"))
+        self.model = getattr(self, "model", os.getenv("OPENAI_MODEL", defaults["model"]))
+        self.temperature = getattr(
+            self, "temperature", float(os.getenv("OPENAI_TEMPERATURE", defaults["temperature"]))
+        )
+        self.max_tokens = getattr(
+            self, "max_tokens", int(os.getenv("OPENAI_MAX_TOKENS", defaults["max_tokens"]))
+        )
+        self.system_instructions = getattr(
+            self,
+            "system_instructions",
+            os.getenv("OPENAI_ASSISTANT_INSTRUCTIONS", defaults["system_instructions"]),
+        )
+        self.assistant_name = getattr(
+            self, "assistant_name", os.getenv("OPENAI_ASSISTANT_NAME", defaults["assistant_name"])
+        )
+        self.assistant_id = getattr(self, "assistant_id", None)
+        self.thread_id = getattr(self, "thread_id", None)
+        self.response_format = getattr(
+            self,
+            "response_format",
+            os.getenv("OPENAI_RESPONSE_FORMAT", defaults["response_format"]),
+        )
 
-        logger.debug(f"Model: {self.model}, Temperature: {self.temperature}, Max Tokens: {self.max_tokens}")
+        logger.debug(
+            f"Model: {self.model}, Temperature: {self.temperature}, Max Tokens: {self.max_tokens}"
+        )
         logger.debug(f"System instructions: {self.system_instructions}")
         logger.debug(f"Assistant name: {self.assistant_name}")
 
@@ -144,10 +161,10 @@ class FFOpenAIAssistant:
         if not self.api_key:
             logger.error("API key not found")
             raise ValueError("API key not found")
-        
+
         return OpenAI(api_key=self.api_key)
 
-    def _get_assistant(self, assistant_id: Optional[str]) -> str:
+    def _get_assistant(self, assistant_id: str | None) -> str:
         """
         Retrieve an existing assistant or create a new one if it doesn't exist.
 
@@ -165,7 +182,7 @@ class FFOpenAIAssistant:
                 return assistant.id
             except Exception as e:
                 logger.error(f"Error retrieving assistant with ID {assistant_id}: {str(e)}")
-        
+
         try:
             assistants = self.client.beta.assistants.list(order="desc")
             for assistant in assistants.data:
@@ -174,7 +191,7 @@ class FFOpenAIAssistant:
                     return assistant.id
         except Exception as e:
             logger.error(f"Error listing assistants: {str(e)}")
-        
+
         logger.info("Creating new assistant")
         return self._create_assistant(self.assistant_name)
 
@@ -193,7 +210,7 @@ class FFOpenAIAssistant:
                 name=name,
                 instructions=self.system_instructions,
                 model=self.model,
-                response_format=self.response_format
+                response_format=self.response_format,
             )
             logger.info(f"Created new assistant with ID: {assistant.id}")
             return assistant.id
@@ -224,30 +241,29 @@ class FFOpenAIAssistant:
         """
         logger.debug(f"Running conversation with prompt: {prompt}")
         self._ensure_thread()
-        
+
         try:
             # Add the user's message to the thread
             self.client.beta.threads.messages.create(
-                thread_id=self.thread_id,
-                role="user",
-                content=prompt
+                thread_id=self.thread_id, role="user", content=prompt
             )
             logger.debug("Added user message to thread")
 
             # Create and monitor the run
             run = self.client.beta.threads.runs.create(
-                thread_id=self.thread_id,
-                assistant_id=self.assistant_id
+                thread_id=self.thread_id, assistant_id=self.assistant_id
             )
             logger.debug(f"Created run with ID: {run.id}")
 
             # Wait for the run to complete
-            while run.status in ['queued', 'in_progress']:
+            while run.status in ["queued", "in_progress"]:
                 time.sleep(1)
-                run = self.client.beta.threads.runs.retrieve(thread_id=self.thread_id, run_id=run.id)
+                run = self.client.beta.threads.runs.retrieve(
+                    thread_id=self.thread_id, run_id=run.id
+                )
                 logger.debug(f"Run status: {run.status}")
 
-            if run.status != 'completed':
+            if run.status != "completed":
                 logger.error(f"Run failed with status: {run.status}")
                 raise RuntimeError(f"Run failed with status: {run.status}")
 

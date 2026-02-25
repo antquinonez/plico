@@ -1,14 +1,12 @@
+import json
 import os
 import sys
-import pytest
-import json
-from openpyxl import Workbook
-from unittest.mock import MagicMock
-from dotenv import load_dotenv
 
-sys.path.insert(
-    0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-)
+import pytest
+from dotenv import load_dotenv
+from openpyxl import Workbook
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 load_dotenv()
 
 
@@ -376,9 +374,7 @@ def spy_client():
                 }
             )
             self.conversation_history.append({"role": "user", "content": prompt})
-            self.conversation_history.append(
-                {"role": "assistant", "content": "Spy response"}
-            )
+            self.conversation_history.append({"role": "assistant", "content": "Spy response"})
             return "Spy response"
 
         def clone(self):

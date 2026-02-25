@@ -1,6 +1,7 @@
-import pytest
-from unittest.mock import MagicMock, patch
 import os
+from unittest.mock import MagicMock
+
+import pytest
 
 
 class TestExcelOrchestratorInit:
@@ -39,9 +40,7 @@ class TestExcelOrchestratorWorkbookInit:
 
         assert os.path.exists(temp_workbook)
 
-    def test_init_workbook_validates_existing(
-        self, temp_workbook_with_data, mock_ffmistralsmall
-    ):
+    def test_init_workbook_validates_existing(self, temp_workbook_with_data, mock_ffmistralsmall):
         """Test that existing workbook is validated."""
         from src.orchestrator.excel_orchestrator import ExcelOrchestrator
 
@@ -53,9 +52,7 @@ class TestExcelOrchestratorWorkbookInit:
 class TestExcelOrchestratorConfig:
     """Tests for configuration loading."""
 
-    def test_load_config(
-        self, temp_workbook_with_data, mock_ffmistralsmall, sample_config
-    ):
+    def test_load_config(self, temp_workbook_with_data, mock_ffmistralsmall, sample_config):
         """Test loading configuration."""
         from src.orchestrator.excel_orchestrator import ExcelOrchestrator
 
@@ -65,9 +62,7 @@ class TestExcelOrchestratorConfig:
         assert orchestrator.config["model"] == sample_config["model"]
         assert orchestrator.config["max_retries"] == sample_config["max_retries"]
 
-    def test_load_config_with_overrides(
-        self, temp_workbook_with_data, mock_ffmistralsmall
-    ):
+    def test_load_config_with_overrides(self, temp_workbook_with_data, mock_ffmistralsmall):
         """Test that config overrides are applied."""
         from src.orchestrator.excel_orchestrator import ExcelOrchestrator
 
@@ -85,9 +80,7 @@ class TestExcelOrchestratorConfig:
 class TestExcelOrchestratorDependencyValidation:
     """Tests for dependency validation."""
 
-    def test_validate_dependencies_success(
-        self, temp_workbook_with_data, mock_ffmistralsmall
-    ):
+    def test_validate_dependencies_success(self, temp_workbook_with_data, mock_ffmistralsmall):
         """Test successful dependency validation."""
         from src.orchestrator.excel_orchestrator import ExcelOrchestrator
 
@@ -97,12 +90,11 @@ class TestExcelOrchestratorDependencyValidation:
 
         assert orchestrator._validate_dependencies() is None
 
-    def test_validate_dependencies_missing_reference(
-        self, temp_workbook, mock_ffmistralsmall
-    ):
+    def test_validate_dependencies_missing_reference(self, temp_workbook, mock_ffmistralsmall):
         """Test validation fails for missing dependency reference."""
-        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
         from openpyxl import Workbook
+
+        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
 
         wb = Workbook()
         ws = wb.active
@@ -130,12 +122,11 @@ class TestExcelOrchestratorDependencyValidation:
         with pytest.raises(ValueError, match="Dependency validation failed"):
             orchestrator._validate_dependencies()
 
-    def test_validate_dependencies_wrong_order(
-        self, temp_workbook, mock_ffmistralsmall
-    ):
+    def test_validate_dependencies_wrong_order(self, temp_workbook, mock_ffmistralsmall):
         """Test validation fails when dependency defined after use."""
-        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
         from openpyxl import Workbook
+
+        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
 
         wb = Workbook()
         ws = wb.active
@@ -216,15 +207,11 @@ class TestExcelOrchestratorExecute:
         followup = next(r for r in results if r["prompt_name"] == "followup")
         assert followup["history"] == ["math", "greeting"]
 
-    def test_execute_handles_failure(
-        self, temp_workbook_with_data, mock_ffmistralsmall
-    ):
+    def test_execute_handles_failure(self, temp_workbook_with_data, mock_ffmistralsmall):
         """Test that execution handles failures gracefully."""
         from src.orchestrator.excel_orchestrator import ExcelOrchestrator
 
-        mock_ffmistralsmall.generate_response = MagicMock(
-            side_effect=Exception("API Error")
-        )
+        mock_ffmistralsmall.generate_response = MagicMock(side_effect=Exception("API Error"))
         mock_ffmistralsmall.clone = MagicMock(return_value=mock_ffmistralsmall)
 
         orchestrator = ExcelOrchestrator(temp_workbook_with_data, mock_ffmistralsmall)
@@ -238,9 +225,7 @@ class TestExcelOrchestratorExecute:
         assert results[0]["status"] == "failed"
         assert "API Error" in results[0]["error"]
 
-    def test_execute_retries_on_failure(
-        self, temp_workbook_with_data, mock_ffmistralsmall
-    ):
+    def test_execute_retries_on_failure(self, temp_workbook_with_data, mock_ffmistralsmall):
         """Test that execution retries on failure."""
         from src.orchestrator.excel_orchestrator import ExcelOrchestrator
 
@@ -270,12 +255,11 @@ class TestExcelOrchestratorExecute:
 class TestExcelOrchestratorRun:
     """Tests for the main run method."""
 
-    def test_run_creates_results_sheet(
-        self, temp_workbook_with_data, mock_ffmistralsmall
-    ):
+    def test_run_creates_results_sheet(self, temp_workbook_with_data, mock_ffmistralsmall):
         """Test that run creates a results sheet."""
-        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
         from openpyxl import load_workbook
+
+        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
 
         orchestrator = ExcelOrchestrator(temp_workbook_with_data, mock_ffmistralsmall)
         results_sheet = orchestrator.run()
@@ -321,15 +305,11 @@ class TestExcelOrchestratorSummary:
         assert summary["failed"] == 0
         assert "workbook" in summary
 
-    def test_get_summary_with_failures(
-        self, temp_workbook_with_data, mock_ffmistralsmall
-    ):
+    def test_get_summary_with_failures(self, temp_workbook_with_data, mock_ffmistralsmall):
         """Test getting summary with failures."""
         from src.orchestrator.excel_orchestrator import ExcelOrchestrator
 
-        mock_ffmistralsmall.generate_response = MagicMock(
-            side_effect=Exception("Error")
-        )
+        mock_ffmistralsmall.generate_response = MagicMock(side_effect=Exception("Error"))
         mock_ffmistralsmall.clone = MagicMock(return_value=mock_ffmistralsmall)
 
         orchestrator = ExcelOrchestrator(temp_workbook_with_data, mock_ffmistralsmall)
@@ -355,9 +335,7 @@ class TestExcelOrchestratorParallelExecution:
 
         assert len(nodes) == 3
 
-    def test_parallel_execution_basic(
-        self, temp_workbook_with_data, mock_ffmistralsmall
-    ):
+    def test_parallel_execution_basic(self, temp_workbook_with_data, mock_ffmistralsmall):
         """Test parallel execution with mock client."""
         from src.orchestrator.excel_orchestrator import ExcelOrchestrator
 
@@ -374,12 +352,11 @@ class TestExcelOrchestratorParallelExecution:
         assert len(results) == 3
         assert all(r["status"] == "success" for r in results)
 
-    def test_parallel_execution_respects_dependencies(
-        self, temp_workbook, mock_ffmistralsmall
-    ):
+    def test_parallel_execution_respects_dependencies(self, temp_workbook, mock_ffmistralsmall):
         """Test that parallel execution respects dependencies via execution graph."""
-        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
         from openpyxl import Workbook
+
+        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
 
         wb = Workbook()
         ws = wb.active
@@ -412,9 +389,7 @@ class TestExcelOrchestratorParallelExecution:
 
         wb.save(temp_workbook)
 
-        orchestrator = ExcelOrchestrator(
-            temp_workbook, mock_ffmistralsmall, concurrency=2
-        )
+        orchestrator = ExcelOrchestrator(temp_workbook, mock_ffmistralsmall, concurrency=2)
         orchestrator._init_workbook()
         orchestrator._load_config()
         orchestrator.prompts = orchestrator.builder.load_prompts()
@@ -433,19 +408,13 @@ class TestExcelOrchestratorParallelExecution:
         """Test that concurrency is clamped to valid range."""
         from src.orchestrator.excel_orchestrator import ExcelOrchestrator
 
-        orchestrator = ExcelOrchestrator(
-            temp_workbook, mock_ffmistralsmall, concurrency=0
-        )
+        orchestrator = ExcelOrchestrator(temp_workbook, mock_ffmistralsmall, concurrency=0)
         assert orchestrator.concurrency == 1
 
-        orchestrator = ExcelOrchestrator(
-            temp_workbook, mock_ffmistralsmall, concurrency=15
-        )
+        orchestrator = ExcelOrchestrator(temp_workbook, mock_ffmistralsmall, concurrency=15)
         assert orchestrator.concurrency == 10
 
-    def test_sequential_when_concurrency_is_one(
-        self, temp_workbook_with_data, mock_ffmistralsmall
-    ):
+    def test_sequential_when_concurrency_is_one(self, temp_workbook_with_data, mock_ffmistralsmall):
         """Test that concurrency=1 uses sequential execution."""
         from src.orchestrator.excel_orchestrator import ExcelOrchestrator
 
@@ -466,15 +435,11 @@ class TestExcelOrchestratorParallelExecution:
 class TestExcelOrchestratorBatchVariableResolution:
     """Tests for variable resolution in batch mode."""
 
-    def test_resolve_variables_basic(
-        self, temp_workbook_with_batch_data, mock_ffmistralsmall
-    ):
+    def test_resolve_variables_basic(self, temp_workbook_with_batch_data, mock_ffmistralsmall):
         """Test basic variable resolution."""
         from src.orchestrator.excel_orchestrator import ExcelOrchestrator
 
-        orchestrator = ExcelOrchestrator(
-            temp_workbook_with_batch_data, mock_ffmistralsmall
-        )
+        orchestrator = ExcelOrchestrator(temp_workbook_with_batch_data, mock_ffmistralsmall)
 
         data_row = {"region": "north", "product": "widget_a", "price": 10}
 
@@ -490,9 +455,7 @@ class TestExcelOrchestratorBatchVariableResolution:
         """Test variable resolution with multiple occurrences."""
         from src.orchestrator.excel_orchestrator import ExcelOrchestrator
 
-        orchestrator = ExcelOrchestrator(
-            temp_workbook_with_batch_data, mock_ffmistralsmall
-        )
+        orchestrator = ExcelOrchestrator(temp_workbook_with_batch_data, mock_ffmistralsmall)
 
         data_row = {"region": "east", "price": 20}
 
@@ -508,9 +471,7 @@ class TestExcelOrchestratorBatchVariableResolution:
         """Test that missing variables keep placeholder."""
         from src.orchestrator.excel_orchestrator import ExcelOrchestrator
 
-        orchestrator = ExcelOrchestrator(
-            temp_workbook_with_batch_data, mock_ffmistralsmall
-        )
+        orchestrator = ExcelOrchestrator(temp_workbook_with_batch_data, mock_ffmistralsmall)
 
         data_row = {"region": "north"}
 
@@ -520,15 +481,11 @@ class TestExcelOrchestratorBatchVariableResolution:
 
         assert result == "Region: north, Missing: {{unknown}}"
 
-    def test_resolve_prompt_variables(
-        self, temp_workbook_with_batch_data, mock_ffmistralsmall
-    ):
+    def test_resolve_prompt_variables(self, temp_workbook_with_batch_data, mock_ffmistralsmall):
         """Test resolving variables in prompt dict."""
         from src.orchestrator.excel_orchestrator import ExcelOrchestrator
 
-        orchestrator = ExcelOrchestrator(
-            temp_workbook_with_batch_data, mock_ffmistralsmall
-        )
+        orchestrator = ExcelOrchestrator(temp_workbook_with_batch_data, mock_ffmistralsmall)
 
         prompt = {
             "sequence": 1,
@@ -548,9 +505,7 @@ class TestExcelOrchestratorBatchVariableResolution:
         """Test batch name resolution with template."""
         from src.orchestrator.excel_orchestrator import ExcelOrchestrator
 
-        orchestrator = ExcelOrchestrator(
-            temp_workbook_with_batch_data, mock_ffmistralsmall
-        )
+        orchestrator = ExcelOrchestrator(temp_workbook_with_batch_data, mock_ffmistralsmall)
 
         data_row = {
             "region": "north",
@@ -562,15 +517,11 @@ class TestExcelOrchestratorBatchVariableResolution:
 
         assert result == "north_widget_a"
 
-    def test_resolve_batch_name_default(
-        self, temp_workbook_with_batch_data, mock_ffmistralsmall
-    ):
+    def test_resolve_batch_name_default(self, temp_workbook_with_batch_data, mock_ffmistralsmall):
         """Test batch name resolution with default."""
         from src.orchestrator.excel_orchestrator import ExcelOrchestrator
 
-        orchestrator = ExcelOrchestrator(
-            temp_workbook_with_batch_data, mock_ffmistralsmall
-        )
+        orchestrator = ExcelOrchestrator(temp_workbook_with_batch_data, mock_ffmistralsmall)
 
         data_row = {"region": "north", "product": "widget_a"}
 
@@ -582,15 +533,11 @@ class TestExcelOrchestratorBatchVariableResolution:
 class TestExcelOrchestratorBatchExecution:
     """Tests for batch execution."""
 
-    def test_batch_mode_detection(
-        self, temp_workbook_with_batch_data, mock_ffmistralsmall
-    ):
+    def test_batch_mode_detection(self, temp_workbook_with_batch_data, mock_ffmistralsmall):
         """Test that batch mode is detected when data sheet exists."""
         from src.orchestrator.excel_orchestrator import ExcelOrchestrator
 
-        orchestrator = ExcelOrchestrator(
-            temp_workbook_with_batch_data, mock_ffmistralsmall
-        )
+        orchestrator = ExcelOrchestrator(temp_workbook_with_batch_data, mock_ffmistralsmall)
         orchestrator._init_workbook()
         orchestrator._load_config()
         orchestrator.batch_data = orchestrator.builder.load_data()
@@ -599,15 +546,11 @@ class TestExcelOrchestratorBatchExecution:
         orchestrator.is_batch_mode = len(orchestrator.batch_data) > 0
         assert orchestrator.is_batch_mode is True
 
-    def test_execute_batch_single_batch(
-        self, temp_workbook_with_batch_data, mock_ffmistralsmall
-    ):
+    def test_execute_batch_single_batch(self, temp_workbook_with_batch_data, mock_ffmistralsmall):
         """Test executing a single batch."""
         from src.orchestrator.excel_orchestrator import ExcelOrchestrator
 
-        orchestrator = ExcelOrchestrator(
-            temp_workbook_with_batch_data, mock_ffmistralsmall
-        )
+        orchestrator = ExcelOrchestrator(temp_workbook_with_batch_data, mock_ffmistralsmall)
         orchestrator._init_workbook()
         orchestrator._load_config()
         orchestrator.prompts = orchestrator.builder.load_prompts()
@@ -620,15 +563,11 @@ class TestExcelOrchestratorBatchExecution:
         assert all(r["batch_id"] == 1 for r in results)
         assert all(r["batch_name"] == "north_widget_a" for r in results)
 
-    def test_execute_batch_all_batches(
-        self, temp_workbook_with_batch_data, mock_ffmistralsmall
-    ):
+    def test_execute_batch_all_batches(self, temp_workbook_with_batch_data, mock_ffmistralsmall):
         """Test executing all batches."""
         from src.orchestrator.excel_orchestrator import ExcelOrchestrator
 
-        orchestrator = ExcelOrchestrator(
-            temp_workbook_with_batch_data, mock_ffmistralsmall
-        )
+        orchestrator = ExcelOrchestrator(temp_workbook_with_batch_data, mock_ffmistralsmall)
         orchestrator._init_workbook()
         orchestrator._load_config()
         orchestrator.prompts = orchestrator.builder.load_prompts()
@@ -641,9 +580,7 @@ class TestExcelOrchestratorBatchExecution:
         batch_ids = set(r["batch_id"] for r in results)
         assert batch_ids == {1, 2, 3}
 
-    def test_execute_batch_parallel(
-        self, temp_workbook_with_batch_data, mock_ffmistralsmall
-    ):
+    def test_execute_batch_parallel(self, temp_workbook_with_batch_data, mock_ffmistralsmall):
         """Test parallel batch execution."""
         from src.orchestrator.excel_orchestrator import ExcelOrchestrator
 
@@ -702,12 +639,11 @@ class TestExcelOrchestratorBatchRun:
         self, temp_workbook_with_batch_data, mock_ffmistralsmall
     ):
         """Test that batch run creates combined results sheet."""
-        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
         from openpyxl import load_workbook
 
-        orchestrator = ExcelOrchestrator(
-            temp_workbook_with_batch_data, mock_ffmistralsmall
-        )
+        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
+
+        orchestrator = ExcelOrchestrator(temp_workbook_with_batch_data, mock_ffmistralsmall)
         results_sheet = orchestrator.run()
 
         assert results_sheet.startswith("results_")
@@ -720,15 +656,11 @@ class TestExcelOrchestratorBatchRun:
         assert "batch_id" in headers
         assert "batch_name" in headers
 
-    def test_run_batch_mode_summary(
-        self, temp_workbook_with_batch_data, mock_ffmistralsmall
-    ):
+    def test_run_batch_mode_summary(self, temp_workbook_with_batch_data, mock_ffmistralsmall):
         """Test that batch run summary includes batch info."""
         from src.orchestrator.excel_orchestrator import ExcelOrchestrator
 
-        orchestrator = ExcelOrchestrator(
-            temp_workbook_with_batch_data, mock_ffmistralsmall
-        )
+        orchestrator = ExcelOrchestrator(temp_workbook_with_batch_data, mock_ffmistralsmall)
         orchestrator.run()
         summary = orchestrator.get_summary()
 

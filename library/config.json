@@ -21,7 +21,7 @@
   },
   "supported_providers": [
     "mistral",
-    "anthropic", 
+    "anthropic",
     "openai",
     "azure",
     "gemini"

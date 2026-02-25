@@ -1,7 +1,8 @@
 import os
-import pytest
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
+
+import pytest
 
 from src.orchestrator.document_processor import DocumentProcessor
 from src.orchestrator.document_registry import DocumentRegistry
@@ -70,9 +71,7 @@ class TestDocumentRegistryInit:
         assert "client_info" in registry.documents
         assert "config" in registry.documents
 
-    def test_init_skips_empty_reference_names(
-        self, sample_documents, processor, fixtures_dir
-    ):
+    def test_init_skips_empty_reference_names(self, sample_documents, processor, fixtures_dir):
         sample_documents.append({"reference_name": None, "common_name": "Empty"})
 
         registry = DocumentRegistry(
@@ -115,9 +114,7 @@ class TestValidateDocuments:
 
         assert set(result) == {"spec_doc", "client_info", "config"}
 
-    def test_validate_documents_raises_for_missing(
-        self, sample_documents, processor, fixtures_dir
-    ):
+    def test_validate_documents_raises_for_missing(self, sample_documents, processor, fixtures_dir):
         sample_documents.append(
             {
                 "reference_name": "missing_doc",

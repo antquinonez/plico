@@ -5,13 +5,12 @@ These tests verify that FFAI correctly assembles context from named
 prompt references and injects it into the prompt string.
 """
 
-import pytest
-import sys
 import os
+import sys
 
-sys.path.insert(
-    0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-)
+import pytest
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 
 class TestContextAssembly:
@@ -21,9 +20,11 @@ class TestContextAssembly:
         """
         Verify that history=["p1"] injects p1's Q&A into the prompt.
         """
-        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
-        from openpyxl import load_workbook
         import json
+
+        from openpyxl import load_workbook
+
+        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
 
         wb = load_workbook(integration_workbook)
         ws = wb["prompts"]
@@ -36,9 +37,7 @@ class TestContextAssembly:
         ws["D3"] = json.dumps(["first"])
         wb.save(integration_workbook)
 
-        orchestrator = ExcelOrchestrator(
-            integration_workbook, spy_client, concurrency=1
-        )
+        orchestrator = ExcelOrchestrator(integration_workbook, spy_client, concurrency=1)
         orchestrator.run()
 
         assert len(spy_client.calls) == 2
@@ -48,18 +47,18 @@ class TestContextAssembly:
         assert "first" in second_prompt or "2 + 2" in second_prompt, (
             "Second prompt should reference first prompt"
         )
-        assert "<conversation_history>" in second_prompt, (
-            "Should use conversation_history format"
-        )
+        assert "<conversation_history>" in second_prompt, "Should use conversation_history format"
         assert "<interaction" in second_prompt, "Should use interaction format"
 
     def test_multiple_history_references(self, integration_workbook, spy_client):
         """
         Verify that history=["p1", "p2"] injects both in order.
         """
-        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
-        from openpyxl import load_workbook
         import json
+
+        from openpyxl import load_workbook
+
+        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
 
         wb = load_workbook(integration_workbook)
         ws = wb["prompts"]
@@ -75,9 +74,7 @@ class TestContextAssembly:
         ws["D4"] = json.dumps(["alpha", "beta"])
         wb.save(integration_workbook)
 
-        orchestrator = ExcelOrchestrator(
-            integration_workbook, spy_client, concurrency=1
-        )
+        orchestrator = ExcelOrchestrator(integration_workbook, spy_client, concurrency=1)
         orchestrator.run()
 
         assert len(spy_client.calls) == 3
@@ -94,9 +91,11 @@ class TestContextAssembly:
         """
         Test that p3 depends on p2 which depends on p1 - all context available.
         """
-        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
-        from openpyxl import load_workbook
         import json
+
+        from openpyxl import load_workbook
+
+        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
 
         workbook_path = str(tmp_path / "nested_deps.xlsx")
 
@@ -128,15 +127,15 @@ class TestContextAssembly:
             "level2 should have context from level1 (which has context from level0)"
         )
 
-    def test_history_only_includes_named_prompts(
-        self, integration_workbook, spy_client
-    ):
+    def test_history_only_includes_named_prompts(self, integration_workbook, spy_client):
         """
         Verify that unreferenced prompts are not included in context.
         """
-        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
-        from openpyxl import load_workbook
         import json
+
+        from openpyxl import load_workbook
+
+        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
 
         wb = load_workbook(integration_workbook)
         ws = wb["prompts"]
@@ -152,9 +151,7 @@ class TestContextAssembly:
         ws["D4"] = json.dumps(["included"])
         wb.save(integration_workbook)
 
-        orchestrator = ExcelOrchestrator(
-            integration_workbook, spy_client, concurrency=1
-        )
+        orchestrator = ExcelOrchestrator(integration_workbook, spy_client, concurrency=1)
         orchestrator.run()
 
         target_prompt = spy_client.calls[2]["prompt"]
@@ -170,9 +167,11 @@ class TestContextAssembly:
         """
         Verify output matches <conversation_history>...</conversation_history> format.
         """
-        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
-        from openpyxl import load_workbook
         import json
+
+        from openpyxl import load_workbook
+
+        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
 
         wb = load_workbook(integration_workbook)
         ws = wb["prompts"]
@@ -185,19 +184,13 @@ class TestContextAssembly:
         ws["D3"] = json.dumps(["q1"])
         wb.save(integration_workbook)
 
-        orchestrator = ExcelOrchestrator(
-            integration_workbook, spy_client, concurrency=1
-        )
+        orchestrator = ExcelOrchestrator(integration_workbook, spy_client, concurrency=1)
         orchestrator.run()
 
         second_prompt = spy_client.calls[1]["prompt"]
 
-        assert "<conversation_history>" in second_prompt, (
-            "Should start with <conversation_history>"
-        )
-        assert "</conversation_history>" in second_prompt, (
-            "Should end with </conversation_history>"
-        )
+        assert "<conversation_history>" in second_prompt, "Should start with <conversation_history>"
+        assert "</conversation_history>" in second_prompt, "Should end with </conversation_history>"
         assert "<interaction" in second_prompt, "Should contain <interaction"
         assert "</interaction>" in second_prompt, "Should contain </interaction>"
         assert "USER:" in second_prompt, "Should contain USER:"
@@ -211,9 +204,11 @@ class TestContextAssembly:
         """
         Verify that referencing non-existent prompt_name raises error.
         """
-        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
-        from openpyxl import load_workbook
         import json
+
+        from openpyxl import load_workbook
+
+        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
 
         wb = load_workbook(integration_workbook)
         ws = wb["prompts"]
@@ -226,9 +221,7 @@ class TestContextAssembly:
         ws["D3"] = json.dumps(["nonexistent"])
         wb.save(integration_workbook)
 
-        orchestrator = ExcelOrchestrator(
-            integration_workbook, spy_client, concurrency=1
-        )
+        orchestrator = ExcelOrchestrator(integration_workbook, spy_client, concurrency=1)
 
         with pytest.raises(ValueError, match="nonexistent"):
             orchestrator.run()
@@ -247,8 +240,9 @@ class TestContextAssemblyRealAPI:
         The AI should be able to answer correctly because the context
         from step1 (4) and step2 (6) is injected into the prompt.
         """
-        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
         from openpyxl import load_workbook
+
+        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
 
         orchestrator = ExcelOrchestrator(
             integration_workbook_with_dependencies, real_mistral_client, concurrency=1
@@ -265,13 +259,11 @@ class TestContextAssemblyRealAPI:
                 results[row[3]] = row[10]
 
         assert (
-            "4" in str(results.get("step1", ""))
-            or "four" in str(results.get("step1", "")).lower()
+            "4" in str(results.get("step1", "")) or "four" in str(results.get("step1", "")).lower()
         ), f"step1 should answer 4, got {results.get('step1')}"
 
         assert (
-            "6" in str(results.get("step2", ""))
-            or "six" in str(results.get("step2", "")).lower()
+            "6" in str(results.get("step2", "")) or "six" in str(results.get("step2", "")).lower()
         ), f"step2 should answer 6, got {results.get('step2')}"
 
         step3_response = str(results.get("step3", ""))
@@ -279,14 +271,13 @@ class TestContextAssemblyRealAPI:
             f"step3 should answer 10 (4+6), got {step3_response}"
         )
 
-    def test_real_api_no_context_without_history(
-        self, integration_workbook, real_mistral_client
-    ):
+    def test_real_api_no_context_without_history(self, integration_workbook, real_mistral_client):
         """
         Verify that prompts without history references don't receive context.
         """
-        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
         from openpyxl import load_workbook
+
+        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
 
         wb = load_workbook(integration_workbook)
         ws = wb["prompts"]
@@ -298,9 +289,7 @@ class TestContextAssemblyRealAPI:
         ws["C3"] = "What is 1 + 1? Just give the number."
         wb.save(integration_workbook)
 
-        orchestrator = ExcelOrchestrator(
-            integration_workbook, real_mistral_client, concurrency=1
-        )
+        orchestrator = ExcelOrchestrator(integration_workbook, real_mistral_client, concurrency=1)
         results_sheet = orchestrator.run()
 
         wb = load_workbook(integration_workbook)

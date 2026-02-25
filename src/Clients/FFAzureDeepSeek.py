@@ -1,21 +1,20 @@
 # PROPRIETARY AND CONTROLLED CODE
 # Copyright (C) 2025 Antonio Quinonez / Far Finer LLC. All Rights Reserved.
-# 
+#
 # WARNING: This code contains sensitive technology requiring explicit authorization
 # for possession or use. Unauthorized possession is strictly prohibited and will
 # result in legal action. Licensed use requires signed agreement and compliance
 # with all security requirements.
-# 
+#
 # Contact: antquinonez@farfiner.com
 # filename: src/lib/AI/FFAzureDeepSeek.py
 
+import logging
 import os
 import re
-import time
-import logging
-from typing import Optional, List, Dict, Any, Union
+
 from azure.ai.inference import ChatCompletionsClient
-from azure.ai.inference.models import SystemMessage, UserMessage, AssistantMessage
+from azure.ai.inference.models import AssistantMessage, SystemMessage, UserMessage
 from azure.core.credentials import AzureKeyCredential
 from dotenv import load_dotenv
 
@@ -24,16 +23,17 @@ load_dotenv()
 # Configure logging
 logger = logging.getLogger(__name__)
 
+
 class FFAzureDeepSeek:
-    def __init__(self, config: Optional[dict] = None, **kwargs):
+    def __init__(self, config: dict | None = None, **kwargs):
         logger.info("Initializing FFDeepSeek")
 
         # DEFAULT VALUES
         defaults = {
-            'model': "DeepSeek-R1",
-            'max_tokens': 4096,
-            'temperature': 0.5,
-            'instructions': "Respond accurately to user queries. Never start with a preamble. Immediately address the ask or request. Do not add meta information about your response. If there's nothing to do, answer with ''"
+            "model": "DeepSeek-R1",
+            "max_tokens": 4096,
+            "temperature": 0.5,
+            "instructions": "Respond accurately to user queries. Never start with a preamble. Immediately address the ask or request. Do not add meta information about your response. If there's nothing to do, answer with ''",
         }
 
         # Combine config and kwargs, with kwargs taking precedence
@@ -41,28 +41,40 @@ class FFAzureDeepSeek:
 
         for key, value in all_config.items():
             match key:
-                case 'api_key':
-                    self.api_key = value or os.getenv('AZURE_DEEPSEEK_KEY')
-                case 'endpoint':
-                    self.endpoint = value or os.getenv('AZURE_DEEPSEEK_ENDPOINT')
-                case 'model':
+                case "api_key":
+                    self.api_key = value or os.getenv("AZURE_DEEPSEEK_KEY")
+                case "endpoint":
+                    self.endpoint = value or os.getenv("AZURE_DEEPSEEK_ENDPOINT")
+                case "model":
                     self.model = value
-                case 'temperature':
+                case "temperature":
                     self.temperature = float(value)
-                case 'max_tokens':
+                case "max_tokens":
                     self.max_tokens = int(value)
-                case 'system_instructions':
+                case "system_instructions":
                     self.system_instructions = value
 
         # Set default values if not set
-        self.api_key = getattr(self, 'api_key', os.getenv('AZURE_DEEPSEEK_KEY'))
-        self.endpoint = getattr(self, 'endpoint', os.getenv('AZURE_DEEPSEEK_ENDPOINT'))
-        self.model = getattr(self, 'model', os.getenv('AZURE_DEEPSEEK_MODEL', defaults['model']))
-        self.temperature = getattr(self, 'temperature', float(os.getenv('AZURE_DEEPSEEK_TEMPERATURE', defaults['temperature'])))
-        self.max_tokens = getattr(self, 'max_tokens', int(os.getenv('AZURE_DEEPSEEK_MAX_TOKENS', defaults['max_tokens'])))
-        self.system_instructions = getattr(self, 'system_instructions', os.getenv('AZURE_DEEPSEEK_ASSISTANT_INSTRUCTIONS', defaults['instructions']))
+        self.api_key = getattr(self, "api_key", os.getenv("AZURE_DEEPSEEK_KEY"))
+        self.endpoint = getattr(self, "endpoint", os.getenv("AZURE_DEEPSEEK_ENDPOINT"))
+        self.model = getattr(self, "model", os.getenv("AZURE_DEEPSEEK_MODEL", defaults["model"]))
+        self.temperature = getattr(
+            self,
+            "temperature",
+            float(os.getenv("AZURE_DEEPSEEK_TEMPERATURE", defaults["temperature"])),
+        )
+        self.max_tokens = getattr(
+            self, "max_tokens", int(os.getenv("AZURE_DEEPSEEK_MAX_TOKENS", defaults["max_tokens"]))
+        )
+        self.system_instructions = getattr(
+            self,
+            "system_instructions",
+            os.getenv("AZURE_DEEPSEEK_ASSISTANT_INSTRUCTIONS", defaults["instructions"]),
+        )
 
-        logger.debug(f"Model: {self.model}, Temperature: {self.temperature}, Max Tokens: {self.max_tokens}")
+        logger.debug(
+            f"Model: {self.model}, Temperature: {self.temperature}, Max Tokens: {self.max_tokens}"
+        )
         logger.debug(f"System instructions: {self.system_instructions}")
 
         self.conversation_history = []
@@ -71,52 +83,55 @@ class FFAzureDeepSeek:
     def _initialize_client(self) -> ChatCompletionsClient:
         """Initialize and return the Azure AI Inference ChatCompletionsClient."""
         logger.info("Initializing Azure DeepSeek client")
-        
+
         api_key = self.api_key
         endpoint = self.endpoint
-        
+
         if not api_key:
             logger.error("API key not found")
             raise ValueError("API key not found")
-            
+
         if not endpoint:
             logger.error("Endpoint URL not found")
             raise ValueError("Endpoint URL not found")
-        
-        return ChatCompletionsClient(
-            endpoint=endpoint,
-            credential=AzureKeyCredential(api_key)
-        )
 
-    def get_conversation_history(self) -> List[Dict[str, str]]:
+        return ChatCompletionsClient(endpoint=endpoint, credential=AzureKeyCredential(api_key))
+
+    def get_conversation_history(self) -> list[dict[str, str]]:
         """Get the conversation history."""
         return self.conversation_history
-    
-    def set_conversation_history(self, history: List[Dict[str, str]]) -> None:
+
+    def set_conversation_history(self, history: list[dict[str, str]]) -> None:
         """Set the conversation history."""
         self.conversation_history = history
-        
-    def _convert_history_to_messages(self) -> List[Union[SystemMessage, UserMessage, AssistantMessage]]:
+
+    def _convert_history_to_messages(self) -> list[SystemMessage | UserMessage | AssistantMessage]:
         """Convert conversation history to Azure AI message format."""
         messages = []
-        
+
         # Add system message
         if self.system_instructions:
             messages.append(SystemMessage(content=self.system_instructions))
-        
+
         # Add conversation history
         for message in self.conversation_history:
             if message["role"] == "user":
                 messages.append(UserMessage(content=message["content"]))
             elif message["role"] == "assistant":
                 messages.append(AssistantMessage(content=message["content"]))
-        
+
         return messages
 
-    def generate_response(self, prompt: str, model: Optional[str] = None, system_instructions: Optional[str] = None, **kwargs) -> str:
+    def generate_response(
+        self,
+        prompt: str,
+        model: str | None = None,
+        system_instructions: str | None = None,
+        **kwargs,
+    ) -> str:
         if not prompt.strip():
             raise ValueError("Empty prompt provided")
-        
+
         logger.debug(f"Generating response for prompt: {prompt}")
 
         # Determine model to use
@@ -126,10 +141,10 @@ class FFAzureDeepSeek:
         try:
             # Add user prompt to history
             self.conversation_history.append({"role": "user", "content": prompt})
-            
+
             # Create messages list
             messages = self._convert_history_to_messages()
-            
+
             # If system_instructions parameter is provided, replace the system message
             if system_instructions:
                 # Remove existing system message if present
@@ -137,25 +152,29 @@ class FFAzureDeepSeek:
                     messages = messages[1:]
                 # Add new system message at the beginning
                 messages.insert(0, SystemMessage(content=system_instructions))
-            
+
             # Call Azure API
             response = self.client.complete(
                 messages=messages,
                 max_tokens=self.max_tokens,
                 temperature=self.temperature,
-                model=used_model
+                model=used_model,
             )
-            
+
             # Extract response -- remove the <think> tag if present
-            match = re.match(r"<think>(.*?)</think>(.*)", response.choices[0].message.content, re.DOTALL)
-            assistant_response = match.group(2).strip() if match else response.choices[0].message.content.strip()
-            
+            match = re.match(
+                r"<think>(.*?)</think>(.*)", response.choices[0].message.content, re.DOTALL
+            )
+            assistant_response = (
+                match.group(2).strip() if match else response.choices[0].message.content.strip()
+            )
+
             # Add assistant's response to history
             self.conversation_history.append({"role": "assistant", "content": assistant_response})
-            
+
             logger.info("Response generated successfully")
             return assistant_response
-            
+
         except Exception as e:
             logger.error("Problem with response generation")
             logger.error(f"  -- exception: {str(e)}")
@@ -164,27 +183,29 @@ class FFAzureDeepSeek:
             logger.error(f"  -- conversation history: {self.conversation_history}")
             logger.error(f"  -- max_tokens: {self.max_tokens}")
             logger.error(f"  -- temperature: {self.temperature}")
-            
+
             raise RuntimeError(f"Error generating response from Azure DeepSeek: {str(e)}")
 
-    def stream_response(self, prompt: str, model: Optional[str] = None, system_instructions: Optional[str] = None):
+    def stream_response(
+        self, prompt: str, model: str | None = None, system_instructions: str | None = None
+    ):
         """Stream the response from the model."""
         if not prompt.strip():
             raise ValueError("Empty prompt provided")
-        
+
         logger.debug(f"Streaming response for prompt: {prompt}")
-        
+
         # Determine model to use
         used_model = model if model else self.model
         logger.debug(f"Using model: {used_model}")
-        
+
         try:
             # Add user prompt to history
             self.conversation_history.append({"role": "user", "content": prompt})
-            
+
             # Create messages list
             messages = self._convert_history_to_messages()
-            
+
             # If system_instructions parameter is provided, replace the system message
             if system_instructions:
                 # Remove existing system message if present
@@ -192,30 +213,30 @@ class FFAzureDeepSeek:
                     messages = messages[1:]
                 # Add new system message at the beginning
                 messages.insert(0, SystemMessage(content=system_instructions))
-            
+
             # Call Azure API with streaming enabled
             stream_response = self.client.complete(
                 messages=messages,
                 max_tokens=self.max_tokens,
                 temperature=self.temperature,
                 model=used_model,
-                stream=True
+                stream=True,
             )
-            
+
             # Build the full response while yielding chunks
             full_response = ""
-            
+
             for update in stream_response:
                 if update.choices:
                     content = update.choices[0].delta.content or ""
                     full_response += content
                     yield content
-            
+
             # Add assistant's response to history
             self.conversation_history.append({"role": "assistant", "content": full_response})
-            
+
             logger.info("Stream response completed successfully")
-            
+
         except Exception as e:
             logger.error("Problem with stream response generation")
             logger.error(f"  -- exception: {str(e)}")
@@ -224,9 +245,9 @@ class FFAzureDeepSeek:
             logger.error(f"  -- conversation history: {self.conversation_history}")
             logger.error(f"  -- max_tokens: {self.max_tokens}")
             logger.error(f"  -- temperature: {self.temperature}")
-            
+
             raise RuntimeError(f"Error streaming response from Azure DeepSeek: {str(e)}")
-            
+
     def clear_conversation(self):
         logger.info("Clearing conversation history")
         self.conversation_history = []

@@ -1,30 +1,35 @@
-import os
-import logging
-from typing import Dict, Any, Optional, Type
+"""Client registry for multi-client AI orchestration.
 
-from ..FFAIClientBase import FFAIClientBase
-from ..Clients.FFMistral import FFMistral
-from ..Clients.FFMistralSmall import FFMistralSmall
+Provides lazy instantiation and configuration of AI clients based on
+definitions in the workbook's 'clients' sheet.
+"""
+
+import logging
+import os
+from typing import Any
+
 from ..Clients.FFAnthropic import FFAnthropic
 from ..Clients.FFAnthropicCached import FFAnthropicCached
-from ..Clients.FFGemini import FFGemini
-from ..Clients.FFPerplexity import FFPerplexity
-from ..Clients.FFOpenAIAssistant import FFOpenAIAssistant
-from ..Clients.FFNvidiaDeepSeek import FFNvidiaDeepSeek
-from ..Clients.FFAzureMistral import FFAzureMistral
-from ..Clients.FFAzureMistralSmall import FFAzureMistralSmall
 from ..Clients.FFAzureCodestral import FFAzureCodestral
 from ..Clients.FFAzureDeepSeek import FFAzureDeepSeek
 from ..Clients.FFAzureDeepSeekV3 import FFAzureDeepSeekV3
+from ..Clients.FFAzureMistral import FFAzureMistral
+from ..Clients.FFAzureMistralSmall import FFAzureMistralSmall
 from ..Clients.FFAzureMSDeepSeekR1 import FFAzureMSDeepSeekR1
 from ..Clients.FFAzurePhi import FFAzurePhi
+from ..Clients.FFGemini import FFGemini
+from ..Clients.FFMistral import FFMistral
+from ..Clients.FFMistralSmall import FFMistralSmall
+from ..Clients.FFNvidiaDeepSeek import FFNvidiaDeepSeek
+from ..Clients.FFOpenAIAssistant import FFOpenAIAssistant
+from ..Clients.FFPerplexity import FFPerplexity
+from ..FFAIClientBase import FFAIClientBase
 
 logger = logging.getLogger(__name__)
 
 
 class ClientRegistry:
-    """
-    Registry for AI clients with lazy instantiation.
+    """Registry for AI clients with lazy instantiation.
 
     Supports per-prompt client selection via named client configurations
     defined in the workbook's 'clients' sheet.
@@ -38,7 +43,7 @@ class ClientRegistry:
         client = registry.get()  # Returns default client
     """
 
-    CLIENT_MAP: Dict[str, Type[FFAIClientBase]] = {
+    CLIENT_MAP: dict[str, type[FFAIClientBase]] = {
         "mistral": FFMistral,
         "mistral-small": FFMistralSmall,
         "anthropic": FFAnthropic,
@@ -74,22 +79,19 @@ class ClientRegistry:
         "azure-phi": "AZURE_PHI_KEY",
     }
 
-    def __init__(self, default_client: FFAIClientBase):
-        """
-        Initialize registry with a default client.
+    def __init__(self, default_client: FFAIClientBase) -> None:
+        """Initialize registry with a default client.
 
         Args:
-            default_client: The default client to use when no name specified
+            default_client: The default client to use when no name specified.
+
         """
         self._default_client = default_client
-        self._clients: Dict[str, FFAIClientBase] = {}
-        self._client_configs: Dict[str, Dict[str, Any]] = {}
+        self._clients: dict[str, FFAIClientBase] = {}
+        self._client_configs: dict[str, dict[str, Any]] = {}
 
-    def register(
-        self, name: str, client_type: str, config: Optional[Dict[str, Any]] = None
-    ) -> None:
-        """
-        Register a named client configuration.
+    def register(self, name: str, client_type: str, config: dict[str, Any] | None = None) -> None:
+        """Register a named client configuration.
 
         Args:
             name: Unique identifier for this client
@@ -98,6 +100,7 @@ class ClientRegistry:
 
         Raises:
             ValueError: If client_type is not recognized
+
         """
         if client_type not in self.CLIENT_MAP:
             raise ValueError(
@@ -112,9 +115,8 @@ class ClientRegistry:
 
         logger.info(f"Registered client '{name}' of type '{client_type}'")
 
-    def get(self, name: Optional[str] = None) -> FFAIClientBase:
-        """
-        Get client by name, creating it lazily if needed.
+    def get(self, name: str | None = None) -> FFAIClientBase:
+        """Get client by name, creating it lazily if needed.
 
         Args:
             name: Client name, or None for default client
@@ -124,14 +126,13 @@ class ClientRegistry:
 
         Note:
             If name is not found, returns default client with a warning.
+
         """
         if name is None:
             return self._default_client
 
         if name not in self._client_configs:
-            logger.warning(
-                f"Client '{name}' not found in registry, falling back to default client"
-            )
+            logger.warning(f"Client '{name}' not found in registry, falling back to default client")
             return self._default_client
 
         if name not in self._clients:
@@ -139,27 +140,27 @@ class ClientRegistry:
 
         return self._clients[name]
 
-    def clone(self, name: Optional[str] = None) -> FFAIClientBase:
-        """
-        Get a fresh clone of a client for parallel execution.
+    def clone(self, name: str | None = None) -> FFAIClientBase:
+        """Get a fresh clone of a client for parallel execution.
 
         Args:
             name: Client name, or None for default client
 
         Returns:
             A cloned client with empty history
+
         """
         return self.get(name).clone()
 
     def _create_client(self, name: str) -> FFAIClientBase:
-        """
-        Create a client instance from registered configuration.
+        """Create a client instance from registered configuration.
 
         Args:
             name: The registered client name
 
         Returns:
             A new client instance
+
         """
         registration = self._client_configs[name]
         client_type = registration["client_type"]
@@ -167,12 +168,10 @@ class ClientRegistry:
 
         client_class = self.CLIENT_MAP[client_type]
 
-        api_key_env = config.get("api_key_env") or self.DEFAULT_API_KEY_ENVS.get(
-            client_type
-        )
+        api_key_env = config.get("api_key_env") or self.DEFAULT_API_KEY_ENVS.get(client_type)
         api_key = os.getenv(api_key_env) if api_key_env else None
 
-        kwargs: Dict[str, Any] = {}
+        kwargs: dict[str, Any] = {}
         if api_key:
             kwargs["api_key"] = api_key
         if config.get("model"):
@@ -184,9 +183,7 @@ class ClientRegistry:
         if config.get("system_instructions"):
             kwargs["system_instructions"] = config["system_instructions"]
 
-        logger.debug(
-            f"Creating client '{name}' of type '{client_type}' with config: {kwargs}"
-        )
+        logger.debug(f"Creating client '{name}' of type '{client_type}' with config: {kwargs}")
 
         return client_class(**kwargs)
 
@@ -204,6 +201,6 @@ class ClientRegistry:
         return list(cls.CLIENT_MAP.keys())
 
     @classmethod
-    def get_default_api_key_env(cls, client_type: str) -> Optional[str]:
+    def get_default_api_key_env(cls, client_type: str) -> str | None:
         """Get the default API key environment variable for a client type."""
         return cls.DEFAULT_API_KEY_ENVS.get(client_type)

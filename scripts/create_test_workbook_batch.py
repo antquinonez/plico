@@ -156,9 +156,7 @@ def create_batch_test_workbook(output_path: str):
             None,
         )
     )
-    prompts.append(
-        (7, "calc_double", "What is {{quantity}} times 2? Just give the number.", None)
-    )
+    prompts.append((7, "calc_double", "What is {{quantity}} times 2? Just give the number.", None))
     prompts.append(
         (
             8,
@@ -428,20 +426,18 @@ def create_batch_test_workbook(output_path: str):
     print(f"Created BATCH test workbook: {output_path}")
     print(f"{'=' * 70}")
     print(f"\nTotal prompts: {len(prompts)}")
-    print(f"Total batches: 5")
-    print(f"\nData Variables:")
-    print(f"  - region: north, south, east, west, central")
-    print(f"  - product: widget_a, widget_b, widget_c")
-    print(f"  - price: 10, 12, 15, 18, 20")
-    print(f"  - quantity: 50, 60, 75, 80, 100")
-    print(f"\nPrompt Structure:")
-    print(f"  Level 0: 10 independent prompts (sequences 1-10)")
-    print(f"  Level 1: 10 prompts with 1-3 dependencies (sequences 11-20)")
-    print(f"  Level 2: 10 prompts with 2-3 dependencies (sequences 21-30)")
-    print(f"  Level 3: 5 synthesis prompts (sequences 31-35)")
-    print(
-        f"\nTotal executions: {len(prompts)} prompts x 5 batches = {len(prompts) * 5} total"
-    )
+    print("Total batches: 5")
+    print("\nData Variables:")
+    print("  - region: north, south, east, west, central")
+    print("  - product: widget_a, widget_b, widget_c")
+    print("  - price: 10, 12, 15, 18, 20")
+    print("  - quantity: 50, 60, 75, 80, 100")
+    print("\nPrompt Structure:")
+    print("  Level 0: 10 independent prompts (sequences 1-10)")
+    print("  Level 1: 10 prompts with 1-3 dependencies (sequences 11-20)")
+    print("  Level 2: 10 prompts with 2-3 dependencies (sequences 21-30)")
+    print("  Level 3: 5 synthesis prompts (sequences 31-35)")
+    print(f"\nTotal executions: {len(prompts)} prompts x 5 batches = {len(prompts) * 5} total")
     print(f"\n{'=' * 70}")
     print(f"Run with: python scripts/run_orchestrator.py {output_path} -c 3")
     print(f"{'=' * 70}\n")

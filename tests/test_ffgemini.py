@@ -1,7 +1,6 @@
+from unittest.mock import AsyncMock, MagicMock, patch
+
 import pytest
-from unittest.mock import MagicMock, patch, AsyncMock
-import os
-import asyncio
 
 
 class TestFFGeminiInit:
@@ -23,9 +22,7 @@ class TestFFGeminiInit:
                 ):
                     from src.Clients.FFGemini import FFGemini
 
-                    with patch.object(
-                        FFGemini, "_get_region", return_value="us-central1"
-                    ):
+                    with patch.object(FFGemini, "_get_region", return_value="us-central1"):
                         client = FFGemini.__new__(FFGemini)
                         client.model = "google/gemini-1.5-pro-002"
                         client.temperature = 0.7
@@ -53,9 +50,7 @@ class TestFFGeminiGenerateResponseSync:
             mock_response.choices = [MagicMock()]
             mock_response.choices[0].message.content = "This is a test response."
 
-            mock_gemini_client.chat.completions.create = AsyncMock(
-                return_value=mock_response
-            )
+            mock_gemini_client.chat.completions.create = AsyncMock(return_value=mock_response)
 
             with patch("src.Clients.FFGemini.AsyncOpenAI") as MockOpenAI:
                 MockOpenAI.return_value = mock_gemini_client
@@ -75,9 +70,7 @@ class TestFFGeminiGenerateResponseSync:
                         client.creds = mock_creds
 
                         async def mock_generate(prompt):
-                            client.chat_history.append(
-                                {"role": "user", "content": prompt}
-                            )
+                            client.chat_history.append({"role": "user", "content": prompt})
                             client.chat_history.append(
                                 {
                                     "role": "assistant",

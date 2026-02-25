@@ -1,6 +1,7 @@
-import pytest
-from unittest.mock import MagicMock, patch
 import os
+from unittest.mock import patch
+
+import pytest
 
 
 class TestFFAnthropicInit:
@@ -50,9 +51,7 @@ class TestFFAnthropicInit:
 class TestFFAnthropicGenerateResponse:
     """Tests for generate_response method."""
 
-    def test_generate_response_basic(
-        self, mock_anthropic_client, mock_anthropic_response
-    ):
+    def test_generate_response_basic(self, mock_anthropic_client, mock_anthropic_response):
         """Test basic response generation."""
         with patch("src.Clients.FFAnthropic.Anthropic") as MockAnthropic:
             MockAnthropic.return_value = mock_anthropic_client
@@ -83,9 +82,7 @@ class TestFFAnthropicGenerateResponse:
             MockAnthropic.return_value = mock_anthropic_client
             from src.Clients.FFAnthropic import FFAnthropic
 
-            client = FFAnthropic(
-                api_key="test-key", max_model=True, max_model_max_tokens=8192
-            )
+            client = FFAnthropic(api_key="test-key", max_model=True, max_model_max_tokens=8192)
 
             assert client.max_model is not None
 

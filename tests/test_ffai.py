@@ -1,5 +1,4 @@
-import pytest
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 
 class TestFFAIInit:
@@ -198,8 +197,8 @@ class TestFFAIClientManagement:
 
     def test_set_client(self, mock_ffmistralsmall):
         """Test switching clients."""
-        from src.FFAI import FFAI
         from src.Clients.FFMistral import FFMistral
+        from src.FFAI import FFAI
 
         ffai = FFAI(mock_ffmistralsmall)
 
@@ -344,9 +343,7 @@ class TestFFAICleanResponse:
         """Test that normal text is preserved in responses."""
         from src.FFAI import FFAI
 
-        mock_ffmistralsmall.generate_response = (
-            lambda prompt, **kwargs: "Normal response text"
-        )
+        mock_ffmistralsmall.generate_response = lambda prompt, **kwargs: "Normal response text"
 
         ffai = FFAI(mock_ffmistralsmall)
         response = ffai.generate_response("Hello!")

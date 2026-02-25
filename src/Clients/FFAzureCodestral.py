@@ -9,10 +9,10 @@
 # Contact: antquinonez@farfiner.com
 
 import logging
-from typing import Optional, List, Dict, Any, Union, Iterator, Callable
+from collections.abc import Callable, Iterator
 
 from azure.ai.inference import ChatCompletionsClient
-from azure.ai.inference.models import SystemMessage, UserMessage
+from azure.ai.inference.models import SystemMessage
 from azure.core.credentials import AzureKeyCredential
 from azure.core.exceptions import HttpResponseError
 
@@ -80,18 +80,18 @@ class FFAzureCodestral(FFAzureClientBase):
     def stream_response(
         self,
         prompt: str,
-        callback: Optional[Callable[[str], None]] = None,
-        model: Optional[str] = None,
-        system_instructions: Optional[str] = None,
-        temperature: Optional[float] = None,
-        max_tokens: Optional[int] = None,
-        top_p: Optional[float] = None,
-        presence_penalty: Optional[float] = None,
-        frequency_penalty: Optional[float] = None,
-        stop: Optional[List[str]] = None,
-        response_format: Optional[Dict[str, str]] = None,
-        tools: Optional[List[Dict]] = None,
-        tool_choice: Optional[Union[str, Dict]] = None,
+        callback: Callable[[str], None] | None = None,
+        model: str | None = None,
+        system_instructions: str | None = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+        top_p: float | None = None,
+        presence_penalty: float | None = None,
+        frequency_penalty: float | None = None,
+        stop: list[str] | None = None,
+        response_format: dict[str, str] | None = None,
+        tools: list[dict] | None = None,
+        tool_choice: str | dict | None = None,
         **kwargs,
     ) -> Iterator[str]:
         """
@@ -182,9 +182,7 @@ class FFAzureCodestral(FFAzureClientBase):
                             callback(content)
                         yield content
 
-            self.conversation_history.append(
-                {"role": "assistant", "content": full_response}
-            )
+            self.conversation_history.append({"role": "assistant", "content": full_response})
 
             logger.info("Stream response completed successfully")
 
@@ -212,9 +210,7 @@ class FFAzureCodestral(FFAzureClientBase):
 
             raise RuntimeError(f"Error streaming response: {str(e)}")
 
-    def generate_code(
-        self, prompt: str, language: Optional[str] = None, **kwargs
-    ) -> str:
+    def generate_code(self, prompt: str, language: str | None = None, **kwargs) -> str:
         """
         Generate code based on the prompt, optimized for Codestral's capabilities.
 
@@ -293,15 +289,13 @@ class FFAzureCodestral(FFAzureClientBase):
             "where appropriate."
         )
 
-        prompt = (
-            f"Please review this code and suggest improvements:\n\n```\n{code}\n```"
-        )
+        prompt = f"Please review this code and suggest improvements:\n\n```\n{code}\n```"
 
         return self.generate_response(
             prompt=prompt, system_instructions=review_system_instructions, **kwargs
         )
 
-    def fix_code(self, code: str, error_message: Optional[str] = None, **kwargs) -> str:
+    def fix_code(self, code: str, error_message: str | None = None, **kwargs) -> str:
         """
         Fix issues in the provided code.
 

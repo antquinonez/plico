@@ -25,33 +25,29 @@ import os
 import sys
 import time
 from logging.handlers import TimedRotatingFileHandler
-from datetime import datetime
 
 from dotenv import load_dotenv
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from src.orchestrator import ExcelOrchestrator
-from src.orchestrator.client_registry import ClientRegistry
-from src.Clients.FFMistralSmall import FFMistralSmall
-from src.Clients.FFMistral import FFMistral
 from src.Clients.FFAnthropic import FFAnthropic
 from src.Clients.FFAnthropicCached import FFAnthropicCached
-from src.Clients.FFGemini import FFGemini
-from src.Clients.FFPerplexity import FFPerplexity
-from src.Clients.FFNvidiaDeepSeek import FFNvidiaDeepSeek
-from src.Clients.FFAzureMistral import FFAzureMistral
-from src.Clients.FFAzureMistralSmall import FFAzureMistralSmall
 from src.Clients.FFAzureCodestral import FFAzureCodestral
 from src.Clients.FFAzureDeepSeek import FFAzureDeepSeek
 from src.Clients.FFAzureDeepSeekV3 import FFAzureDeepSeekV3
+from src.Clients.FFAzureMistral import FFAzureMistral
+from src.Clients.FFAzureMistralSmall import FFAzureMistralSmall
 from src.Clients.FFAzurePhi import FFAzurePhi
+from src.Clients.FFGemini import FFGemini
+from src.Clients.FFMistral import FFMistral
+from src.Clients.FFMistralSmall import FFMistralSmall
+from src.Clients.FFNvidiaDeepSeek import FFNvidiaDeepSeek
+from src.Clients.FFPerplexity import FFPerplexity
+from src.orchestrator import ExcelOrchestrator
 
 load_dotenv()
 
-LOG_DIR = os.path.join(
-    os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "logs"
-)
+LOG_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "logs")
 os.makedirs(LOG_DIR, exist_ok=True)
 
 
@@ -202,9 +198,7 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
-    parser.add_argument(
-        "workbook", help="Path to Excel workbook (will be created if not exists)"
-    )
+    parser.add_argument("workbook", help="Path to Excel workbook (will be created if not exists)")
     parser.add_argument(
         "--client",
         choices=list(CLIENT_MAP.keys()),
@@ -246,9 +240,7 @@ def main():
     if not os.path.exists(workbook_path):
         builder.create_template_workbook()
         print(f"\nCreated template workbook: {workbook_path}")
-        print(
-            "Please edit the 'prompts' sheet to define your prompts, then run again.\n"
-        )
+        print("Please edit the 'prompts' sheet to define your prompts, then run again.\n")
         return 0
 
     builder.validate_workbook()

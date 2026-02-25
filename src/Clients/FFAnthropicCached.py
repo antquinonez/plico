@@ -9,14 +9,12 @@
 # Contact: antquinonez@farfiner.com
 # filename: src/lib/AI/FFAnthropicCached.py
 
-from anthropic import Anthropic
-from copy import deepcopy
-from dataclasses import dataclass
-from datetime import datetime
-from dotenv import load_dotenv
-from typing import Optional, List, Dict, Any, Tuple
 import logging
 import os
+from typing import Any
+
+from anthropic import Anthropic
+from dotenv import load_dotenv
 
 from ..ConversationHistory import ConversationHistory
 from ..OrderedPromptHistory import OrderedPromptHistory
@@ -28,7 +26,7 @@ logger = logging.getLogger(__name__)
 
 
 class FFAnthropicCached:
-    def __init__(self, config: Optional[dict] = None, **kwargs):
+    def __init__(self, config: dict | None = None, **kwargs):
         logger.info("Initializing FFAnthropicCached")
 
         default_model = "claude-3-5-sonnet-20240620"
@@ -87,8 +85,8 @@ class FFAnthropicCached:
     def generate_response(
         self,
         prompt: str,
-        model: Optional[str] = None,
-        prompt_name: Optional[str] = None,
+        model: str | None = None,
+        prompt_name: str | None = None,
     ) -> str:
         logger.debug(f"Generating response for prompt: {prompt}")
         used_model = model if model else self.model
@@ -133,63 +131,58 @@ class FFAnthropicCached:
             logger.error(f"  -- exception: {str(e)}")
             logger.error(f"  -- model: {used_model}")
             logger.error(f"  -- system: {self.system_instructions}")
-            logger.error(
-                f"  -- conversation history: {self.conversation_history.get_turns()}"
-            )
+            logger.error(f"  -- conversation history: {self.conversation_history.get_turns()}")
             logger.error(f"  -- max_tokens: {self.max_tokens}")
             logger.error(f"  -- temperature: {self.temperature}")
 
             raise RuntimeError(f"Error generating response from Claude: {str(e)}")
 
-    def get_interaction_history(self) -> List[Dict[str, Any]]:
+    def get_interaction_history(self) -> list[dict[str, Any]]:
         interactions = self.ordered_history.get_all_interactions()
         return [i.to_dict() for i in interactions]
 
-    def get_last_n_interactions(self, n: int) -> List[Dict[str, Any]]:
+    def get_last_n_interactions(self, n: int) -> list[dict[str, Any]]:
         all_interactions = self.ordered_history.get_all_interactions()
         return [i.to_dict() for i in all_interactions[-n:]]
 
-    def get_interaction(self, sequence_number: int) -> Optional[Dict[str, Any]]:
+    def get_interaction(self, sequence_number: int) -> dict[str, Any] | None:
         all_interactions = self.ordered_history.get_all_interactions()
         interaction = next(
             (i for i in all_interactions if i.sequence_number == sequence_number), None
         )
         return interaction.to_dict() if interaction else None
 
-    def get_model_interactions(self, model: str) -> List[Dict[str, Any]]:
+    def get_model_interactions(self, model: str) -> list[dict[str, Any]]:
         all_interactions = self.ordered_history.get_all_interactions()
         return [i.to_dict() for i in all_interactions if i.model == model]
 
-    def get_interactions_by_prompt_name(self, prompt_name: str) -> List[Dict[str, Any]]:
+    def get_interactions_by_prompt_name(self, prompt_name: str) -> list[dict[str, Any]]:
         return [
-            i.to_dict()
-            for i in self.ordered_history.get_interactions_by_prompt_name(prompt_name)
+            i.to_dict() for i in self.ordered_history.get_interactions_by_prompt_name(prompt_name)
         ]
 
-    def get_latest_interaction(self) -> Optional[Dict[str, Any]]:
+    def get_latest_interaction(self) -> dict[str, Any] | None:
         all_interactions = self.ordered_history.get_all_interactions()
         return all_interactions[-1].to_dict() if all_interactions else None
 
-    def get_prompt_history(self) -> List[str]:
+    def get_prompt_history(self) -> list[str]:
         return [i.prompt for i in self.ordered_history.get_all_interactions()]
 
-    def get_response_history(self) -> List[str]:
+    def get_response_history(self) -> list[str]:
         return [i.response for i in self.ordered_history.get_all_interactions()]
 
-    def get_model_usage_stats(self) -> Dict[str, int]:
+    def get_model_usage_stats(self) -> dict[str, int]:
         usage_stats = {}
         for interaction in self.ordered_history.get_all_interactions():
             usage_stats[interaction.model] = usage_stats.get(interaction.model, 0) + 1
         return usage_stats
 
-    def get_prompt_name_usage_stats(self) -> Dict[str, int]:
+    def get_prompt_name_usage_stats(self) -> dict[str, int]:
         return self.ordered_history.get_prompt_name_usage_stats()
 
     def clear_conversation(self):
-        logger.info(
-            "Clearing conversation history (permanent and ordered histories retained)"
-        )
+        logger.info("Clearing conversation history (permanent and ordered histories retained)")
         self.conversation_history = ConversationHistory()
 
-    def get_prompt_dict(self) -> Dict[str, List[Dict[str, Any]]]:
+    def get_prompt_dict(self) -> dict[str, list[dict[str, Any]]]:
         return self.ordered_history.to_dict()

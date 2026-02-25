@@ -9,13 +9,11 @@
 # Contact: antquinonez@farfiner.com
 # filename: src/lib/AI/FFPerplexity.py
 
-import os
-import time
 import logging
-from typing import Optional, List, Dict, Any, Union
-from openai import OpenAI
-from dotenv import load_dotenv
+import os
 
+from dotenv import load_dotenv
+from openai import OpenAI
 
 load_dotenv()
 
@@ -24,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 
 class FFPerplexity:
-    def __init__(self, config: Optional[dict] = None, **kwargs):
+    def __init__(self, config: dict | None = None, **kwargs):
         logger.info("Initializing FFPerplexity")
 
         # DEFAULT VALUES
@@ -53,9 +51,7 @@ class FFPerplexity:
 
         # Set default values if not set
         self.api_key = getattr(self, "api_key", os.getenv("PERPLEXITY_TOKEN"))
-        self.model = getattr(
-            self, "model", os.getenv("PERPLEXITY_MODEL", defaults["model"])
-        )
+        self.model = getattr(self, "model", os.getenv("PERPLEXITY_MODEL", defaults["model"]))
         self.temperature = getattr(
             self,
             "temperature",
@@ -90,19 +86,19 @@ class FFPerplexity:
 
         return OpenAI(api_key=api_key, base_url="https://api.perplexity.ai")
 
-    def get_conversation_history(self) -> List[Dict[str, str]]:
+    def get_conversation_history(self) -> list[dict[str, str]]:
         """Get the conversation history."""
         return self.conversation_history
 
-    def set_conversation_history(self, history: List[Dict[str, str]]) -> None:
+    def set_conversation_history(self, history: list[dict[str, str]]) -> None:
         """Set the conversation history."""
         self.conversation_history = history
 
     def generate_response(
         self,
         prompt: str,
-        model: Optional[str] = None,
-        system_instructions: Optional[str] = None,
+        model: str | None = None,
+        system_instructions: str | None = None,
     ) -> str:
         if not prompt.strip():
             raise ValueError("Empty prompt provided")
@@ -129,9 +125,7 @@ class FFPerplexity:
             )
 
             assistant_response = response.choices[0].message.content
-            self.conversation_history.append(
-                {"role": "assistant", "content": assistant_response}
-            )
+            self.conversation_history.append({"role": "assistant", "content": assistant_response})
 
             logger.info("Response generated successfully")
             return assistant_response

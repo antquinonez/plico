@@ -1,9 +1,16 @@
-import os
+"""Excel workbook builder for prompt orchestration.
+
+Provides utilities for creating, validating, and reading/writing
+orchestrator workbooks with config, prompts, data, clients, and
+documents sheets.
+"""
+
 import json
-import re
 import logging
+import os
+import re
 from datetime import datetime
-from typing import Optional, List, Dict, Any
+from typing import Any
 
 from openpyxl import Workbook, load_workbook
 from openpyxl.utils import get_column_letter
@@ -82,11 +89,17 @@ class WorkbookBuilder:
         "references",
     ]
 
-    def __init__(self, workbook_path: str):
+    def __init__(self, workbook_path: str) -> None:
+        """Initialize the WorkbookBuilder.
+
+        Args:
+            workbook_path: Path to the Excel workbook file.
+
+        """
         self.workbook_path = workbook_path
-        self._has_data_sheet: Optional[bool] = None
-        self._has_clients_sheet: Optional[bool] = None
-        self._has_documents_sheet: Optional[bool] = None
+        self._has_data_sheet: bool | None = None
+        self._has_clients_sheet: bool | None = None
+        self._has_documents_sheet: bool | None = None
 
     def has_data_sheet(self) -> bool:
         """Check if workbook has a data sheet for batch execution."""
@@ -228,7 +241,7 @@ class WorkbookBuilder:
         logger.info(f"Workbook validated: {self.workbook_path}")
         return True
 
-    def load_config(self) -> Dict[str, Any]:
+    def load_config(self) -> dict[str, Any]:
         """Load configuration from config sheet."""
         wb = load_workbook(self.workbook_path)
         ws = wb[self.CONFIG_SHEET]
@@ -251,7 +264,7 @@ class WorkbookBuilder:
         logger.debug(f"Loaded config: {config}")
         return config
 
-    def load_prompts(self) -> List[Dict[str, Any]]:
+    def load_prompts(self) -> list[dict[str, Any]]:
         """Load prompts from prompts sheet."""
         wb = load_workbook(self.workbook_path)
         ws = wb[self.PROMPTS_SHEET]
@@ -272,9 +285,7 @@ class WorkbookBuilder:
                     row_dict[header] = row[col_idx]
 
             prompt_data = {
-                "sequence": int(row_dict.get("sequence"))
-                if row_dict.get("sequence")
-                else None,
+                "sequence": int(row_dict.get("sequence")) if row_dict.get("sequence") else None,
                 "prompt_name": str(row_dict.get("prompt_name", "")).strip()
                 if row_dict.get("prompt_name")
                 else None,
@@ -302,7 +313,7 @@ class WorkbookBuilder:
         logger.info(f"Loaded {len(prompts)} prompts")
         return prompts
 
-    def load_data(self) -> List[Dict[str, Any]]:
+    def load_data(self) -> list[dict[str, Any]]:
         """Load batch data from data sheet."""
         if not self.has_data_sheet():
             return []
@@ -332,7 +343,7 @@ class WorkbookBuilder:
         logger.info(f"Loaded {len(data_rows)} data rows for batch execution")
         return data_rows
 
-    def get_data_columns(self) -> List[str]:
+    def get_data_columns(self) -> list[str]:
         """Get column names from data sheet."""
         if not self.has_data_sheet():
             return []
@@ -348,9 +359,8 @@ class WorkbookBuilder:
 
         return headers
 
-    def load_clients(self) -> List[Dict[str, Any]]:
-        """
-        Load client configurations from clients sheet.
+    def load_clients(self) -> list[dict[str, Any]]:
+        """Load client configurations from clients sheet.
 
         Returns:
             List of client config dictionaries with keys:
@@ -361,6 +371,7 @@ class WorkbookBuilder:
             - temperature: temperature override (optional)
             - max_tokens: max tokens override (optional)
             - system_instructions: system prompt override (optional)
+
         """
         if not self.has_clients_sheet():
             return []
@@ -389,9 +400,8 @@ class WorkbookBuilder:
         logger.info(f"Loaded {len(clients)} client configurations")
         return clients
 
-    def load_documents(self) -> List[Dict[str, Any]]:
-        """
-        Load document definitions from documents sheet.
+    def load_documents(self) -> list[dict[str, Any]]:
+        """Load document definitions from documents sheet.
 
         Returns:
             List of document config dictionaries with keys:
@@ -399,6 +409,7 @@ class WorkbookBuilder:
             - common_name: human-readable name
             - file_path: path to document (relative to workbook)
             - notes: optional description
+
         """
         if not self.has_documents_sheet():
             return []
@@ -421,16 +432,10 @@ class WorkbookBuilder:
                 if value is not None:
                     has_content = True
 
-            if (
-                has_content
-                and row_data.get("reference_name")
-                and row_data.get("file_path")
-            ):
+            if has_content and row_data.get("reference_name") and row_data.get("file_path"):
                 documents.append(
                     {
-                        "reference_name": str(
-                            row_data.get("reference_name", "")
-                        ).strip(),
+                        "reference_name": str(row_data.get("reference_name", "")).strip(),
                         "common_name": str(row_data.get("common_name", "")).strip()
                         if row_data.get("common_name")
                         else row_data.get("reference_name", ""),
@@ -444,7 +449,7 @@ class WorkbookBuilder:
         logger.info(f"Loaded {len(documents)} document configurations")
         return documents
 
-    def parse_history_string(self, history_str: Any) -> Optional[List[str]]:
+    def parse_history_string(self, history_str: Any) -> list[str] | None:  # noqa: ANN401
         """Parse history string like '["a", "b"]' into list."""
         if not history_str:
             return None
@@ -473,7 +478,7 @@ class WorkbookBuilder:
 
         return [s.strip().strip("\"'")]
 
-    def write_results(self, results: List[Dict[str, Any]], sheet_name: str) -> str:
+    def write_results(self, results: list[dict[str, Any]], sheet_name: str) -> str:
         """Write execution results to a new sheet."""
         wb = load_workbook(self.workbook_path)
 
@@ -532,7 +537,7 @@ class WorkbookBuilder:
 
     def write_batch_results(
         self,
-        results: List[Dict[str, Any]],
+        results: list[dict[str, Any]],
         batch_name: str,
         base_sheet_name: str = "results",
     ) -> str:

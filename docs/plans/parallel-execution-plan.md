@@ -13,7 +13,7 @@ Add methods to:
 ```python
 def _build_execution_graph(self) -> Dict[int, PromptNode]:
     """Build dependency graph and assign execution levels."""
-    
+
 def _get_ready_prompts(self, completed: Set[int], nodes: Dict[int, PromptNode]) -> List[PromptNode]:
     """Get prompts ready to execute (all deps met)."""
 ```
@@ -128,7 +128,7 @@ Run full orchestration with test workbook:
 ## Implementation Order
 
 1. ✅ Design document
-2. ✅ Plan document  
+2. ✅ Plan document
 3. ⬜ Task 1.1: Dependency graph analysis
 4. ⬜ Task 1.2: Parallel execute method
 5. ⬜ Task 2.1: Progress bar module

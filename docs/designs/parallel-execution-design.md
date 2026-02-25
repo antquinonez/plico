@@ -46,7 +46,7 @@ Build a directed acyclic graph (DAG) of prompt dependencies:
 
 ```
 Sequence 1 (context)     → no deps → can run immediately
-Sequence 2 (problem)     → no deps → can run immediately  
+Sequence 2 (problem)     → no deps → can run immediately
 Sequence 3 (solution)    → deps: [context, problem] → wait for 1,2
 Sequence 4 (prioritize)  → deps: [solution] → wait for 3
 ```
@@ -91,7 +91,7 @@ class PromptNode:
 ### Execution State
 
 ```python
-@dataclass 
+@dataclass
 class ExecutionState:
     completed: Set[int]           # completed sequence numbers
     in_progress: Set[int]         # currently running
@@ -136,7 +136,7 @@ Executing: [████████░░░░░░░░░░░░] 12/30 
 ### Colors (optional, using colorama)
 
 - Green: Success count
-- Red: Failed count  
+- Red: Failed count
 - Yellow: Running count
 
 ## Error Handling

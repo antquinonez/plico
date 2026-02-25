@@ -71,9 +71,7 @@ def create_test_workbook(output_path: str):
 
     # Math facts (6 prompts)
     for i in range(1, 7):
-        prompts.append(
-            (i, f"math_{i}", f"What is {i} + {i}? Just give the number.", None)
-        )
+        prompts.append((i, f"math_{i}", f"What is {i} + {i}? Just give the number.", None))
 
     # Word facts (6 prompts)
     words = ["apple", "banana", "cherry", "dog", "elephant", "flower"]
@@ -186,13 +184,9 @@ def create_test_workbook(output_path: str):
     )
 
     # Independent bonus prompts (parallel with entire chain)
-    prompts.append(
-        (30, "bonus_math", "What is 100 divided by 4? Just give the number.", None)
-    )
+    prompts.append((30, "bonus_math", "What is 100 divided by 4? Just give the number.", None))
 
-    prompts.append(
-        (31, "bonus_fact", "Name one interesting fact about the number 42.", None)
-    )
+    prompts.append((31, "bonus_fact", "Name one interesting fact about the number 42.", None))
 
     # Write all prompts to sheet
     for seq, name, prompt, history in prompts:
@@ -219,20 +213,20 @@ def create_test_workbook(output_path: str):
     print(f"Created test workbook: {output_path}")
     print(f"{'=' * 60}")
     print(f"\nTotal prompts: {len(prompts)}")
-    print(f"\nDependency Structure:")
-    print(f"  Level 0: 12 independent prompts (sequences 1-12)")
-    print(f"    - 6 math prompts: math_1 to math_6")
-    print(f"    - 6 word prompts: word_7 to word_12")
-    print(f"\n  Level 1: 10 prompts with 1-2 dependencies (sequences 13-22)")
-    print(f"    - 6 double prompts: double_1 to double_6")
-    print(f"    - 4 compare prompts: compare_7 to compare_10")
-    print(f"\n  Level 2: 5 prompts with 2-4 dependencies (sequences 23-27)")
-    print(f"    - 3 sum prompts: sum_1 to sum_3")
-    print(f"    - 1 triple_check prompt")
-    print(f"    - 1 word_analysis prompt")
-    print(f"\n  Level 3: 4 final prompts (sequences 28-31)")
-    print(f"    - 2 synthesis prompts: final_math, final_words")
-    print(f"    - 2 independent bonus prompts: bonus_math, bonus_fact")
+    print("\nDependency Structure:")
+    print("  Level 0: 12 independent prompts (sequences 1-12)")
+    print("    - 6 math prompts: math_1 to math_6")
+    print("    - 6 word prompts: word_7 to word_12")
+    print("\n  Level 1: 10 prompts with 1-2 dependencies (sequences 13-22)")
+    print("    - 6 double prompts: double_1 to double_6")
+    print("    - 4 compare prompts: compare_7 to compare_10")
+    print("\n  Level 2: 5 prompts with 2-4 dependencies (sequences 23-27)")
+    print("    - 3 sum prompts: sum_1 to sum_3")
+    print("    - 1 triple_check prompt")
+    print("    - 1 word_analysis prompt")
+    print("\n  Level 3: 4 final prompts (sequences 28-31)")
+    print("    - 2 synthesis prompts: final_math, final_words")
+    print("    - 2 independent bonus prompts: bonus_math, bonus_fact")
     print(f"\n{'=' * 60}")
     print(f"Run with: python scripts/run_orchestrator.py {output_path} -c 3")
     print(f"{'=' * 60}\n")

@@ -1,15 +1,20 @@
+"""Safe condition expression evaluation for conditional prompt execution.
+
+Uses AST parsing to safely evaluate conditions without eval()/exec(),
+supporting comparisons, boolean logic, and function calls.
+"""
+
 import ast
-import re
-import operator
 import logging
-from typing import Any, Dict, Optional, Tuple
+import operator
+import re
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
 
 class ConditionEvaluator:
-    """
-    Safely evaluates condition expressions for conditional prompt execution.
+    """Safely evaluates condition expressions for conditional prompt execution.
 
     Security model: Never uses eval() or exec() on user input. Conditions are
     parsed using AST and evaluated using a restricted set of operators.
@@ -60,9 +65,8 @@ class ConditionEvaluator:
 
     VARIABLE_PATTERN = re.compile(r"\{\{(\w+)\.(\w+)\}\}")
 
-    def __init__(self, results_by_name: Dict[str, Dict[str, Any]]):
-        """
-        Initialize evaluator with completed prompt results.
+    def __init__(self, results_by_name: dict[str, dict[str, Any]]) -> None:
+        """Initialize evaluator with completed prompt results.
 
         Args:
             results_by_name: Dict mapping prompt_name to result dict with keys:
@@ -71,12 +75,12 @@ class ConditionEvaluator:
                 - attempts: int
                 - error: str
                 - has_response: bool
+
         """
         self.results_by_name = results_by_name
 
-    def evaluate(self, condition: str) -> Tuple[bool, Optional[str]]:
-        """
-        Evaluate a condition expression.
+    def evaluate(self, condition: str) -> tuple[bool, str | None]:
+        """Evaluate a condition expression.
 
         Args:
             condition: The condition string to evaluate
@@ -85,6 +89,7 @@ class ConditionEvaluator:
             Tuple of (result, error_message)
             - result: True if condition passes, False otherwise
             - error_message: None if successful, error string if failed
+
         """
         if not condition or not condition.strip():
             return True, None
@@ -112,8 +117,7 @@ class ConditionEvaluator:
             return False, error_msg
 
     def _resolve_variables(self, text: str) -> str:
-        """
-        Replace {{name.property}} with actual values.
+        """Replace {{name.property}} with actual values.
 
         Converts variable references to Python literals that can be parsed.
         """
@@ -134,7 +138,7 @@ class ConditionEvaluator:
 
         return self.VARIABLE_PATTERN.sub(replacer, text)
 
-    def _compute_property(self, result: Dict[str, Any], prop: str, value: Any) -> Any:
+    def _compute_property(self, result: dict[str, Any], prop: str, value: Any) -> Any:  # noqa: ANN401
         """Compute property value, including computed properties."""
         if prop == "has_response":
             if isinstance(value, bool):
@@ -158,27 +162,24 @@ class ConditionEvaluator:
 
         return value
 
-    def _value_to_literal(self, value: Any) -> str:
+    def _value_to_literal(self, value: Any) -> str:  # noqa: ANN401
         """Convert a value to a Python literal string."""
         if value is None:
             return '""'
         elif isinstance(value, bool):
             return "True" if value else "False"
-        elif isinstance(value, (int, float)):
+        elif isinstance(value, int | float):
             return str(value)
         elif isinstance(value, str):
             escaped = value.replace("\\", "\\\\").replace('"', '\\"')
-            escaped = (
-                escaped.replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t")
-            )
+            escaped = escaped.replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t")
             return f'"{escaped}"'
         else:
             escaped = str(value).replace("\\", "\\\\").replace('"', '\\"')
             return f'"{escaped}"'
 
-    def _eval_node(self, node: ast.AST) -> Any:
+    def _eval_node(self, node: ast.AST) -> Any:  # noqa: ANN401
         """Recursively evaluate an AST node."""
-
         if isinstance(node, ast.Constant):
             return node.value
 
@@ -240,9 +241,7 @@ class ConditionEvaluator:
             elif type(op) in self.ALLOWED_OPERATORS:
                 result = self.ALLOWED_OPERATORS[type(op)](left, right)
             else:
-                raise ValueError(
-                    f"Unsupported comparison operator: {type(op).__name__}"
-                )
+                raise ValueError(f"Unsupported comparison operator: {type(op).__name__}")
 
             left = result
 
@@ -259,7 +258,7 @@ class ConditionEvaluator:
         else:
             raise ValueError(f"Unsupported boolean operator: {type(node.op).__name__}")
 
-    def _eval_unaryop(self, node: ast.UnaryOp) -> Any:
+    def _eval_unaryop(self, node: ast.UnaryOp) -> Any:  # noqa: ANN401
         """Evaluate unary operations (not)."""
         operand = self._eval_node(node.operand)
 
@@ -270,7 +269,7 @@ class ConditionEvaluator:
         else:
             raise ValueError(f"Unsupported unary operator: {type(node.op).__name__}")
 
-    def _eval_call(self, node: ast.Call) -> Any:
+    def _eval_call(self, node: ast.Call) -> Any:  # noqa: ANN401
         """Evaluate function calls."""
         if not isinstance(node.func, ast.Name):
             raise ValueError("Only simple function calls are allowed")
@@ -286,7 +285,7 @@ class ConditionEvaluator:
 
         return self.ALLOWED_FUNCTIONS[func_name](*args)
 
-    def _eval_binop(self, node: ast.BinOp) -> Any:
+    def _eval_binop(self, node: ast.BinOp) -> Any:  # noqa: ANN401
         """Evaluate binary operations (for 'matches' via % operator)."""
         left = self._eval_node(node.left)
         right = self._eval_node(node.right)
@@ -310,7 +309,7 @@ class ConditionEvaluator:
         else:
             raise ValueError(f"Unsupported binary operator: {type(node.op).__name__}")
 
-    def _eval_ifexp(self, node: ast.IfExp) -> Any:
+    def _eval_ifexp(self, node: ast.IfExp) -> Any:  # noqa: ANN401
         """Evaluate ternary if expression."""
         test = self._eval_node(node.test)
         if test:
@@ -320,36 +319,36 @@ class ConditionEvaluator:
 
     @classmethod
     def extract_referenced_names(cls, condition: str) -> list:
-        """
-        Extract all prompt names referenced in a condition.
+        """Extract all prompt names referenced in a condition.
 
         Args:
             condition: The condition string
 
         Returns:
             List of prompt names referenced via {{name.property}} syntax
+
         """
         if not condition:
             return []
         return list(set(cls.VARIABLE_PATTERN.findall(condition)))
 
     @classmethod
-    def validate_syntax(cls, condition: str) -> Tuple[bool, Optional[str]]:
-        """
-        Validate condition syntax without evaluating.
+    def validate_syntax(cls, condition: str) -> tuple[bool, str | None]:
+        """Validate condition syntax without evaluating.
 
         Args:
             condition: The condition string to validate
 
         Returns:
             Tuple of (is_valid, error_message)
+
         """
         if not condition or not condition.strip():
             return True, None
 
         try:
             dummy_results = {}
-            for name, prop in cls.VARIABLE_PATTERN.findall(condition):
+            for name, _prop in cls.VARIABLE_PATTERN.findall(condition):
                 dummy_results[name] = {
                     "status": "success",
                     "response": "test",

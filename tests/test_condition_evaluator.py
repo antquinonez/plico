@@ -7,17 +7,13 @@ Note: This test file imports the condition_evaluator module directly to avoid
 triggering imports from src/__init__.py which requires polars.
 """
 
-import pytest
-import sys
-import os
 import importlib.util
+import os
 
 # Import condition_evaluator directly to avoid polars dependency
 _spec = importlib.util.spec_from_file_location(
     "condition_evaluator",
-    os.path.join(
-        os.path.dirname(__file__), "..", "src", "orchestrator", "condition_evaluator.py"
-    ),
+    os.path.join(os.path.dirname(__file__), "..", "src", "orchestrator", "condition_evaluator.py"),
 )
 _ce = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_ce)
@@ -91,9 +87,7 @@ class TestConditionEvaluator:
 
     def test_response_contains(self):
         """Test response substring checks."""
-        results = {
-            "step1": self.create_results(response="The analysis shows positive results")
-        }
+        results = {"step1": self.create_results(response="The analysis shows positive results")}
         evaluator = ConditionEvaluator(results)
 
         result, error = evaluator.evaluate('"positive" in {{step1.response}}')
@@ -306,11 +300,7 @@ class TestConditionEvaluator:
 
     def test_response_with_special_characters(self):
         """Test handling of special characters in response."""
-        results = {
-            "step1": self.create_results(
-                response='Response with "quotes" and \\backslash'
-            )
-        }
+        results = {"step1": self.create_results(response='Response with "quotes" and \\backslash')}
         evaluator = ConditionEvaluator(results)
 
         result, error = evaluator.evaluate('"quotes" in {{step1.response}}')
@@ -373,9 +363,7 @@ class TestConditionEvaluator:
 
     def test_extract_single_reference(self):
         """Test extracting a single prompt reference."""
-        names = ConditionEvaluator.extract_referenced_names(
-            '{{step1.status}} == "success"'
-        )
+        names = ConditionEvaluator.extract_referenced_names('{{step1.status}} == "success"')
         assert names == [("step1", "status")]
 
     def test_extract_multiple_references(self):
@@ -396,9 +384,7 @@ class TestConditionEvaluator:
 
     def test_validate_valid_syntax(self):
         """Test validation of valid condition syntax."""
-        is_valid, error = ConditionEvaluator.validate_syntax(
-            '{{step1.status}} == "success"'
-        )
+        is_valid, error = ConditionEvaluator.validate_syntax('{{step1.status}} == "success"')
         assert is_valid is True
         assert error is None
 
@@ -467,9 +453,7 @@ class TestConditionEvaluator:
 
     def test_error_property_on_failure(self):
         """Test error property when step failed."""
-        results = {
-            "step1": self.create_results(status="failed", error="Connection timeout")
-        }
+        results = {"step1": self.create_results(status="failed", error="Connection timeout")}
         evaluator = ConditionEvaluator(results)
 
         result, error = evaluator.evaluate('{{step1.error}} != ""')

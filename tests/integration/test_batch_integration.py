@@ -5,21 +5,16 @@ These tests verify batch execution including variable resolution,
 batch isolation, and combined results output.
 """
 
-import pytest
-import sys
 import os
+import sys
 
-sys.path.insert(
-    0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-)
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 
 class TestBatchVariableResolution:
     """Tests for variable resolution in batch mode."""
 
-    def test_variable_resolution_basic(
-        self, integration_workbook_with_batch_data, spy_client
-    ):
+    def test_variable_resolution_basic(self, integration_workbook_with_batch_data, spy_client):
         """
         Verify that {{region}} is replaced with actual value from data sheet.
         """
@@ -40,18 +35,15 @@ class TestBatchVariableResolution:
         assert any("east" in p for p in prompts), "Should have 'east' region"
 
         for prompt in prompts:
-            assert "{{region}}" not in prompt, (
-                f"Variable should be resolved, but got: {prompt}"
-            )
+            assert "{{region}}" not in prompt, f"Variable should be resolved, but got: {prompt}"
 
-    def test_batch_name_template(
-        self, integration_workbook_with_batch_data, spy_client
-    ):
+    def test_batch_name_template(self, integration_workbook_with_batch_data, spy_client):
         """
         Verify that {{region}}_{{product}} generates correct batch names.
         """
-        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
         from openpyxl import load_workbook
+
+        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
 
         orchestrator = ExcelOrchestrator(
             integration_workbook_with_batch_data, spy_client, concurrency=1
@@ -67,24 +59,17 @@ class TestBatchVariableResolution:
             if row[0] is not None:
                 batch_names.add(row[1])
 
-        assert "north_widget_a" in batch_names, (
-            f"Should have 'north_widget_a', got {batch_names}"
-        )
-        assert "south_widget_b" in batch_names, (
-            f"Should have 'south_widget_b', got {batch_names}"
-        )
-        assert "east_widget_c" in batch_names, (
-            f"Should have 'east_widget_c', got {batch_names}"
-        )
+        assert "north_widget_a" in batch_names, f"Should have 'north_widget_a', got {batch_names}"
+        assert "south_widget_b" in batch_names, f"Should have 'south_widget_b', got {batch_names}"
+        assert "east_widget_c" in batch_names, f"Should have 'east_widget_c', got {batch_names}"
 
-    def test_all_batches_execute(
-        self, integration_workbook_with_batch_data, spy_client
-    ):
+    def test_all_batches_execute(self, integration_workbook_with_batch_data, spy_client):
         """
         Verify that 5 data rows = 5 batch executions.
         """
-        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
         from openpyxl import load_workbook
+
+        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
 
         wb = load_workbook(integration_workbook_with_batch_data)
         ws = wb["data"]
@@ -100,9 +85,7 @@ class TestBatchVariableResolution:
 
         orchestrator.run()
 
-        assert len(spy_client.calls) == 4, (
-            f"Should have 4 batch calls, got {len(spy_client.calls)}"
-        )
+        assert len(spy_client.calls) == 4, f"Should have 4 batch calls, got {len(spy_client.calls)}"
 
 
 class TestBatchIsolation:
@@ -126,9 +109,7 @@ class TestBatchIsolation:
         south_idx = next(i for i, p in enumerate(prompts) if "south" in p)
         east_idx = next(i for i, p in enumerate(prompts) if "east" in p)
 
-        assert "south" not in prompts[north_idx], (
-            "North batch should not contain 'south'"
-        )
+        assert "south" not in prompts[north_idx], "North batch should not contain 'south'"
         assert "east" not in prompts[south_idx], "South batch should not contain 'east'"
         assert "north" not in prompts[east_idx], "East batch should not contain 'north'"
 
@@ -155,14 +136,13 @@ class TestBatchIsolation:
 class TestBatchResults:
     """Tests for batch results output."""
 
-    def test_combined_results_sheet(
-        self, integration_workbook_with_batch_data, spy_client
-    ):
+    def test_combined_results_sheet(self, integration_workbook_with_batch_data, spy_client):
         """
         Verify all batch results in single sheet with batch_name column.
         """
-        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
         from openpyxl import load_workbook
+
+        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
 
         orchestrator = ExcelOrchestrator(
             integration_workbook_with_batch_data, spy_client, concurrency=1
@@ -189,8 +169,8 @@ class TestBatchResults:
         """
         Verify that one batch failure doesn't stop others.
         """
+
         from src.orchestrator.excel_orchestrator import ExcelOrchestrator
-        from openpyxl import load_workbook
 
         class FailsOnSouthClient:
             def __init__(self):
@@ -236,8 +216,9 @@ class TestBatchRealAPI:
         """
         Full batch execution test with real API.
         """
-        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
         from openpyxl import load_workbook
+
+        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
 
         orchestrator = ExcelOrchestrator(
             integration_workbook_with_batch_data, real_mistral_client, concurrency=2
@@ -246,9 +227,7 @@ class TestBatchRealAPI:
         results_sheet = orchestrator.run()
         summary = orchestrator.get_summary()
 
-        assert summary["successful"] == 3, (
-            f"Should have 3 successful, got {summary['successful']}"
-        )
+        assert summary["successful"] == 3, f"Should have 3 successful, got {summary['successful']}"
         assert summary["failed"] == 0, f"Should have 0 failed, got {summary['failed']}"
 
         wb = load_workbook(integration_workbook_with_batch_data)

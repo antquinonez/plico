@@ -1,9 +1,15 @@
-import os
+"""Document parsing and caching with checksum-based deduplication.
+
+Handles parsing of text files directly and non-text files via LlamaParse,
+with parquet-based caching using SHA256 checksums for validation.
+"""
+
 import hashlib
 import logging
+import os
 from datetime import datetime
 from pathlib import Path
-from typing import Optional, Dict, Any
+from typing import Any
 
 import polars as pl
 
@@ -11,8 +17,7 @@ logger = logging.getLogger(__name__)
 
 
 class DocumentProcessor:
-    """
-    Handles document parsing and caching with checksum-based deduplication.
+    """Handles document parsing and caching with checksum-based deduplication.
 
     Documents are parsed (via LlamaParse for non-text files) and stored as
     parquet files. The parquet filename includes the first 8 characters of
@@ -22,6 +27,7 @@ class DocumentProcessor:
         cache_dir: Directory where parquet files are stored
         api_key: LlamaParse API key (from LLAMACLOUD_TOKEN env var)
         checksum_length: Number of checksum chars to use in filename (default: 8)
+
     """
 
     TEXT_EXTENSIONS = {
@@ -70,8 +76,16 @@ class DocumentProcessor:
     }
 
     def __init__(
-        self, cache_dir: str, api_key: Optional[str] = None, checksum_length: int = 8
-    ):
+        self, cache_dir: str, api_key: str | None = None, checksum_length: int = 8
+    ) -> None:
+        """Initialize the DocumentProcessor.
+
+        Args:
+            cache_dir: Directory for parquet cache files.
+            api_key: LlamaParse API key (defaults to LLAMACLOUD_TOKEN env var).
+            checksum_length: Number of checksum chars to use in filenames.
+
+        """
         self.cache_dir = Path(cache_dir)
         self.api_key = api_key or os.environ.get("LLAMACLOUD_TOKEN")
         self.checksum_length = checksum_length
@@ -80,14 +94,14 @@ class DocumentProcessor:
         logger.info(f"DocumentProcessor initialized with cache_dir={cache_dir}")
 
     def compute_checksum(self, file_path: str) -> str:
-        """
-        Compute SHA256 checksum of a file.
+        """Compute SHA256 checksum of a file.
 
         Args:
             file_path: Path to the file
 
         Returns:
             Full 64-character hex string of the checksum
+
         """
         sha256 = hashlib.sha256()
         with open(file_path, "rb") as f:
@@ -100,8 +114,7 @@ class DocumentProcessor:
         return checksum[: self.checksum_length]
 
     def get_parquet_path(self, checksum: str, base_name: str) -> Path:
-        """
-        Generate parquet file path from checksum and base name.
+        """Generate parquet file path from checksum and base name.
 
         Format: {checksum_prefix}|{sanitized_base_name}.parquet
         """
@@ -115,8 +128,7 @@ class DocumentProcessor:
         return "".join(c if c.isalnum() or c in "-_" else "_" for c in name)
 
     def needs_parsing(self, file_path: str, reference_name: str) -> bool:
-        """
-        Check if a document needs to be (re)parsed.
+        """Check if a document needs to be (re)parsed.
 
         Returns True if:
         - No parquet file exists for this document, OR
@@ -128,6 +140,7 @@ class DocumentProcessor:
 
         Returns:
             True if document needs parsing, False if cached version is valid
+
         """
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"Document not found: {file_path}")
@@ -157,8 +170,7 @@ class DocumentProcessor:
             return True
 
     def parse_document(self, file_path: str) -> str:
-        """
-        Parse a document and return its content as markdown.
+        """Parse a document and return its content as markdown.
 
         For text files, reads directly. For other files, uses LlamaParse.
 
@@ -167,6 +179,7 @@ class DocumentProcessor:
 
         Returns:
             Document content as markdown string
+
         """
         ext = Path(file_path).suffix.lower()
 
@@ -180,7 +193,7 @@ class DocumentProcessor:
         logger.info(f"Reading text file directly: {file_path}")
 
         try:
-            with open(file_path, "r", encoding="utf-8") as f:
+            with open(file_path, encoding="utf-8") as f:
                 content = f.read()
             return content
         except UnicodeDecodeError:
@@ -218,10 +231,7 @@ class DocumentProcessor:
             if documents and len(documents) > 0:
                 content = documents[0].text
 
-                if (
-                    hasattr(documents[0], "metadata")
-                    and "markdown" in documents[0].metadata
-                ):
+                if hasattr(documents[0], "metadata") and "markdown" in documents[0].metadata:
                     content = documents[0].metadata["markdown"]
 
                 return content
@@ -236,8 +246,7 @@ class DocumentProcessor:
     def store_document(
         self, file_path: str, reference_name: str, common_name: str, content: str
     ) -> str:
-        """
-        Store parsed document content as a parquet file.
+        """Store parsed document content as a parquet file.
 
         Args:
             file_path: Original file path
@@ -247,6 +256,7 @@ class DocumentProcessor:
 
         Returns:
             Path to the created parquet file
+
         """
         checksum = self.compute_checksum(file_path)
         file_size = os.path.getsize(file_path)
@@ -269,15 +279,15 @@ class DocumentProcessor:
 
         return str(parquet_path)
 
-    def load_document(self, parquet_path: str) -> Dict[str, Any]:
-        """
-        Load document data from a parquet file.
+    def load_document(self, parquet_path: str) -> dict[str, Any]:
+        """Load document data from a parquet file.
 
         Args:
             parquet_path: Path to parquet file
 
         Returns:
             Dictionary with document data
+
         """
         df = pl.read_parquet(parquet_path)
 
@@ -287,11 +297,8 @@ class DocumentProcessor:
         row = df.row(0, named=True)
         return dict(row)
 
-    def get_document_content(
-        self, file_path: str, reference_name: str, common_name: str
-    ) -> str:
-        """
-        Get document content, parsing only if needed.
+    def get_document_content(self, file_path: str, reference_name: str, common_name: str) -> str:
+        """Get document content, parsing only if needed.
 
         This is the main entry point for document retrieval.
         Checks checksum to determine if re-parsing is needed.
@@ -303,6 +310,7 @@ class DocumentProcessor:
 
         Returns:
             Document content as markdown
+
         """
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"Document not found: {file_path}")
@@ -322,11 +330,11 @@ class DocumentProcessor:
         return content
 
     def clear_cache(self) -> int:
-        """
-        Clear all cached parquet files.
+        """Clear all cached parquet files.
 
         Returns:
             Number of files deleted
+
         """
         count = 0
         for f in self.cache_dir.glob("*.parquet"):

@@ -1,6 +1,7 @@
-import pytest
-from unittest.mock import MagicMock, patch
 import os
+from unittest.mock import patch
+
+import pytest
 
 
 class TestFFNvidiaDeepSeekInit:
@@ -133,9 +134,7 @@ class TestFFNvidiaDeepSeekErrorHandling:
     def test_generate_response_api_error(self, mock_openai_client):
         """Test handling API errors."""
         with patch("src.Clients.FFNvidiaDeepSeek.OpenAI") as MockOpenAI:
-            mock_openai_client.chat.completions.create.side_effect = Exception(
-                "API Error"
-            )
+            mock_openai_client.chat.completions.create.side_effect = Exception("API Error")
             MockOpenAI.return_value = mock_openai_client
 
             from src.Clients.FFNvidiaDeepSeek import FFNvidiaDeepSeek

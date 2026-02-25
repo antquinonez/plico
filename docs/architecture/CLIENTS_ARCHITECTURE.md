@@ -41,40 +41,40 @@ The Client Wrappers subsystem provides a unified interface to multiple AI provid
 ```python
 class FFAIClientBase(ABC):
     """Abstract base class defining the client interface."""
-    
+
     # Required attributes
     model: str
     system_instructions: str
-    
+
     # Required methods
     @abstractmethod
     def generate_response(self, prompt: str, **kwargs) -> str:
         """Generate a response from the AI model."""
         pass
-    
+
     @abstractmethod
     def clear_conversation(self) -> None:
         """Clear conversation history."""
         pass
-    
+
     @abstractmethod
     def get_conversation_history(self) -> list:
         """Get current conversation history."""
         pass
-    
+
     @abstractmethod
     def set_conversation_history(self, history: list) -> None:
         """Set conversation history."""
         pass
-    
+
     @abstractmethod
     def clone(self) -> "FFAIClientBase":
         """
         Create a fresh clone of this client with empty history.
-        
+
         Used for thread-safe parallel execution where each thread
         needs an isolated client instance with the same configuration.
-        
+
         Returns:
             New client instance with same config, empty history.
         """
@@ -146,28 +146,28 @@ Azure clients share significant common code. `FFAzureClientBase` is an ABC that 
 ```python
 class FFAzureClientBase(FFAIClientBase):
     """Base class for Azure AI Inference clients."""
-    
+
     # Abstract properties for configuration
     @property
     @abstractmethod
     def _default_model(self) -> str: pass
-    
+
     @property
     @abstractmethod
     def _default_max_tokens(self) -> int: pass
-    
+
     @property
     @abstractmethod
     def _default_temperature(self) -> float: pass
-    
+
     @property
     @abstractmethod
     def _default_instructions(self) -> str: pass
-    
+
     @property
     @abstractmethod
     def _env_key_prefix(self) -> str: pass  # e.g., "AZURE_MISTRAL"
-    
+
     # Common implementation
     def generate_response(self, prompt, **kwargs) -> str:
         # Full implementation shared by all Azure clients
@@ -179,27 +179,27 @@ class FFAzureClientBase(FFAIClientBase):
 ```python
 class FFAzureMistral(FFAzureClientBase):
     """Azure AI Inference client for Mistral Large models."""
-    
+
     @property
     def _default_model(self) -> str:
         return "mistral-large-2411"
-    
+
     @property
     def _default_max_tokens(self) -> int:
         return 40000
-    
+
     @property
     def _default_temperature(self) -> float:
         return 0.7
-    
+
     @property
     def _default_instructions(self) -> str:
         return "You are a helpful assistant..."
-    
+
     @property
     def _env_key_prefix(self) -> str:
         return "AZURE_MISTRAL"
-    
+
     @property
     def _provider_name(self) -> str:
         return "MistralAI"
@@ -270,18 +270,18 @@ def generate_response(self, prompt: str, **kwargs) -> str:
         # Validate input
         if not prompt.strip():
             raise ValueError("Empty prompt provided")
-        
+
         # Make API call
         response = self.client.some_api_call(...)
-        
+
         # Process response
         return response.content
-        
+
     except ProviderSpecificError as e:
         # Handle provider-specific errors
         logger.error(f"Provider error: {e}")
         raise RuntimeError(f"Error from {provider}: {e}")
-        
+
     except Exception as e:
         # Catch-all
         logger.error(f"Unexpected error: {e}")
@@ -312,57 +312,57 @@ class FFNewProvider(FFAIClientBase):
             'temperature': 0.7,
             'instructions': "You are a helpful assistant."
         }
-        
+
         # 2. Merge config sources
         all_config = {**(config or {}), **kwargs}
-        
+
         # 3. Extract configuration
         self.api_key = all_config.get('api_key', os.getenv('NEWPROVIDER_KEY'))
         self.model = all_config.get('model', os.getenv('NEWPROVIDER_MODEL', defaults['model']))
         # ... etc
-        
+
         # 4. Initialize client
         self.conversation_history = []
         self.client = self._initialize_client()
-    
+
     def _initialize_client(self):
         """Initialize the provider's SDK client."""
         if not self.api_key:
             raise ValueError("API key not found")
         return ProviderSDK(api_key=self.api_key)
-    
+
     def generate_response(self, prompt: str, **kwargs) -> str:
         """Generate a response."""
         if not prompt.strip():
             raise ValueError("Empty prompt")
-        
+
         try:
             self.conversation_history.append({"role": "user", "content": prompt})
-            
+
             response = self.client.generate(
                 messages=self.conversation_history,
                 model=self.model,
                 **kwargs
             )
-            
+
             assistant_response = response.text
             self.conversation_history.append({"role": "assistant", "content": assistant_response})
-            
+
             return assistant_response
-            
+
         except Exception as e:
             logger.error(f"Error: {e}")
             raise RuntimeError(f"Error from NewProvider: {e}")
-    
+
     def clear_conversation(self) -> None:
         self.conversation_history = []
-    
+
     def get_conversation_history(self) -> List[Dict]:
         return self.conversation_history
-    
+
     def set_conversation_history(self, history: List[Dict]) -> None:
         self.conversation_history = history
-    
+
     def clone(self) -> "FFNewProvider":
         """Create a fresh clone for parallel execution."""
         return FFNewProvider(
@@ -393,10 +393,10 @@ from unittest.mock import MagicMock, patch
 class TestFFNewProvider:
     def test_init_with_api_key(self):
         # Test initialization
-        
+
     def test_generate_response(self):
         # Test response generation
-        
+
     # ... more tests
 ```
 
@@ -460,10 +460,10 @@ response = client.generate_response_sync("Hello!")
 def test_generate_response(self, mock_client):
     with patch("src.Clients.FFMistral.Mistral") as MockMistral:
         MockMistral.return_value = mock_client
-        
+
         client = FFMistral(api_key="test-key")
         response = client.generate_response("Hello!")
-        
+
         assert response == "Expected response"
         mock_client.chat.complete.assert_called_once()
 ```

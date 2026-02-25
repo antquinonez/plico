@@ -8,18 +8,18 @@
 #
 # Contact: antquinonez@farfiner.com
 
-import os
-import logging
 import json
+import logging
+import os
 from abc import ABC, abstractmethod
-from typing import Optional, List, Dict, Any, Union
+from typing import Any
 
 from azure.ai.inference import ChatCompletionsClient
 from azure.ai.inference.models import (
-    SystemMessage,
-    UserMessage,
     AssistantMessage,
+    SystemMessage,
     ToolMessage,
+    UserMessage,
 )
 from azure.core.credentials import AzureKeyCredential
 from azure.core.exceptions import HttpResponseError
@@ -77,7 +77,7 @@ class FFAzureClientBase(ABC):
         """Return the provider name for model info. Override if needed."""
         return "AzureAI"
 
-    def __init__(self, config: Optional[dict] = None, **kwargs):
+    def __init__(self, config: dict | None = None, **kwargs):
         logger.info(f"Initializing {self.__class__.__name__}")
 
         all_config = {**(config or {}), **kwargs}
@@ -97,9 +97,7 @@ class FFAzureClientBase(ABC):
                 case "temperature":
                     self.temperature = float(value)
                 case "max_tokens":
-                    self.max_tokens = (
-                        int(value) if value is not None else self._default_max_tokens
-                    )
+                    self.max_tokens = int(value) if value is not None else self._default_max_tokens
                 case "system_instructions":
                     self.system_instructions = value
                 case "use_deployment_endpoint":
@@ -107,15 +105,11 @@ class FFAzureClientBase(ABC):
 
         self.api_key = getattr(self, "api_key", os.getenv(f"{env_prefix}_KEY"))
         self.endpoint = getattr(self, "endpoint", os.getenv(f"{env_prefix}_ENDPOINT"))
-        self.model = getattr(
-            self, "model", os.getenv(f"{env_prefix}_MODEL", self._default_model)
-        )
+        self.model = getattr(self, "model", os.getenv(f"{env_prefix}_MODEL", self._default_model))
         self.temperature = getattr(
             self,
             "temperature",
-            float(
-                os.getenv(f"{env_prefix}_TEMPERATURE", str(self._default_temperature))
-            ),
+            float(os.getenv(f"{env_prefix}_TEMPERATURE", str(self._default_temperature))),
         )
         self.max_tokens = getattr(
             self,
@@ -125,9 +119,7 @@ class FFAzureClientBase(ABC):
         self.system_instructions = getattr(
             self,
             "system_instructions",
-            os.getenv(
-                f"{env_prefix}_ASSISTANT_INSTRUCTIONS", self._default_instructions
-            ),
+            os.getenv(f"{env_prefix}_ASSISTANT_INSTRUCTIONS", self._default_instructions),
         )
 
         if self.endpoint and not self.endpoint.startswith(("http://", "https://")):
@@ -142,7 +134,7 @@ class FFAzureClientBase(ABC):
         logger.debug(f"Using endpoint: {self.endpoint}")
         logger.debug(f"Using deployment endpoint: {self.use_deployment_endpoint}")
 
-        self.conversation_history: List[Dict[str, Any]] = []
+        self.conversation_history: list[dict[str, Any]] = []
         self.client: ChatCompletionsClient = self._initialize_client()
 
     def _initialize_client(self) -> ChatCompletionsClient:
@@ -175,7 +167,7 @@ class FFAzureClientBase(ABC):
 
     def _convert_history_to_messages(
         self,
-    ) -> List[Union[SystemMessage, UserMessage, AssistantMessage, ToolMessage]]:
+    ) -> list[SystemMessage | UserMessage | AssistantMessage | ToolMessage]:
         """Convert conversation history to Azure AI message format."""
         messages = []
 
@@ -197,11 +189,11 @@ class FFAzureClientBase(ABC):
 
         return messages
 
-    def get_conversation_history(self) -> List[Dict[str, Any]]:
+    def get_conversation_history(self) -> list[dict[str, Any]]:
         """Get the conversation history."""
         return self.conversation_history
 
-    def set_conversation_history(self, history: List[Dict[str, Any]]) -> None:
+    def set_conversation_history(self, history: list[dict[str, Any]]) -> None:
         """Set the conversation history."""
         self.conversation_history = history
 
@@ -230,18 +222,18 @@ class FFAzureClientBase(ABC):
     def generate_response(
         self,
         prompt: str,
-        model: Optional[str] = None,
-        system_instructions: Optional[str] = None,
-        temperature: Optional[float] = None,
-        max_tokens: Optional[int] = None,
-        max_completion_tokens: Optional[int] = None,
-        top_p: Optional[float] = None,
-        presence_penalty: Optional[float] = None,
-        frequency_penalty: Optional[float] = None,
-        stop: Optional[List[str]] = None,
-        response_format: Optional[Union[str, Dict]] = None,
-        tools: Optional[List[Dict]] = None,
-        tool_choice: Optional[str] = None,
+        model: str | None = None,
+        system_instructions: str | None = None,
+        temperature: float | None = None,
+        max_tokens: int | None = None,
+        max_completion_tokens: int | None = None,
+        top_p: float | None = None,
+        presence_penalty: float | None = None,
+        frequency_penalty: float | None = None,
+        stop: list[str] | None = None,
+        response_format: str | dict | None = None,
+        tools: list[dict] | None = None,
+        tool_choice: str | None = None,
         **kwargs,
     ) -> str:
         """
@@ -278,9 +270,7 @@ class FFAzureClientBase(ABC):
             try:
                 used_max_tokens = int(max_completion_tokens)
             except (ValueError, TypeError):
-                logger.warning(
-                    f"Invalid max_completion_tokens value: {max_completion_tokens}"
-                )
+                logger.warning(f"Invalid max_completion_tokens value: {max_completion_tokens}")
 
         if used_max_tokens is None and max_tokens is not None:
             try:
@@ -348,10 +338,7 @@ class FFAzureClientBase(ABC):
             if response_format:
                 if isinstance(response_format, dict):
                     api_params["response_format"] = response_format
-                elif (
-                    isinstance(response_format, str)
-                    and "json" in response_format.lower()
-                ):
+                elif isinstance(response_format, str) and "json" in response_format.lower():
                     api_params["response_format"] = {"type": "json_object"}
                 else:
                     api_params["response_format"] = {"type": "text"}
