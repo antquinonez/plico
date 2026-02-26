@@ -8,6 +8,8 @@ Creates a workbook with:
     - documents sheet
     - data sheet (optional batch data)
 
+Uses FFLiteLLMClient with LiteLLM routing for Mistral Small.
+
 Usage:
     python scripts/create_test_workbook_documents.py [output_path]
 """
@@ -31,8 +33,7 @@ def create_test_workbook(output_path: str):
     ws_config["B1"] = "value"
 
     config_data = [
-        ("model", "mistral-small-2503"),
-        ("api_key_env", "MISTRALSMALL_KEY"),
+        ("model", "mistral-small-latest"),
         ("max_retries", "2"),
         ("temperature", "0.7"),
         ("max_tokens", "1000"),
@@ -188,6 +189,7 @@ def create_test_workbook(output_path: str):
     print(f"\n{'=' * 60}")
     print(f"Created document reference test workbook: {output_path}")
     print(f"{'=' * 60}")
+    print("\nUsing: FFLiteLLMClient with LiteLLM routing")
     print(f"\nDocuments defined: {len(documents)}")
     for ref_name, common_name, _, _ in documents:
         print(f"  - {ref_name}: {common_name}")

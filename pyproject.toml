@@ -29,6 +29,7 @@ dependencies = [
     "matplotlib",
     "openpyxl",
     "pyarrow",
+    "litellm>=1.0.0",
 ]
 
 [project.optional-dependencies]

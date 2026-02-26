@@ -7,6 +7,8 @@ This workbook demonstrates the full power of FFClients orchestrator:
 - CONDITIONAL: Prompts execute/skip based on runtime conditions
 - MULTI-CLIENT: Different model configurations for different task types
 
+Uses FFLiteLLMClient with LiteLLM routing for Mistral Small.
+
 Creates 20 prompts across 5 sections with 5 batch data rows.
 
 Usage:
@@ -34,8 +36,7 @@ def create_max_test_workbook(output_path: str):
     ws_config["B1"] = "value"
 
     config_data = [
-        ("model", "mistral-small-2503"),
-        ("api_key_env", "MISTRALSMALL_KEY"),
+        ("model", "mistral-small-latest"),
         ("max_retries", "2"),
         ("temperature", "0.7"),
         ("max_tokens", "300"),
@@ -75,26 +76,26 @@ def create_max_test_workbook(output_path: str):
     clients_data = [
         (
             "default",
-            "mistral-small",
-            "MISTRALSMALL_KEY",
-            "mistral-small-2503",
+            "litellm-mistral",
+            "MISTRAL_API_KEY",
+            "mistral-small-latest",
             0.7,
             300,
         ),
-        ("fast", "mistral-small", "MISTRALSMALL_KEY", "mistral-small-2503", 0.3, 150),
+        ("fast", "litellm-mistral", "MISTRAL_API_KEY", "mistral-small-latest", 0.3, 150),
         (
             "creative",
-            "mistral-small",
-            "MISTRALSMALL_KEY",
-            "mistral-small-2503",
+            "litellm-mistral",
+            "MISTRAL_API_KEY",
+            "mistral-small-latest",
             0.9,
             500,
         ),
         (
             "analytical",
-            "mistral-small",
-            "MISTRALSMALL_KEY",
-            "mistral-small-2503",
+            "litellm-mistral",
+            "MISTRAL_API_KEY",
+            "mistral-small-latest",
             0.2,
             400,
         ),
@@ -475,6 +476,7 @@ def create_max_test_workbook(output_path: str):
     print(f"\n{'=' * 70}")
     print(f"Created MAX test workbook: {output_path}")
     print(f"{'=' * 70}")
+    print("\nUsing: FFLiteLLMClient with LiteLLM routing")
 
     print(f"\n{'=' * 70}")
     print("FEATURES COMBINED:")

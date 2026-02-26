@@ -4,11 +4,13 @@ from .FFAzureClientBase import FFAzureClientBase
 from .FFAzureCodestral import FFAzureCodestral
 from .FFAzureDeepSeek import FFAzureDeepSeek
 from .FFAzureDeepSeekV3 import FFAzureDeepSeekV3
+from .FFAzureLiteLLM import create_azure_client
 from .FFAzureMistral import FFAzureMistral
 from .FFAzureMistralSmall import FFAzureMistralSmall
 from .FFAzureMSDeepSeekR1 import FFAzureMSDeepSeekR1
 from .FFAzurePhi import FFAzurePhi
 from .FFGemini import FFGemini
+from .FFLiteLLMClient import FFLiteLLMClient
 from .FFMistral import FFMistral
 from .FFMistralSmall import FFMistralSmall
 from .FFNvidiaDeepSeek import FFNvidiaDeepSeek
@@ -32,4 +34,6 @@ __all__ = [
     "FFAzureDeepSeekV3",
     "FFAzureMSDeepSeekR1",
     "FFAzurePhi",
+    "FFLiteLLMClient",
+    "create_azure_client",
 ]

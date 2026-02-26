@@ -5,7 +5,7 @@ Generate test workbook for multi-client execution testing.
 Creates a workbook with:
 - config sheet
 - prompts sheet with client column
-- clients sheet with named client configurations
+- clients sheet with named client configurations using FFLiteLLMClient
 
 Usage:
     python scripts/create_test_workbook_multiclient.py [output_path]
@@ -32,8 +32,7 @@ def create_multiclient_test_workbook(output_path: str):
     ws_config["B1"] = "value"
 
     config_data = [
-        ("model", "mistral-small-2503"),
-        ("api_key_env", "MISTRALSMALL_KEY"),
+        ("model", "mistral-small-latest"),
         ("max_retries", "2"),
         ("temperature", "0.7"),
         ("max_tokens", "300"),
@@ -67,24 +66,24 @@ def create_multiclient_test_workbook(output_path: str):
     for col_idx, header in enumerate(clients_headers, start=1):
         ws_clients.cell(row=1, column=col_idx, value=header)
 
-    # Define multiple clients
+    # Define multiple clients using FFLiteLLMClient (litellm-mistral type)
     # NOTE: These are example configurations. You need to have the appropriate
-    # API keys set in your environment variables for the clients you want to use.
+    # API keys set in your environment variables (MISTRAL_API_KEY for Mistral).
     clients_data = [
         (
             "default",
-            "mistral-small",
-            "MISTRALSMALL_KEY",
-            "mistral-small-2503",
+            "litellm-mistral",
+            "MISTRAL_API_KEY",
+            "mistral-small-latest",
             0.7,
             300,
         ),
-        ("fast", "mistral-small", "MISTRALSMALL_KEY", "mistral-small-2503", 0.3, 100),
+        ("fast", "litellm-mistral", "MISTRAL_API_KEY", "mistral-small-latest", 0.3, 100),
         (
             "creative",
-            "mistral-small",
-            "MISTRALSMALL_KEY",
-            "mistral-small-2503",
+            "litellm-mistral",
+            "MISTRAL_API_KEY",
+            "mistral-small-latest",
             0.9,
             500,
         ),
@@ -241,6 +240,7 @@ def create_multiclient_test_workbook(output_path: str):
     print(f"\n{'=' * 70}")
     print(f"Created MULTI-CLIENT test workbook: {output_path}")
     print(f"{'=' * 70}")
+    print("\nUsing: FFLiteLLMClient with LiteLLM routing")
     print("\nClients defined:")
     for name, client_type, _, model, temp, tokens in clients_data:
         print(f"  - {name}: {client_type} (model={model}, temp={temp}, tokens={tokens})")

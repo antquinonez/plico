@@ -15,6 +15,8 @@ Different clients are used for different task types:
 - default: Standard settings for general tasks
 - creative: High temperature for generative tasks
 
+Uses FFLiteLLMClient with LiteLLM routing for Mistral Small.
+
 Usage:
     python scripts/create_test_workbook_conditional.py [output_path]
 """
@@ -40,8 +42,7 @@ def create_conditional_test_workbook(output_path: str):
     ws_config["B1"] = "value"
 
     config_data = [
-        ("model", "mistral-small-2503"),
-        ("api_key_env", "MISTRALSMALL_KEY"),
+        ("model", "mistral-small-latest"),
         ("max_retries", "2"),
         ("temperature", "0.7"),
         ("max_tokens", "300"),
@@ -77,32 +78,32 @@ def create_conditional_test_workbook(output_path: str):
     for col_idx, header in enumerate(clients_headers, start=1):
         ws_clients.cell(row=1, column=col_idx, value=header)
 
-    # Define multiple clients for different task types
+    # Define multiple clients using FFLiteLLMClient (litellm-mistral type)
     # - fast: Low temp, short responses - for classification, yes/no, simple extraction
     # - default: Standard settings - for general processing
     # - creative: High temp - for generative, expansive responses
     clients_data = [
         (
             "default",
-            "mistral-small",
-            "MISTRALSMALL_KEY",
-            "mistral-small-2503",
+            "litellm-mistral",
+            "MISTRAL_API_KEY",
+            "mistral-small-latest",
             0.7,
             300,
         ),
         (
             "fast",
-            "mistral-small",
-            "MISTRALSMALL_KEY",
-            "mistral-small-2503",
+            "litellm-mistral",
+            "MISTRAL_API_KEY",
+            "mistral-small-latest",
             0.3,
             150,
         ),
         (
             "creative",
-            "mistral-small",
-            "MISTRALSMALL_KEY",
-            "mistral-small-2503",
+            "litellm-mistral",
+            "MISTRAL_API_KEY",
+            "mistral-small-latest",
             0.9,
             500,
         ),
@@ -547,6 +548,7 @@ def create_conditional_test_workbook(output_path: str):
     print(f"Created conditional execution test workbook: {output_path}")
     print(f"{'=' * 70}")
 
+    print("\nUsing: FFLiteLLMClient with LiteLLM routing")
     print("\nClients defined:")
     for name, client_type, _, model, temp, tokens in clients_data:
         print(f"  - {name}: {client_type} (model={model}, temp={temp}, tokens={tokens})")

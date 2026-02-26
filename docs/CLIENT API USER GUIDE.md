@@ -38,6 +38,67 @@ print(response)
 
 ## Client Configuration
 
+### FFLiteLLMClient (Recommended)
+
+Universal client supporting 100+ LLM providers through LiteLLM. Use this for maximum flexibility and fallback support.
+
+```python
+from src.Clients.FFLiteLLMClient import FFLiteLLMClient
+
+# Azure OpenAI
+client = FFLiteLLMClient(
+    model_string="azure/mistral-small-2503",
+    api_key=os.getenv("AZURE_MISTRALSMALL_KEY"),
+    api_base=os.getenv("AZURE_MISTRALSMALL_ENDPOINT"),
+)
+
+# Anthropic Claude
+client = FFLiteLLMClient(
+    model_string="anthropic/claude-3-5-sonnet-20241022",
+    api_key=os.getenv("ANTHROPIC_API_KEY"),
+)
+
+# OpenAI GPT-4
+client = FFLiteLLMClient(
+    model_string="openai/gpt-4o",
+    api_key=os.getenv("OPENAI_API_KEY"),
+)
+
+# With fallbacks (automatic retry on failure)
+client = FFLiteLLMClient(
+    model_string="anthropic/claude-3-opus-20240229",
+    fallbacks=["openai/gpt-4", "azure/gpt-4"],
+)
+```
+
+**Key Features:**
+- Unified interface for Azure, OpenAI, Anthropic, Mistral, Gemini, Perplexity, and 100+ providers
+- Automatic fallback support when primary model fails
+- Model-specific defaults (max_tokens, temperature, system_instructions)
+- Thread-safe cloning for parallel execution
+
+**LiteLLM Model String Format:**
+
+| Provider | Format | Example |
+|----------|--------|---------|
+| Azure | `azure/{deployment}` | `azure/mistral-small-2503` |
+| OpenAI | `openai/{model}` | `openai/gpt-4o` |
+| Anthropic | `anthropic/{model}` | `anthropic/claude-3-5-sonnet-20241022` |
+| Mistral | `mistral/{model}` | `mistral/mistral-small-latest` |
+| Gemini | `gemini/{model}` | `gemini/gemini-1.5-pro` |
+| Perplexity | `perplexity/{model}` | `perplexity/llama-3.1-sonar-large-128k-online` |
+
+**Environment Variables:**
+
+| Variable | Description |
+|----------|-------------|
+| `LITELLM_API_KEY` | Default API key |
+| `AZURE_{MODEL}_KEY` | Azure model-specific key |
+| `AZURE_{MODEL}_ENDPOINT` | Azure endpoint |
+| `ANTHROPIC_API_KEY` | Anthropic key |
+| `OPENAI_API_KEY` | OpenAI key |
+| `MISTRAL_API_KEY` | Mistral key |
+
 ### FFMistralSmall
 
 Optimized for Mistral Small models with extended context windows.
@@ -123,6 +184,41 @@ response = client.generate_response(
 | `stop` | list | Stop sequences |
 | `tools` | list | Tool definitions for function calling |
 | `tool_choice` | str | Tool selection strategy |
+
+### FFLiteLLMClient-Specific Features
+
+**Fallback Support:**
+
+```python
+client = FFLiteLLMClient(
+    model_string="anthropic/claude-3-opus-20240229",
+    fallbacks=["openai/gpt-4", "azure/gpt-4"],
+)
+
+# If claude-3-opus fails, automatically tries gpt-4, then azure/gpt-4
+response = client.generate_response("Hello!")
+```
+
+**Model Override:**
+
+```python
+client = FFLiteLLMClient(model_string="azure/mistral-small-2503")
+
+# Override to different deployment (keeps azure/ prefix)
+response = client.generate_response("Hello!", model="mistral-large-2411")
+# Calls: azure/mistral-large-2411
+```
+
+**API Parameters:**
+
+```python
+client = FFLiteLLMClient(
+    model_string="azure/mistral-small-2503",
+    api_key=os.getenv("AZURE_KEY"),
+    api_base=os.getenv("AZURE_ENDPOINT"),
+    api_version="2024-02-01",
+)
+```
 
 ### Conversation Management
 

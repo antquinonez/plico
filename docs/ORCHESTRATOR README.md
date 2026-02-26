@@ -286,8 +286,15 @@ Different prompts can use different AI clients or configurations. Define named c
 
 | Client Type | Description |
 |-------------|-------------|
-| `mistral` | Mistral Large |
-| `mistral-small` | Mistral Small |
+| `litellm` | Universal LiteLLM client (recommended) |
+| `litellm-azure` | LiteLLM for Azure deployments |
+| `litellm-anthropic` | LiteLLM for Anthropic |
+| `litellm-openai` | LiteLLM for OpenAI |
+| `litellm-mistral` | LiteLLM for Mistral |
+| `litellm-gemini` | LiteLLM for Gemini |
+| `litellm-perplexity` | LiteLLM for Perplexity |
+| `mistral` | Mistral Large (native) |
+| `mistral-small` | Mistral Small (native) |
 | `anthropic` | Claude via Anthropic API |
 | `anthropic-cached` | Claude with prompt caching |
 | `gemini` | Google Gemini |
@@ -298,7 +305,26 @@ Different prompts can use different AI clients or configurations. Define named c
 | `azure-codestral` | Codestral via Azure |
 | `azure-deepseek` | DeepSeek via Azure |
 | `azure-deepseek-v3` | DeepSeek V3 via Azure |
+| `azure-ms-deepseek-r1` | MAI-DS-R1 via Azure |
 | `azure-phi` | Phi-4 via Azure |
+
+### LiteLLM Client Configuration
+
+LiteLLM clients support additional configuration options:
+
+**clients sheet with LiteLLM:**
+
+| name | client_type | model | api_base | fallbacks |
+|------|-------------|-------|----------|-----------|
+| smart | litellm-anthropic | claude-3-5-sonnet-20241022 | | `["openai/gpt-4o"]` |
+| azure-gpt | litellm-azure | gpt-4-deployment | https://my-instance.openai.azure.com | |
+
+**Example prompts sheet with LiteLLM:**
+
+| sequence | prompt_name | prompt | client |
+|----------|-------------|--------|--------|
+| 1 | analyze | Analyze this data | smart |
+| 2 | summarize | Summarize the analysis | azure-gpt |
 
 ### Fallback Behavior
 

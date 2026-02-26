@@ -7,6 +7,8 @@ Creates 35 prompts with {{variable}} templating:
 - Tests variable resolution across all prompt types
 - Tests dependency chains within batches
 
+Uses FFLiteLLMClient with LiteLLM routing for Mistral Small.
+
 Usage:
     python scripts/create_test_workbook_batch.py [output_path]
 """
@@ -32,8 +34,7 @@ def create_batch_test_workbook(output_path: str):
     ws_config["B1"] = "value"
 
     config_data = [
-        ("model", "mistral-small-2503"),
-        ("api_key_env", "MISTRALSMALL_KEY"),
+        ("model", "mistral-small-latest"),
         ("max_retries", "2"),
         ("temperature", "0.7"),
         ("max_tokens", "300"),
@@ -425,7 +426,8 @@ def create_batch_test_workbook(output_path: str):
     print(f"\n{'=' * 70}")
     print(f"Created BATCH test workbook: {output_path}")
     print(f"{'=' * 70}")
-    print(f"\nTotal prompts: {len(prompts)}")
+    print(f"\nUsing: FFLiteLLMClient with LiteLLM routing")
+    print(f"Total prompts: {len(prompts)}")
     print("Total batches: 5")
     print("\nData Variables:")
     print("  - region: north, south, east, west, central")

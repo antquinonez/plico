@@ -52,18 +52,18 @@ FFClients is a declarative context handling API wrapper for AI models with Excel
 │   │  - get/set_conversation_history()                               │   │
 │   └──────────────────────────┬──────────────────────────────────────┘   │
 │                              │                                           │
-│         ┌────────────────────┼────────────────────┐                     │
-│         │                    │                    │                      │
-│         ▼                    ▼                    ▼                      │
-│   ┌───────────┐      ┌─────────────┐      ┌─────────────┐              │
-│   │  Mistral  │      │  Anthropic  │      │   OpenAI    │              │
-│   │  Clients  │      │   Clients   │      │   Clients   │              │
-│   └───────────┘      └─────────────┘      └─────────────┘              │
-│                                                                          │
-│   ┌───────────┐      ┌─────────────┐      ┌─────────────┐              │
-│   │   Azure   │      │   Perplexity│      │   Gemini    │              │
-│   │  Clients  │      │   Nvidia    │      │             │              │
-│   └───────────┘      └─────────────┘      └─────────────┘              │
+│    ┌─────────────────────────┼─────────────────────────┐                │
+│    │                         │                         │                │
+│    ▼                         ▼                         ▼                │
+│ ┌─────────────────┐   ┌─────────────┐          ┌─────────────┐         │
+│ │FFLiteLLMClient  │   │   Mistral   │          │  Anthropic  │         │
+│ │ (Universal)     │   │   Clients   │          │   Clients   │         │
+│ │ - 100+ providers│   └─────────────┘          └─────────────┘         │
+│ │ - Fallbacks     │                                                     │
+│ └─────────────────┘   ┌─────────────┐          ┌─────────────┐         │
+│                       │   Azure     │          │   Gemini    │         │
+│                       │   Clients   │          │ Perplexity  │         │
+│                       └─────────────┘          └─────────────┘         │
 │                                                                          │
 └─────────────────────────────────────────────────────────────────────────┘
              │
@@ -83,13 +83,17 @@ FFClients is a declarative context handling API wrapper for AI models with Excel
 
 **Key Components:**
 - `FFAIClientBase` - Abstract base class defining the contract
-- `FFMistral`, `FFAnthropic`, `FFPerplexity`, etc. - Concrete implementations
+- `FFLiteLLMClient` - Universal client supporting 100+ providers via LiteLLM (recommended)
+- `FFMistral`, `FFAnthropic`, `FFPerplexity`, etc. - Provider-specific implementations
 - `FFAzureClientBase` - Azure-specific base class (inherits from FFAIClientBase)
+- `FFAzureLiteLLM` - Factory for creating Azure LiteLLM clients
 
 **Features:**
 - Unified `generate_response()` interface
 - Conversation history management
 - `clone()` method for thread-safe parallel execution
+- Automatic fallback support (FFLiteLLMClient)
+- Model-specific defaults for common configurations
 
 **See:** [CLIENTS_ARCHITECTURE.md](./CLIENTS_ARCHITECTURE.md)
 
@@ -102,6 +106,7 @@ FFClients is a declarative context handling API wrapper for AI models with Excel
 - `ClientRegistry` - Client factory and multi-client support
 - `DocumentProcessor` - Document parsing and checksum-based caching
 - `DocumentRegistry` - Document lookup and reference injection
+- `ConditionEvaluator` - Conditional expression evaluation for prompt execution
 
 **Features:**
 - Dependency-aware parallel execution
@@ -111,6 +116,7 @@ FFClients is a declarative context handling API wrapper for AI models with Excel
 - Batch execution with variable templating
 - Per-prompt client configuration
 - Document reference injection with LlamaParse support
+- Conditional execution with expression-based prompt skipping
 
 **See:** [ORCHESTRATOR_ARCHITECTURE.md](./ORCHESTRATOR_ARCHITECTURE.md)
 
@@ -206,6 +212,9 @@ FFClients/
 │   │
 │   ├── Clients/                       # SUBSYSTEM 1: Client Wrappers
 │   │   ├── __init__.py
+│   │   ├── FFLiteLLMClient.py         # Universal LiteLLM client (recommended)
+│   │   ├── FFAzureLiteLLM.py          # Azure LiteLLM factory
+│   │   ├── model_defaults.py          # Model-specific configuration defaults
 │   │   ├── FFAzureClientBase.py       # Azure-specific ABC
 │   │   ├── FFMistral.py
 │   │   ├── FFMistralSmall.py
@@ -236,6 +245,10 @@ FFClients/
 │   ├── run_orchestrator.py            # CLI entry point for orchestrator
 │   ├── create_test_workbook.py        # Generate test workbooks
 │   ├── create_test_workbook_multiclient.py  # Multi-client test workbooks
+│   ├── create_test_workbook_batch.py  # Batch execution test workbooks
+│   ├── create_test_workbook_conditional.py  # Conditional execution test workbooks
+│   ├── create_test_workbook_documents.py    # Document reference test workbooks
+│   ├── create_test_workbook_max.py    # Stress test workbooks (100 executions)
 │   └── try_ai_mistralsmall_script.py  # Example usage script
 │
 ├── logs/                              # Execution logs (git-ignored)
@@ -243,7 +256,18 @@ FFClients/
 │
 ├── tests/
 │   ├── conftest.py                    # Shared fixtures
+│   ├── fixtures/                      # Test fixtures (documents, etc.)
+│   │   └── documents/
+│   ├── integration/                   # Integration tests
+│   │   ├── conftest.py
+│   │   ├── test_orchestrator_integration.py
+│   │   ├── test_batch_integration.py
+│   │   ├── test_multiclient_integration.py
+│   │   ├── test_conditional_integration.py
+│   │   ├── test_context_assembly.py
+│   │   └── test_client_isolation.py
 │   ├── test_ffai.py
+│   ├── test_fflitellm_client.py
 │   ├── test_ffmistral.py
 │   ├── test_ffanthropic.py
 │   ├── test_ffperplexity.py
@@ -255,7 +279,11 @@ FFClients/
 │   ├── test_permanent_history.py
 │   ├── test_excel_orchestrator.py
 │   ├── test_workbook_builder.py
-│   └── test_client_registry.py
+│   ├── test_client_registry.py
+│   ├── test_document_processor.py
+│   ├── test_document_registry.py
+│   ├── test_condition_evaluator.py
+│   └── test_litellm_orchestrator_integration.py
 │
 ├── docs/
 │   ├── architecture/
@@ -422,6 +450,9 @@ DocumentRegistry
 
 WorkbookBuilder
   └── openpyxl (external)
+
+FFLiteLLMClient (recommended)
+  └── litellm (external)
 
 FFMistral, FFMistralSmall
   └── mistralai (external)

@@ -39,6 +39,7 @@ from src.Clients.FFAzureMistral import FFAzureMistral
 from src.Clients.FFAzureMistralSmall import FFAzureMistralSmall
 from src.Clients.FFAzurePhi import FFAzurePhi
 from src.Clients.FFGemini import FFGemini
+from src.Clients.FFLiteLLMClient import FFLiteLLMClient
 from src.Clients.FFMistral import FFMistral
 from src.Clients.FFMistralSmall import FFMistralSmall
 from src.Clients.FFNvidiaDeepSeek import FFNvidiaDeepSeek
@@ -101,6 +102,23 @@ CLIENT_MAP = {
     "azure-deepseek": FFAzureDeepSeek,
     "azure-deepseek-v3": FFAzureDeepSeekV3,
     "azure-phi": FFAzurePhi,
+    "litellm": FFLiteLLMClient,
+    "litellm-mistral": FFLiteLLMClient,
+    "litellm-anthropic": FFLiteLLMClient,
+    "litellm-openai": FFLiteLLMClient,
+    "litellm-azure": FFLiteLLMClient,
+    "litellm-gemini": FFLiteLLMClient,
+    "litellm-perplexity": FFLiteLLMClient,
+}
+
+LITELLM_PROVIDER_PREFIXES = {
+    "litellm": "",
+    "litellm-mistral": "mistral/",
+    "litellm-anthropic": "anthropic/",
+    "litellm-openai": "openai/",
+    "litellm-azure": "azure/",
+    "litellm-gemini": "gemini/",
+    "litellm-perplexity": "perplexity/",
 }
 
 
@@ -177,6 +195,25 @@ def get_client(client_type: str, config: dict) -> object:
             f"Unknown client type: {client_type}. Available: {list(CLIENT_MAP.keys())}"
         )
 
+    if client_type.startswith("litellm"):
+        provider_prefix = LITELLM_PROVIDER_PREFIXES.get(client_type, "")
+        model = config.get("model", "gpt-4")
+        model_string = f"{provider_prefix}{model}" if provider_prefix else model
+
+        api_key_env = config.get("api_key_env", "MISTRAL_API_KEY")
+        api_key = os.getenv(api_key_env)
+
+        if not api_key:
+            raise ValueError(f"API key not found in environment variable: {api_key_env}")
+
+        return client_class(
+            model_string=model_string,
+            api_key=api_key,
+            temperature=config.get("temperature"),
+            max_tokens=config.get("max_tokens"),
+            system_instructions=config.get("system_instructions"),
+        )
+
     api_key_env = config.get("api_key_env", "MISTRALSMALL_KEY")
     api_key = os.getenv(api_key_env)
 
@@ -202,8 +239,8 @@ def main():
     parser.add_argument(
         "--client",
         choices=list(CLIENT_MAP.keys()),
-        default="mistral-small",
-        help="AI client to use (default: mistral-small)",
+        default="litellm-mistral",
+        help="AI client to use (default: litellm-mistral)",
     )
     parser.add_argument(
         "--concurrency",

@@ -18,6 +18,7 @@ from ..Clients.FFAzureMistralSmall import FFAzureMistralSmall
 from ..Clients.FFAzureMSDeepSeekR1 import FFAzureMSDeepSeekR1
 from ..Clients.FFAzurePhi import FFAzurePhi
 from ..Clients.FFGemini import FFGemini
+from ..Clients.FFLiteLLMClient import FFLiteLLMClient
 from ..Clients.FFMistral import FFMistral
 from ..Clients.FFMistralSmall import FFMistralSmall
 from ..Clients.FFNvidiaDeepSeek import FFNvidiaDeepSeek
@@ -59,6 +60,13 @@ class ClientRegistry:
         "azure-deepseek-v3": FFAzureDeepSeekV3,
         "azure-ms-deepseek-r1": FFAzureMSDeepSeekR1,
         "azure-phi": FFAzurePhi,
+        "litellm": FFLiteLLMClient,
+        "litellm-azure": FFLiteLLMClient,
+        "litellm-anthropic": FFLiteLLMClient,
+        "litellm-mistral": FFLiteLLMClient,
+        "litellm-openai": FFLiteLLMClient,
+        "litellm-gemini": FFLiteLLMClient,
+        "litellm-perplexity": FFLiteLLMClient,
     }
 
     DEFAULT_API_KEY_ENVS = {
@@ -77,6 +85,23 @@ class ClientRegistry:
         "azure-deepseek-v3": "AZURE_DEEPSEEKV3_KEY",
         "azure-ms-deepseek-r1": "AZURE_MSDEEPSEEKR1_KEY",
         "azure-phi": "AZURE_PHI_KEY",
+        "litellm": "LITELLM_API_KEY",
+        "litellm-azure": "AZURE_API_KEY",
+        "litellm-anthropic": "ANTHROPIC_API_KEY",
+        "litellm-mistral": "MISTRAL_API_KEY",
+        "litellm-openai": "OPENAI_API_KEY",
+        "litellm-gemini": "GEMINI_API_KEY",
+        "litellm-perplexity": "PERPLEXITY_API_KEY",
+    }
+
+    LITELLM_PROVIDER_PREFIXES = {
+        "litellm": "",
+        "litellm-azure": "azure/",
+        "litellm-anthropic": "anthropic/",
+        "litellm-mistral": "mistral/",
+        "litellm-openai": "openai/",
+        "litellm-gemini": "gemini/",
+        "litellm-perplexity": "perplexity/",
     }
 
     def __init__(self, default_client: FFAIClientBase) -> None:
@@ -174,8 +199,21 @@ class ClientRegistry:
         kwargs: dict[str, Any] = {}
         if api_key:
             kwargs["api_key"] = api_key
-        if config.get("model"):
-            kwargs["model"] = config["model"]
+
+        if client_type.startswith("litellm"):
+            provider_prefix = self.LITELLM_PROVIDER_PREFIXES.get(client_type, "")
+            model = config.get("model", "gpt-4")
+            kwargs["model_string"] = f"{provider_prefix}{model}" if provider_prefix else model
+            if config.get("api_base"):
+                kwargs["api_base"] = config["api_base"]
+            if config.get("api_version"):
+                kwargs["api_version"] = config["api_version"]
+            if config.get("fallbacks"):
+                kwargs["fallbacks"] = config["fallbacks"]
+        else:
+            if config.get("model"):
+                kwargs["model"] = config["model"]
+
         if config.get("temperature") is not None:
             kwargs["temperature"] = float(config["temperature"])
         if config.get("max_tokens"):

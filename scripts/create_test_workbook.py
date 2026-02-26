@@ -8,6 +8,8 @@ Creates 31 prompts with various dependency patterns:
 - Level 2: 5 prompts with 2-4 dependencies each
 - Level 3: 4 final synthesis prompts
 
+Uses FFLiteLLMClient with LiteLLM routing for Mistral Small.
+
 Usage:
     python scripts/create_test_workbook.py [output_path]
 """
@@ -30,8 +32,7 @@ def create_test_workbook(output_path: str):
     ws_config["B1"] = "value"
 
     config_data = [
-        ("model", "mistral-small-2503"),
-        ("api_key_env", "MISTRALSMALL_KEY"),
+        ("model", "mistral-small-latest"),
         ("max_retries", "2"),
         ("temperature", "0.7"),
         ("max_tokens", "300"),
@@ -212,7 +213,8 @@ def create_test_workbook(output_path: str):
     print(f"\n{'=' * 60}")
     print(f"Created test workbook: {output_path}")
     print(f"{'=' * 60}")
-    print(f"\nTotal prompts: {len(prompts)}")
+    print(f"\nUsing: FFLiteLLMClient with LiteLLM routing")
+    print(f"Total prompts: {len(prompts)}")
     print("\nDependency Structure:")
     print("  Level 0: 12 independent prompts (sequences 1-12)")
     print("    - 6 math prompts: math_1 to math_6")

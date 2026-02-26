@@ -105,7 +105,36 @@ class FFMistralSmall(FFAIClientBase):
 
 ## Client Categories
 
-### 1. Direct API Clients
+### 1. LiteLLM Universal Client (Recommended)
+
+Universal client supporting 100+ LLM providers through the LiteLLM library.
+
+| Client | Providers | Library | Features |
+|--------|-----------|---------|----------|
+| `FFLiteLLMClient` | Azure, OpenAI, Anthropic, Mistral, Gemini, Perplexity, 100+ | `litellm` | Fallbacks, unified interface, model defaults |
+
+```python
+from src.Clients.FFLiteLLMClient import FFLiteLLMClient
+
+# Works with any LiteLLM-supported provider
+client = FFLiteLLMClient(
+    model_string="azure/mistral-small-2503",  # or "anthropic/claude-3-5-sonnet", "openai/gpt-4o"
+    api_key="...",
+    api_base="...",  # For Azure
+    fallbacks=["openai/gpt-4"],  # Automatic fallback
+)
+```
+
+**Model String Format:** `{provider}/{model}`
+- `azure/{deployment_name}` - Azure OpenAI
+- `openai/{model}` - OpenAI API
+- `anthropic/{model}` - Anthropic API
+- `mistral/{model}` - Mistral API
+- `gemini/{model}` - Google Gemini
+- `perplexity/{model}` - Perplexity API
+- `nvidia_nim/{model}` - Nvidia NIM
+
+### 2. Direct API Clients
 
 Connect directly to provider APIs.
 
@@ -119,7 +148,7 @@ Connect directly to provider APIs.
 | `FFPerplexity` | Perplexity | `openai` | API Key |
 | `FFNvidiaDeepSeek` | Nvidia NIM | `openai` | API Key |
 
-### 2. Azure AI Clients
+### 3. Azure AI Clients
 
 Connect via Azure AI Inference API.
 
@@ -133,7 +162,28 @@ Connect via Azure AI Inference API.
 | `FFAzureMSDeepSeekR1` | MAI-DS-R1 | - (standalone) |
 | `FFAzurePhi` | Phi-4 | `FFAzureClientBase` |
 
-### 3. Special Clients
+### 4. Azure LiteLLM Factory
+
+Factory function for creating Azure clients with environment-based configuration:
+
+```python
+from src.Clients.FFAzureLiteLLM import create_azure_client
+
+# Creates FFLiteLLMClient configured for Azure
+client = create_azure_client(
+    deployment_name="mistral-small-2503",
+    env_prefix="AZURE_MISTRALSMALL",  # Uses AZURE_MISTRALSMALL_KEY, AZURE_MISTRALSMALL_ENDPOINT
+)
+
+# Equivalent to:
+# FFLiteLLMClient(
+#     model_string="azure/mistral-small-2503",
+#     api_key=os.getenv("AZURE_MISTRALSMALL_KEY"),
+#     api_base=os.getenv("AZURE_MISTRALSMALL_ENDPOINT"),
+# )
+```
+
+### 5. Special Clients
 
 | Client | Purpose |
 |--------|---------|

@@ -280,6 +280,15 @@ class ClientRegistry:
     """
 
     CLIENT_MAP: Dict[str, Type[FFAIClientBase]] = {
+        # LiteLLM clients (recommended)
+        "litellm": FFLiteLLMClient,
+        "litellm-azure": FFLiteLLMClient,
+        "litellm-anthropic": FFLiteLLMClient,
+        "litellm-openai": FFLiteLLMClient,
+        "litellm-mistral": FFLiteLLMClient,
+        "litellm-gemini": FFLiteLLMClient,
+        "litellm-perplexity": FFLiteLLMClient,
+        # Native clients
         "mistral": FFMistral,
         "mistral-small": FFMistralSmall,
         "anthropic": FFAnthropic,
@@ -590,9 +599,14 @@ class DocumentRegistry:
 ### Supported Client Types
 
 ```
+# LiteLLM clients (recommended - support fallbacks)
+litellm, litellm-azure, litellm-anthropic, litellm-openai,
+litellm-mistral, litellm-gemini, litellm-perplexity
+
+# Native clients
 mistral, mistral-small, anthropic, anthropic-cached, gemini,
 perplexity, nvidia-deepseek, azure-mistral, azure-mistral-small,
-azure-codestral, azure-deepseek, azure-deepseek-v3, azure-phi
+azure-codestral, azure-deepseek, azure-deepseek-v3, azure-ms-deepseek-r1, azure-phi
 ```
 
 ## Programmatic Usage
