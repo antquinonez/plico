@@ -332,6 +332,11 @@ class ExcelOrchestrator:
                 if dep_name in prompt_by_name:
                     nodes[seq].dependencies.add(prompt_by_name[dep_name])
 
+            condition = prompt.get("condition") or ""
+            for dep_name, _ in ConditionEvaluator.extract_referenced_names(condition):
+                if dep_name in prompt_by_name:
+                    nodes[seq].dependencies.add(prompt_by_name[dep_name])
+
         def assign_levels(seq: int, visited: set[int]) -> int:
             if seq in visited:
                 return 0
@@ -739,12 +744,12 @@ class ExcelOrchestrator:
                             state.current_name = result.get("prompt_name") or f"seq_{seq}"
                             if result["status"] == "success":
                                 state.success_count += 1
-                                if result.get("prompt_name"):
-                                    state.results_by_name[result["prompt_name"]] = result
                             elif result["status"] == "skipped":
                                 state.skipped_count += 1
                             else:
                                 state.failed_count += 1
+                            if result.get("prompt_name"):
+                                state.results_by_name[result["prompt_name"]] = result
                     except Exception as e:
                         logger.error(f"Unexpected error for sequence {seq}: {e}")
                         with state.results_lock:
