@@ -19,6 +19,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any
 
+from ..config import get_config
 from ..FFAI import FFAI
 from ..FFAIClientBase import FFAIClientBase
 from .client_registry import ClientRegistry
@@ -97,7 +98,7 @@ class ExcelOrchestrator:
         workbook_path: str,
         client: FFAIClientBase,
         config_overrides: dict[str, Any] | None = None,
-        concurrency: int = 2,
+        concurrency: int | None = None,
         progress_callback: Callable[..., None] | None = None,
     ) -> None:
         """Initialize the ExcelOrchestrator.
@@ -106,14 +107,22 @@ class ExcelOrchestrator:
             workbook_path: Path to the Excel workbook.
             client: Default AI client for prompt execution.
             config_overrides: Optional config overrides from workbook.
-            concurrency: Maximum concurrent API calls (1-10).
+            concurrency: Maximum concurrent API calls (1-max). Uses config default if None.
             progress_callback: Optional callback for progress updates.
 
         """
         self.workbook_path = workbook_path
         self.client = client
         self.config_overrides = config_overrides or {}
-        self.concurrency = min(max(1, concurrency), 10)
+
+        config = get_config()
+        default_concurrency = config.orchestrator.default_concurrency
+        max_concurrency = config.orchestrator.max_concurrency
+
+        if concurrency is None:
+            concurrency = default_concurrency
+        self.concurrency = min(max(1, concurrency), max_concurrency)
+
         self.progress_callback = progress_callback
         self.builder = WorkbookBuilder(workbook_path)
 

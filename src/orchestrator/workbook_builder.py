@@ -15,36 +15,68 @@ from typing import Any
 from openpyxl import Workbook, load_workbook
 from openpyxl.utils import get_column_letter
 
+from ..config import get_config
+
 logger = logging.getLogger(__name__)
 
 
 class WorkbookBuilder:
     """Creates and validates Excel workbooks for prompt orchestration."""
 
-    CONFIG_SHEET = "config"
-    PROMPTS_SHEET = "prompts"
-    DATA_SHEET = "data"
-    CLIENTS_SHEET = "clients"
-    DOCUMENTS_SHEET = "documents"
+    def __init__(self, workbook_path: str) -> None:
+        """Initialize the WorkbookBuilder.
 
-    CONFIG_FIELDS = [
-        ("model", "mistral-small-2503"),
-        ("api_key_env", "MISTRALSMALL_KEY"),
-        ("max_retries", "3"),
-        ("temperature", "0.8"),
-        ("max_tokens", "4096"),
-        (
-            "system_instructions",
-            "You are a helpful assistant. Respond accurately to user queries.",
-        ),
-        ("created_at", ""),
-    ]
+        Args:
+            workbook_path: Path to the Excel workbook file.
 
-    BATCH_CONFIG_FIELDS = [
-        ("batch_mode", "per_row"),
-        ("batch_output", "combined"),
-        ("on_batch_error", "continue"),
-    ]
+        """
+        self.workbook_path = workbook_path
+        self._has_data_sheet: bool | None = None
+        self._has_clients_sheet: bool | None = None
+        self._has_documents_sheet: bool | None = None
+        self._config = get_config()
+
+    @property
+    def CONFIG_SHEET(self) -> str:
+        return self._config.workbook.sheet_names.config
+
+    @property
+    def PROMPTS_SHEET(self) -> str:
+        return self._config.workbook.sheet_names.prompts
+
+    @property
+    def DATA_SHEET(self) -> str:
+        return self._config.workbook.sheet_names.data
+
+    @property
+    def CLIENTS_SHEET(self) -> str:
+        return self._config.workbook.sheet_names.clients
+
+    @property
+    def DOCUMENTS_SHEET(self) -> str:
+        return self._config.workbook.sheet_names.documents
+
+    @property
+    def CONFIG_FIELDS(self) -> list[tuple[str, str]]:
+        defaults = self._config.workbook.defaults
+        return [
+            ("model", defaults.model),
+            ("api_key_env", defaults.api_key_env),
+            ("max_retries", str(defaults.max_retries)),
+            ("temperature", str(defaults.temperature)),
+            ("max_tokens", str(defaults.max_tokens)),
+            ("system_instructions", defaults.system_instructions),
+            ("created_at", ""),
+        ]
+
+    @property
+    def BATCH_CONFIG_FIELDS(self) -> list[tuple[str, str]]:
+        batch = self._config.workbook.batch
+        return [
+            ("batch_mode", batch.mode),
+            ("batch_output", batch.output),
+            ("on_batch_error", batch.on_error),
+        ]
 
     PROMPTS_HEADERS = [
         "sequence",
@@ -88,18 +120,6 @@ class WorkbookBuilder:
         "error",
         "references",
     ]
-
-    def __init__(self, workbook_path: str) -> None:
-        """Initialize the WorkbookBuilder.
-
-        Args:
-            workbook_path: Path to the Excel workbook file.
-
-        """
-        self.workbook_path = workbook_path
-        self._has_data_sheet: bool | None = None
-        self._has_clients_sheet: bool | None = None
-        self._has_documents_sheet: bool | None = None
 
     def has_data_sheet(self) -> bool:
         """Check if workbook has a data sheet for batch execution."""

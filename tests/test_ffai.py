@@ -375,3 +375,184 @@ class TestFFAISystemInstructions:
         instructions = ffai.get_system_instructions()
 
         assert instructions is None
+
+
+class TestFFAIClientHistorySuspension:
+    """Tests for automatic client history suspension when using declarative context."""
+
+    def test_declarative_history_suspends_client_history(self, mock_ffmistralsmall):
+        """Verify client history is empty during call when history parameter is provided."""
+        from src.FFAI import FFAI
+
+        ffai = FFAI(mock_ffmistralsmall)
+
+        # First, build up some client history
+        ffai.generate_response("First question")
+        ffai.generate_response("Second question")
+        assert len(mock_ffmistralsmall.conversation_history) == 4  # 2 user + 2 assistant
+
+        # Now use declarative context - client history should be suspended
+        ffai.generate_response(
+            "Third question with context", prompt_name="contextual", history=["nonexistent"]
+        )
+
+        # After the call, client history should still have original 4 messages
+        # The call with history should NOT have added to client history
+        assert len(mock_ffmistralsmall.conversation_history) == 4
+
+    def test_client_history_restored_after_declarative_call(self, mock_ffmistralsmall):
+        """Verify client history is restored after a call with declarative context."""
+        from src.FFAI import FFAI
+
+        ffai = FFAI(mock_ffmistralsmall)
+
+        # Build up client history
+        ffai.generate_response("Question A")
+        original_history = mock_ffmistralsmall.conversation_history.copy()
+        assert len(original_history) == 2
+
+        # Use declarative context
+        ffai.generate_response("Question B", history=["some_context"])
+
+        # History should be exactly the same as before the declarative call
+        assert mock_ffmistralsmall.conversation_history == original_history
+
+    def test_no_history_param_accumulates_client_history(self, mock_ffmistralsmall):
+        """Verify backward compatibility: no history param means client history accumulates."""
+        from src.FFAI import FFAI
+
+        ffai = FFAI(mock_ffmistralsmall)
+
+        ffai.generate_response("Question 1")
+        assert len(mock_ffmistralsmall.conversation_history) == 2
+
+        ffai.generate_response("Question 2")
+        assert len(mock_ffmistralsmall.conversation_history) == 4
+
+        ffai.generate_response("Question 3")
+        assert len(mock_ffmistralsmall.conversation_history) == 6
+
+    def test_empty_history_list_suspends_client_history(self, mock_ffmistralsmall):
+        """Verify that history=[] also suspends client history (edge case)."""
+        from src.FFAI import FFAI
+
+        ffai = FFAI(mock_ffmistralsmall)
+
+        ffai.generate_response("Build up history")
+        assert len(mock_ffmistralsmall.conversation_history) == 2
+
+        # Even with empty list, should suspend
+        ffai.generate_response("With empty history", history=[])
+        assert len(mock_ffmistralsmall.conversation_history) == 2
+
+    def test_ffai_history_still_records_with_declarative_context(self, mock_ffmistralsmall):
+        """Verify FFAI's tracking structures still record turns even when client history is suspended."""
+        from src.FFAI import FFAI
+
+        ffai = FFAI(mock_ffmistralsmall)
+
+        ffai.generate_response("Question 1", prompt_name="q1")
+        ffai.generate_response("Question 2", prompt_name="q2", history=["q1"])
+
+        # FFAI should record both interactions
+        assert len(ffai.history) == 2
+        assert len(ffai.prompt_attr_history) == 2
+        assert ffai.history[1]["history"] == ["q1"]
+
+        # permanent_history should also have both
+        assert len(ffai.permanent_history.turns) == 4  # 2 user + 2 assistant
+
+    def test_mixed_calls_declarative_and_normal(self, mock_ffmistralsmall):
+        """Test mixing calls with and without declarative context."""
+        from src.FFAI import FFAI
+
+        ffai = FFAI(mock_ffmistralsmall)
+
+        # Normal call - adds to client history
+        ffai.generate_response("Normal 1", prompt_name="n1")
+        assert len(mock_ffmistralsmall.conversation_history) == 2
+
+        # Declarative call - suspended
+        ffai.generate_response("Declarative 1", prompt_name="d1", history=["n1"])
+        assert len(mock_ffmistralsmall.conversation_history) == 2  # Still 2
+
+        # Another normal call - adds to client history
+        ffai.generate_response("Normal 2", prompt_name="n2")
+        assert len(mock_ffmistralsmall.conversation_history) == 4  # Now 4
+
+        # Another declarative call - suspended, but sees all 4 client history messages
+        ffai.generate_response("Declarative 2", prompt_name="d2", history=["n2"])
+        assert len(mock_ffmistralsmall.conversation_history) == 4  # Still 4
+
+        # FFAI should have all 4 interactions recorded
+        assert len(ffai.history) == 4
+
+    def test_api_receives_no_client_history_during_suspension(self, mock_ffmistralsmall):
+        """Verify the API call receives empty client history when suspended."""
+        from src.FFAI import FFAI
+
+        ffai = FFAI(mock_ffmistralsmall)
+
+        # Build up client history
+        ffai.generate_response("First question", prompt_name="q1")
+        ffai.generate_response("Second question", prompt_name="q2")
+        assert len(mock_ffmistralsmall.conversation_history) == 4
+
+        # Track what messages were actually sent to the API
+        captured_messages = []
+
+        original_complete = mock_ffmistralsmall.client.chat.complete
+
+        def capture_api_call(**kwargs):
+            captured_messages.append(kwargs.get("messages", []))
+            return original_complete(**kwargs)
+
+        mock_ffmistralsmall.client.chat.complete = capture_api_call
+
+        # Make declarative call - should NOT include accumulated client history
+        ffai.generate_response("Third question", prompt_name="q3", history=["q1"])
+
+        # Verify API received empty conversation (just system + current prompt)
+        assert len(captured_messages) == 1
+        api_messages = captured_messages[0]
+
+        # Should have: system message + current user prompt (with injected context)
+        # Should NOT have: the 4 messages from q1 and q2
+        user_messages = [m for m in api_messages if m["role"] == "user"]
+        assert len(user_messages) == 1, (
+            "API should receive only 1 user message (the current prompt)"
+        )
+        assert "Third question" in user_messages[0]["content"]
+        assert "conversation_history" in user_messages[0]["content"], (
+            "Should include declarative context"
+        )
+
+    def test_api_receives_full_client_history_when_not_suspended(self, mock_ffmistralsmall):
+        """Verify the API call receives full client history when NOT using declarative context."""
+        from src.FFAI import FFAI
+
+        ffai = FFAI(mock_ffmistralsmall)
+
+        # Build up client history
+        ffai.generate_response("First question")
+        ffai.generate_response("Second question")
+
+        # Track what messages were sent
+        captured_messages = []
+
+        original_complete = mock_ffmistralsmall.client.chat.complete
+
+        def capture_api_call(**kwargs):
+            captured_messages.append(kwargs.get("messages", []))
+            return original_complete(**kwargs)
+
+        mock_ffmistralsmall.client.chat.complete = capture_api_call
+
+        # Normal call - SHOULD include all accumulated client history
+        ffai.generate_response("Third question")
+
+        api_messages = captured_messages[0]
+        user_messages = [m for m in api_messages if m["role"] == "user"]
+
+        # Should have all 3 user messages from conversation history
+        assert len(user_messages) == 3, "API should receive all 3 user messages from client history"

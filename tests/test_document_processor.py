@@ -247,11 +247,15 @@ class TestClearCache:
 
 class TestTextExtensions:
     def test_text_extensions_includes_common_types(self):
-        assert ".txt" in DocumentProcessor.TEXT_EXTENSIONS
-        assert ".md" in DocumentProcessor.TEXT_EXTENSIONS
-        assert ".py" in DocumentProcessor.TEXT_EXTENSIONS
-        assert ".json" in DocumentProcessor.TEXT_EXTENSIONS
-        assert ".csv" in DocumentProcessor.TEXT_EXTENSIONS
-        assert ".xml" in DocumentProcessor.TEXT_EXTENSIONS
-        assert ".yaml" in DocumentProcessor.TEXT_EXTENSIONS
-        assert ".html" in DocumentProcessor.TEXT_EXTENSIONS
+        from src.config import get_config
+
+        config = get_config()
+        text_extensions = config.document_processor.text_extensions
+        assert ".txt" in text_extensions
+        assert ".md" in text_extensions
+        assert ".py" in text_extensions
+        assert ".json" in text_extensions
+        assert ".csv" in text_extensions
+        assert ".xml" in text_extensions
+        assert ".yaml" in text_extensions
+        assert ".html" in text_extensions

@@ -22,9 +22,13 @@ from pathlib import Path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from openpyxl import Workbook
+from src.config import get_config
 
 
 def create_test_workbook(output_path: str):
+    config = get_config()
+    test_config = config.test
+
     wb = Workbook()
 
     ws_config = wb.active
@@ -33,9 +37,9 @@ def create_test_workbook(output_path: str):
     ws_config["B1"] = "value"
 
     config_data = [
-        ("model", "mistral-small-latest"),
-        ("max_retries", "2"),
-        ("temperature", "0.7"),
+        ("model", test_config.default_model),
+        ("max_retries", str(test_config.default_retries)),
+        ("temperature", str(test_config.default_temperature)),
         ("max_tokens", "1000"),
         (
             "system_instructions",
@@ -56,21 +60,32 @@ def create_test_workbook(output_path: str):
     for col_idx, header in enumerate(doc_headers, start=1):
         ws_documents.cell(row=1, column=col_idx, value=header)
 
-    library_dir = Path(__file__).parent.parent / "library"
+    app_config = get_config()
+    library_dir = Path(__file__).parent.parent / app_config.paths.library
 
     documents = [
         (
             "product_spec",
             "Product Specification",
-            "library/product_spec.md",
+            f"{app_config.paths.library}/product_spec.md",
             "Main product documentation",
         ),
-        ("api_ref", "API Reference", "library/api_reference.txt", "API documentation"),
-        ("config", "Configuration File", "library/config.json", "App configuration"),
+        (
+            "api_ref",
+            "API Reference",
+            f"{app_config.paths.library}/api_reference.txt",
+            "API documentation",
+        ),
+        (
+            "config",
+            "Configuration File",
+            f"{app_config.paths.library}/config.json",
+            "App configuration",
+        ),
         (
             "troubleshoot",
             "Troubleshooting Guide",
-            "library/troubleshooting.txt",
+            f"{app_config.paths.library}/troubleshooting.txt",
             "Common issues and solutions",
         ),
     ]
@@ -202,5 +217,10 @@ def create_test_workbook(output_path: str):
 
 
 if __name__ == "__main__":
-    output = sys.argv[1] if len(sys.argv) > 1 else "test_workbook_documents.xlsx"
+    config = get_config()
+    output = (
+        sys.argv[1]
+        if len(sys.argv) > 1
+        else os.path.join(config.test.output_dir, "test_workbook_documents.xlsx")
+    )
     create_test_workbook(output)

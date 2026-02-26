@@ -22,9 +22,13 @@ from datetime import datetime
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from openpyxl import Workbook
+from src.config import get_config
 
 
 def create_max_test_workbook(output_path: str):
+    config = get_config()
+    test_config = config.test
+
     wb = Workbook()
 
     # ============================================
@@ -36,10 +40,10 @@ def create_max_test_workbook(output_path: str):
     ws_config["B1"] = "value"
 
     config_data = [
-        ("model", "mistral-small-latest"),
-        ("max_retries", "2"),
-        ("temperature", "0.7"),
-        ("max_tokens", "300"),
+        ("model", test_config.default_model),
+        ("max_retries", str(test_config.default_retries)),
+        ("temperature", str(test_config.default_temperature)),
+        ("max_tokens", str(test_config.default_max_tokens)),
         (
             "system_instructions",
             "You are a helpful assistant. Give brief, concise answers. "
@@ -519,5 +523,10 @@ def create_max_test_workbook(output_path: str):
 
 
 if __name__ == "__main__":
-    output = sys.argv[1] if len(sys.argv) > 1 else "test_workbook_max.xlsx"
+    config = get_config()
+    output = (
+        sys.argv[1]
+        if len(sys.argv) > 1
+        else os.path.join(config.test.output_dir, "test_workbook_max.xlsx")
+    )
     create_max_test_workbook(output)

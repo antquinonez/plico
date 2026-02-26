@@ -30,6 +30,7 @@ from dotenv import load_dotenv
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from src.config import get_config
 from src.Clients.FFAnthropic import FFAnthropic
 from src.Clients.FFAnthropicCached import FFAnthropicCached
 from src.Clients.FFAzureCodestral import FFAzureCodestral
@@ -48,39 +49,40 @@ from src.orchestrator import ExcelOrchestrator
 
 load_dotenv()
 
-LOG_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "logs")
-os.makedirs(LOG_DIR, exist_ok=True)
-
 
 def setup_logging(quiet: bool = False, verbose: bool = False):
     """Configure logging with file rotation and optional console suppression."""
+    config = get_config()
+    log_config = config.logging
+
     root_logger = logging.getLogger()
     root_logger.setLevel(logging.DEBUG if verbose else logging.INFO)
 
     for handler in root_logger.handlers[:]:
         root_logger.removeHandler(handler)
 
-    log_file = os.path.join(LOG_DIR, "orchestrator.log")
+    log_dir = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), log_config.directory
+    )
+    os.makedirs(log_dir, exist_ok=True)
+    log_file = os.path.join(log_dir, log_config.filename)
+
     file_handler = TimedRotatingFileHandler(
         log_file,
-        when="midnight",
-        interval=1,
-        backupCount=10,
+        when=log_config.rotation.when,
+        interval=log_config.rotation.interval,
+        backupCount=log_config.rotation.backup_count,
         encoding="utf-8",
     )
     file_handler.suffix = "%Y-%m-%d"
     file_handler.setLevel(logging.DEBUG)
-    file_handler.setFormatter(
-        logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-    )
+    file_handler.setFormatter(logging.Formatter(log_config.format))
     root_logger.addHandler(file_handler)
 
     if not quiet:
         console_handler = logging.StreamHandler(sys.stderr)
         console_handler.setLevel(logging.INFO)
-        console_handler.setFormatter(
-            logging.Formatter("%(asctime)s - %(name)s - %(levelname)s - %(message)s")
-        )
+        console_handler.setFormatter(logging.Formatter(log_config.format))
         root_logger.addHandler(console_handler)
 
     return logging.getLogger(__name__)
@@ -111,15 +113,11 @@ CLIENT_MAP = {
     "litellm-perplexity": FFLiteLLMClient,
 }
 
-LITELLM_PROVIDER_PREFIXES = {
-    "litellm": "",
-    "litellm-mistral": "mistral/",
-    "litellm-anthropic": "anthropic/",
-    "litellm-openai": "openai/",
-    "litellm-azure": "azure/",
-    "litellm-gemini": "gemini/",
-    "litellm-perplexity": "perplexity/",
-}
+
+def _get_litellm_prefix(client_type: str) -> str:
+    """Get LiteLLM provider prefix for a client type from config."""
+    config = get_config()
+    return config.get_litellm_prefix(client_type)
 
 
 class ProgressIndicator:
@@ -196,7 +194,7 @@ def get_client(client_type: str, config: dict) -> object:
         )
 
     if client_type.startswith("litellm"):
-        provider_prefix = LITELLM_PROVIDER_PREFIXES.get(client_type, "")
+        provider_prefix = _get_litellm_prefix(client_type)
         model = config.get("model", "gpt-4")
         model_string = f"{provider_prefix}{model}" if provider_prefix else model
 
@@ -230,6 +228,10 @@ def get_client(client_type: str, config: dict) -> object:
 
 
 def main():
+    app_config = get_config()
+    default_concurrency = app_config.orchestrator.default_concurrency
+    max_concurrency = app_config.orchestrator.max_concurrency
+
     parser = argparse.ArgumentParser(
         description="Run Excel-based prompt orchestration",
         formatter_class=argparse.RawDescriptionHelpFormatter,
@@ -246,8 +248,8 @@ def main():
         "--concurrency",
         "-c",
         type=int,
-        default=2,
-        help="Maximum concurrent API calls (default: 2, max: 10)",
+        default=default_concurrency,
+        help=f"Maximum concurrent API calls (default: {default_concurrency}, max: {max_concurrency})",
     )
     parser.add_argument(
         "--dry-run", action="store_true", help="Validate workbook without executing"
@@ -306,7 +308,10 @@ def main():
 
     print(f"\nStarting orchestration with concurrency={args.concurrency}")
     print(f"Total prompts: {len(prompts)}")
-    print(f"Log file: {os.path.join(LOG_DIR, 'orchestrator.log')}\n")
+    log_dir = os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), app_config.logging.directory
+    )
+    print(f"Log file: {os.path.join(log_dir, app_config.logging.filename)}\n")
 
     results_sheet = orchestrator.run()
     progress.finish()

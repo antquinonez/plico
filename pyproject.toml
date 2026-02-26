@@ -30,6 +30,8 @@ dependencies = [
     "openpyxl",
     "pyarrow",
     "litellm>=1.0.0",
+    "pydantic-settings>=2.0.0",
+    "pyyaml>=6.0",
 ]
 
 [project.optional-dependencies]

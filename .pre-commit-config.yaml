@@ -1,4 +1,15 @@
 repos:
+  # Local hooks
+  - repo: local
+    hooks:
+      - id: pytest
+        name: pytest
+        entry: .venv/bin/python -m pytest tests/ -x -q
+        language: system
+        pass_filenames: false
+        stages: [pre-commit]
+        always_run: true
+
   # Ruff - linting and formatting
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: v0.9.6

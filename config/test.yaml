@@ -1,0 +1,12 @@
+# FFClients Test Configuration
+# ============================
+# Default settings for test workbook generation scripts.
+# Used by scripts/create_test_workbook*.py
+
+test_workbooks:
+  default_model: "mistral-small-latest"
+  default_temperature: 0.7
+  default_max_tokens: 300
+  default_retries: 2
+  default_system_instructions: "You are a helpful assistant. Give brief, concise answers. For math questions, just give the number."
+  output_dir: "."

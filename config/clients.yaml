@@ -1,0 +1,34 @@
+# FFClients AI Client Configuration
+# ==================================
+# Configure AI clients for LiteLLM routing and direct API access.
+# API keys can be set via environment variables or directly below.
+# See clients.yaml.example for all available client types.
+
+clients:
+  mistral-small:
+    type: "litellm"
+    provider_prefix: "mistral/"
+    api_key_env: "MISTRALSMALL_KEY"
+    # api_key: ""  # Optional: set directly or use api_key_env
+
+  litellm-mistral:
+    type: "litellm"
+    provider_prefix: "mistral/"
+    api_key_env: "MISTRAL_API_KEY"
+
+  litellm-azure:
+    type: "litellm"
+    provider_prefix: "azure/"
+    api_key_env: "AZURE_API_KEY"
+    model: "mistral-small-2503"
+
+  litellm-anthropic:
+    type: "litellm"
+    provider_prefix: "anthropic/"
+    api_key_env: "ANTHROPIC_API_KEY"
+    model: "claude-3-opus"
+
+  anthropic:
+    type: "native"
+    client_class: "FFAnthropic"
+    api_key_env: "ANTHROPIC_TOKEN"

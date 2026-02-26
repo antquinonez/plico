@@ -1,0 +1,14 @@
+# FFClients Logging Configuration
+# ================================
+# Configure logging output for the orchestrator and clients.
+# Adjust level and format for production vs development.
+
+logging:
+  directory: "logs"
+  filename: "orchestrator.log"
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  rotation:
+    when: "midnight"
+    interval: 1
+    backup_count: 10

@@ -13,6 +13,8 @@ from typing import Any
 
 import polars as pl
 
+from ..config import get_config
+
 logger = logging.getLogger(__name__)
 
 
@@ -20,50 +22,15 @@ class DocumentProcessor:
     """Handles document parsing and caching with checksum-based deduplication.
 
     Documents are parsed (via LlamaParse for non-text files) and stored as
-    parquet files. The parquet filename includes the first 8 characters of
+    parquet files. The parquet filename includes the first N characters of
     the SHA256 checksum to enable cache validation.
 
     Attributes:
         cache_dir: Directory where parquet files are stored
         api_key: LlamaParse API key (from LLAMACLOUD_TOKEN env var)
-        checksum_length: Number of checksum chars to use in filename (default: 8)
+        checksum_length: Number of checksum chars to use in filename
 
     """
-
-    TEXT_EXTENSIONS = {
-        ".txt",
-        ".md",
-        ".py",
-        ".js",
-        ".html",
-        ".htm",
-        ".css",
-        ".json",
-        ".xml",
-        ".yaml",
-        ".yml",
-        ".ini",
-        ".cfg",
-        ".conf",
-        ".sh",
-        ".bat",
-        ".csv",
-        ".tsv",
-        ".log",
-        ".sql",
-        ".r",
-        ".c",
-        ".cpp",
-        ".h",
-        ".java",
-        ".kt",
-        ".go",
-        ".rs",
-        ".php",
-        ".rb",
-        ".pl",
-        ".swift",
-    }
 
     PARQUET_SCHEMA = {
         "reference_name": pl.Utf8,
@@ -76,22 +43,34 @@ class DocumentProcessor:
     }
 
     def __init__(
-        self, cache_dir: str, api_key: str | None = None, checksum_length: int = 8
+        self, cache_dir: str, api_key: str | None = None, checksum_length: int | None = None
     ) -> None:
         """Initialize the DocumentProcessor.
 
         Args:
             cache_dir: Directory for parquet cache files.
             api_key: LlamaParse API key (defaults to LLAMACLOUD_TOKEN env var).
-            checksum_length: Number of checksum chars to use in filenames.
+            checksum_length: Number of checksum chars to use in filenames. Uses config if None.
 
         """
         self.cache_dir = Path(cache_dir)
         self.api_key = api_key or os.environ.get("LLAMACLOUD_TOKEN")
-        self.checksum_length = checksum_length
+
+        config = get_config()
+        self.checksum_length = (
+            checksum_length
+            if checksum_length is not None
+            else config.document_processor.checksum_length
+        )
+        self._text_extensions = config.document_processor.text_extensions
 
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         logger.info(f"DocumentProcessor initialized with cache_dir={cache_dir}")
+
+    @property
+    def TEXT_EXTENSIONS(self) -> set[str]:
+        """Get text extensions from config."""
+        return self._text_extensions
 
     def compute_checksum(self, file_path: str) -> str:
         """Compute SHA256 checksum of a file.

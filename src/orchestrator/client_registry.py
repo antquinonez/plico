@@ -5,7 +5,6 @@ definitions in the workbook's 'clients' sheet.
 """
 
 import logging
-import os
 from typing import Any
 
 from ..Clients.FFAnthropic import FFAnthropic
@@ -24,6 +23,7 @@ from ..Clients.FFMistralSmall import FFMistralSmall
 from ..Clients.FFNvidiaDeepSeek import FFNvidiaDeepSeek
 from ..Clients.FFOpenAIAssistant import FFOpenAIAssistant
 from ..Clients.FFPerplexity import FFPerplexity
+from ..config import get_config
 from ..FFAIClientBase import FFAIClientBase
 
 logger = logging.getLogger(__name__)
@@ -69,40 +69,17 @@ class ClientRegistry:
         "litellm-perplexity": FFLiteLLMClient,
     }
 
-    DEFAULT_API_KEY_ENVS = {
-        "mistral": "MISTRAL_KEY",
-        "mistral-small": "MISTRALSMALL_KEY",
-        "anthropic": "ANTHROPIC_TOKEN",
-        "anthropic-cached": "ANTHROPIC_TOKEN",
-        "gemini": "GOOGLE_APPLICATION_CREDENTIALS",
-        "perplexity": "PERPLEXITY_TOKEN",
-        "openai-assistant": "OPENAI_API_KEY",
-        "nvidia-deepseek": "NVIDIA_API_KEY",
-        "azure-mistral": "AZURE_MISTRAL_KEY",
-        "azure-mistral-small": "AZURE_MISTRALSMALL_KEY",
-        "azure-codestral": "AZURE_CODESTRAL_KEY",
-        "azure-deepseek": "AZURE_DEEPSEEK_KEY",
-        "azure-deepseek-v3": "AZURE_DEEPSEEKV3_KEY",
-        "azure-ms-deepseek-r1": "AZURE_MSDEEPSEEKR1_KEY",
-        "azure-phi": "AZURE_PHI_KEY",
-        "litellm": "LITELLM_API_KEY",
-        "litellm-azure": "AZURE_API_KEY",
-        "litellm-anthropic": "ANTHROPIC_API_KEY",
-        "litellm-mistral": "MISTRAL_API_KEY",
-        "litellm-openai": "OPENAI_API_KEY",
-        "litellm-gemini": "GEMINI_API_KEY",
-        "litellm-perplexity": "PERPLEXITY_API_KEY",
-    }
+    @classmethod
+    def _get_api_key(cls, client_type: str) -> str | None:
+        """Get API key for a client type from config."""
+        config = get_config()
+        return config.get_api_key(client_type)
 
-    LITELLM_PROVIDER_PREFIXES = {
-        "litellm": "",
-        "litellm-azure": "azure/",
-        "litellm-anthropic": "anthropic/",
-        "litellm-mistral": "mistral/",
-        "litellm-openai": "openai/",
-        "litellm-gemini": "gemini/",
-        "litellm-perplexity": "perplexity/",
-    }
+    @classmethod
+    def _get_litellm_prefix(cls, client_type: str) -> str:
+        """Get LiteLLM provider prefix for a client type from config."""
+        config = get_config()
+        return config.get_litellm_prefix(client_type)
 
     def __init__(self, default_client: FFAIClientBase) -> None:
         """Initialize registry with a default client.
@@ -193,15 +170,18 @@ class ClientRegistry:
 
         client_class = self.CLIENT_MAP[client_type]
 
-        api_key_env = config.get("api_key_env") or self.DEFAULT_API_KEY_ENVS.get(client_type)
-        api_key = os.getenv(api_key_env) if api_key_env else None
+        api_key = config.get("api_key") or self._get_api_key(client_type)
+        if not api_key and config.get("api_key_env"):
+            import os
+
+            api_key = os.getenv(config["api_key_env"])
 
         kwargs: dict[str, Any] = {}
         if api_key:
             kwargs["api_key"] = api_key
 
         if client_type.startswith("litellm"):
-            provider_prefix = self.LITELLM_PROVIDER_PREFIXES.get(client_type, "")
+            provider_prefix = self._get_litellm_prefix(client_type)
             model = config.get("model", "gpt-4")
             kwargs["model_string"] = f"{provider_prefix}{model}" if provider_prefix else model
             if config.get("api_base"):
@@ -241,4 +221,6 @@ class ClientRegistry:
     @classmethod
     def get_default_api_key_env(cls, client_type: str) -> str | None:
         """Get the default API key environment variable for a client type."""
-        return cls.DEFAULT_API_KEY_ENVS.get(client_type)
+        cfg = get_config()
+        client_config = cfg.get_client_config(client_type)
+        return client_config.api_key_env if client_config else None

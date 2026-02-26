@@ -1,0 +1,9 @@
+# FFClients Paths Configuration
+# ==============================
+# File system paths used by the application.
+# Adjust for your deployment environment.
+
+paths:
+  ffai_data: "./ffai_data"
+  doc_cache: "doc_cache"
+  library: "library"

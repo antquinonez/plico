@@ -23,15 +23,12 @@ import re
 import threading
 import time
 from collections.abc import Callable
-
-# =============================
-# Persistence Decorator
-# =============================
 from functools import wraps
 from typing import Any
 
 import polars as pl
 
+from .config import get_config
 from .FFAIClientBase import FFAIClientBase
 from .OrderedPromptHistory import OrderedPromptHistory
 from .PermanentHistory import PermanentHistory
@@ -83,7 +80,7 @@ class FFAI:
     def __init__(
         self,
         client: FFAIClientBase,
-        persist_dir: str = "./ffai_data",
+        persist_dir: str | None = None,
         persist_name: str | None = None,
         auto_persist: bool = False,
         shared_prompt_attr_history: list[dict[str, Any]] | None = None,
@@ -93,7 +90,7 @@ class FFAI:
 
         Args:
             client: AI client instance to wrap.
-            persist_dir: Directory for persistence files.
+            persist_dir: Directory for persistence files. Uses config default if None.
             persist_name: Base name for persisted files.
             auto_persist: Whether to automatically persist DataFrames.
             shared_prompt_attr_history: Optional shared history list for parallel execution.
@@ -102,16 +99,15 @@ class FFAI:
         """
         logger.info("Initializing FFAI wrapper")
 
-        # =============================
-        # Persistence Configuration
-        # =============================
-        self.persist_dir = persist_dir
+        config = get_config()
+        self.persist_dir = persist_dir if persist_dir is not None else config.paths.ffai_data
         self.persist_name = persist_name
         self.auto_persist = auto_persist
         os.makedirs(self.persist_dir, exist_ok=True)
 
         self.client = client
         self._history_lock = history_lock
+        self._client_history_lock = threading.Lock()
 
         self.history = []
         self.clean_history = []
@@ -312,10 +308,25 @@ class FFAI:
             if system_instructions is not None:
                 kwargs["system_instructions"] = system_instructions
 
-            # Filter kwargs based on client type
-            response = self.client.generate_response(
-                prompt=final_prompt, model=used_model, **kwargs
-            )
+            # Suspend client conversation history when using declarative context
+            saved_client_history = None
+            should_suspend_client_history = history is not None
+
+            if should_suspend_client_history:
+                with self._client_history_lock:
+                    saved_client_history = self.client.get_conversation_history().copy()
+                    self.client.set_conversation_history([])
+                    logger.debug("Suspended client conversation history for declarative context")
+
+            try:
+                response = self.client.generate_response(
+                    prompt=final_prompt, model=used_model, **kwargs
+                )
+            finally:
+                if should_suspend_client_history and saved_client_history is not None:
+                    with self._client_history_lock:
+                        self.client.set_conversation_history(saved_client_history)
+                        logger.debug("Restored client conversation history")
 
             logger.debug(f"Generated response: {response}")
 
