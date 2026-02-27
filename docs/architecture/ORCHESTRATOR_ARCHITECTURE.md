@@ -12,6 +12,7 @@ The Excel Orchestrator enables non-programmers to define and execute AI prompt w
 4. **Traceability** - Full history of executions in workbook
 5. **Flexibility** - Batch execution, multi-client support, templating
 6. **Document References** - Inject external documents into prompts
+7. **Semantic Search (RAG)** - Retrieve relevant document chunks based on meaning
 
 ## Components
 
@@ -101,12 +102,26 @@ The Excel Orchestrator enables non-programmers to define and execute AI prompt w
 
 ### prompts Sheet
 
-| sequence | prompt_name | prompt | history | client | references |
-|----------|-------------|--------|---------|--------|------------|
-| 1 | context | I run a coffee shop with 50 customers. | | | |
-| 2 | problem | My electricity bill is too high. | | fast | |
-| 3 | solution | Suggest 3 ways to reduce my bill based on {{region}}. | `["context", "problem"]` | | |
-| 4 | spec_analysis | Summarize the key features. | | | `["product_spec", "api_guide"]` |
+| sequence | prompt_name | prompt | history | client | references | semantic_query |
+|----------|-------------|--------|---------|--------|------------|----------------|
+| 1 | context | I run a coffee shop with 50 customers. | | | | |
+| 2 | problem | My electricity bill is too high. | | fast | | |
+| 3 | solution | Suggest 3 ways to reduce my bill based on {{region}}. | `["context", "problem"]` | | | |
+| 4 | spec_analysis | Summarize the key features. | | | `["product_spec", "api_guide"]` | |
+| 5 | semantic_search | What are the authentication methods? | | | | `authentication best practices` |
+| 6 | hybrid | Based on docs and search | | | `["api_guide"]` | `error handling` |
+
+**Column Reference:**
+
+| Column | Required | Description |
+|--------|----------|-------------|
+| sequence | Yes | Execution order (integer) |
+| prompt_name | Yes | Unique identifier for the prompt |
+| prompt | Yes | The prompt text (supports `{{variable}}` templating) |
+| history | No | JSON array of prompt_names to include as context |
+| client | No | Named client from clients sheet (uses default if empty) |
+| references | No | JSON array of document reference_names for full injection |
+| semantic_query | No | Search query for RAG-based context retrieval |
 
 ### data Sheet (Optional)
 
@@ -132,11 +147,12 @@ The Excel Orchestrator enables non-programmers to define and execute AI prompt w
 
 ### results_{timestamp} Sheet (Generated)
 
-| batch_id | batch_name | sequence | prompt_name | prompt | history | client | condition | condition_result | response | status | attempts | error | references |
-|----------|------------|----------|-------------|--------|---------|--------|-----------|------------------|----------|--------|----------|-------|------------|
-| 1 | north_widget_a | 1 | context | I run... | | | | | Based on... | success | 1 | | |
-| 2 | south_widget_b | 1 | context | I run... | | | | | Based on... | success | 1 | | |
-| 3 | | 4 | spec_analysis | Summarize... | | | | | Key features are... | success | 1 | | `["product_spec", "api_guide"]` |
+| batch_id | batch_name | sequence | prompt_name | prompt | history | client | condition | condition_result | response | status | attempts | error | references | semantic_query |
+|----------|------------|----------|-------------|--------|---------|--------|-----------|------------------|----------|--------|----------|-------|------------|----------------|
+| 1 | north_widget_a | 1 | context | I run... | | | | | Based on... | success | 1 | | | |
+| 2 | south_widget_b | 1 | context | I run... | | | | | Based on... | success | 1 | | | |
+| 3 | | 4 | spec_analysis | Summarize... | | | | | Key features are... | success | 1 | | `["product_spec", "api_guide"]` | |
+| 4 | | 5 | semantic_search | What are... | | | | | Auth methods include... | success | 1 | | | `authentication best practices` |
 
 ## Data Flow
 
@@ -582,6 +598,79 @@ class DocumentRegistry:
 
     def inject_references_into_prompt(self, prompt: str, ref_names: List[str]) -> str:
         """Inject document content into prompt."""
+```
+
+### RAG Integration
+
+The Document Reference System integrates with the RAG subsystem for semantic search capabilities.
+
+**See:** [RAG_ARCHITECTURE.md](./RAG_ARCHITECTURE.md) for full details.
+
+#### semantic_query Column
+
+When a prompt includes a `semantic_query` value, the orchestrator performs a semantic search instead of (or in addition to) full document injection:
+
+| Column Combination | Behavior |
+|--------------------|----------|
+| `references` only | Full document injection |
+| `semantic_query` only | RAG search for relevant chunks |
+| Both columns | Full docs + relevant chunks |
+| Neither | No document context |
+
+#### RAG Context Injection Format
+
+```xml
+<RELEVANT_CONTEXT>
+[1] (source: product_spec) Score: 0.85
+The authentication system uses OAuth 2.0 with refresh tokens...
+
+[2] (source: api_guide) Score: 0.78
+API endpoints require Bearer token authentication...
+</RELEVANT_CONTEXT>
+
+===
+[original prompt]
+```
+
+#### Combined Format (references + semantic_query)
+
+```xml
+<REFERENCES>
+<DOC name='product_spec'>
+Full document content here...
+</DOC>
+</REFERENCES>
+
+<RELEVANT_CONTEXT>
+[1] (source: api_guide) Score: 0.82
+Relevant excerpt from semantic search...
+</RELEVANT_CONTEXT>
+
+===
+Based on the documents above and relevant context, please answer:
+[original prompt]
+```
+
+#### Document Indexing
+
+Documents are automatically indexed to the RAG vector store when loaded:
+
+1. Document parsed by `DocumentProcessor`
+2. Content passed to `FFRAGClient.add_document()`
+3. Text split into chunks with overlap
+4. Embeddings generated via LiteLLM
+5. Stored in ChromaDB collection
+
+Cached documents are indexed when loaded from parquet.
+
+#### Python 3.13 Requirement
+
+RAG functionality requires Python 3.13 due to ChromaDB's pydantic v1 dependency:
+
+```bash
+# Use Python 3.13 virtual environment
+source .venv313/bin/activate
+python scripts/run_orchestrator.py workbook.xlsx
 ```
 
 ## CLI Usage

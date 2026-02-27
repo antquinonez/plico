@@ -2,18 +2,24 @@
 
 Handles parsing of text files directly and non-text files via LlamaParse,
 with parquet-based caching using SHA256 checksums for validation.
+Optional RAG indexing via FFRAGClient for semantic search.
 """
+
+from __future__ import annotations
 
 import hashlib
 import logging
 import os
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import polars as pl
 
 from ..config import get_config
+
+if TYPE_CHECKING:
+    from ..RAG import FFRAGClient
 
 logger = logging.getLogger(__name__)
 
@@ -25,10 +31,13 @@ class DocumentProcessor:
     parquet files. The parquet filename includes the first N characters of
     the SHA256 checksum to enable cache validation.
 
+    Optionally indexes documents to RAG for semantic search.
+
     Attributes:
         cache_dir: Directory where parquet files are stored
         api_key: LlamaParse API key (from LLAMACLOUD_TOKEN env var)
         checksum_length: Number of checksum chars to use in filename
+        rag_client: Optional FFRAGClient for RAG indexing
 
     """
 
@@ -43,7 +52,11 @@ class DocumentProcessor:
     }
 
     def __init__(
-        self, cache_dir: str, api_key: str | None = None, checksum_length: int | None = None
+        self,
+        cache_dir: str,
+        api_key: str | None = None,
+        checksum_length: int | None = None,
+        rag_client: FFRAGClient | None = None,
     ) -> None:
         """Initialize the DocumentProcessor.
 
@@ -51,10 +64,12 @@ class DocumentProcessor:
             cache_dir: Directory for parquet cache files.
             api_key: LlamaParse API key (defaults to LLAMACLOUD_TOKEN env var).
             checksum_length: Number of checksum chars to use in filenames. Uses config if None.
+            rag_client: Optional FFRAGClient for RAG indexing.
 
         """
         self.cache_dir = Path(cache_dir)
         self.api_key = api_key or os.environ.get("LLAMACLOUD_TOKEN")
+        self.rag_client = rag_client
 
         config = get_config()
         self.checksum_length = (
@@ -256,7 +271,42 @@ class DocumentProcessor:
         df.write_parquet(parquet_path)
         logger.info(f"Stored document parquet: {parquet_path}")
 
+        self._index_to_rag(reference_name, common_name, content)
+
         return str(parquet_path)
+
+    def _index_to_rag(self, reference_name: str, common_name: str, content: str) -> int:
+        """Index document content to RAG for semantic search.
+
+        Args:
+            reference_name: Reference name for the document
+            common_name: Human-readable name
+            content: Document content to index
+
+        Returns:
+            Number of chunks indexed, or 0 if RAG is not configured
+
+        """
+        logger.debug(
+            f"_index_to_rag called: rag_client={self.rag_client is not None}, ref={reference_name}"
+        )
+        if not self.rag_client:
+            logger.info("RAG client not configured, skipping indexing")
+            return 0
+
+        try:
+            logger.info(f"Indexing document to RAG: {reference_name}")
+            self.rag_client.delete_by_reference(reference_name)
+            chunks_added = self.rag_client.add_document(
+                content=content,
+                reference_name=reference_name,
+                metadata={"common_name": common_name},
+            )
+            logger.info(f"Indexed {chunks_added} chunks to RAG for: {reference_name}")
+            return chunks_added
+        except Exception as e:
+            logger.warning(f"Failed to index document to RAG: {e}")
+            return 0
 
     def load_document(self, parquet_path: str) -> dict[str, Any]:
         """Load document data from a parquet file.
@@ -300,7 +350,9 @@ class DocumentProcessor:
         if not self.needs_parsing(file_path, reference_name):
             logger.info(f"Using cached document: {reference_name}")
             doc_data = self.load_document(str(parquet_path))
-            return doc_data["content"]
+            content = doc_data["content"]
+            self._index_to_rag(reference_name, common_name, content)
+            return content
 
         logger.info(f"Parsing document: {reference_name}")
         content = self.parse_document(file_path)

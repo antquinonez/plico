@@ -61,3 +61,12 @@ document_processor:
     - ".rb"
     - ".pl"
     - ".swift"
+
+rag:
+  enabled: true
+  persist_dir: "./chroma_db"
+  collection_name: "ffclients_kb"
+  embedding_model: "mistral/mistral-embed"
+  chunk_size: 1000
+  chunk_overlap: 200
+  n_results_default: 5

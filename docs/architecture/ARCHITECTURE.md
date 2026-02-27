@@ -76,7 +76,7 @@ FFClients is a declarative context handling API wrapper for AI models with Excel
 └─────────────────────────────────────────────────────────────────────────┘
 ```
 
-## Two Subsystems
+## Subsystems
 
 ### Subsystem 1: Client Wrappers
 **Purpose:** Abstract away AI provider differences behind a unified interface.
@@ -134,6 +134,26 @@ FFClients is a declarative context handling API wrapper for AI models with Excel
 - XML-formatted reference injection into prompts
 
 **See:** [ORCHESTRATOR_ARCHITECTURE.md](./ORCHESTRATOR_ARCHITECTURE.md#document-reference-system)
+
+### Subsystem 4: RAG (Retrieval-Augmented Generation)
+**Purpose:** Provide semantic search over document collections for context-aware prompt augmentation.
+
+**Key Components:**
+- `FFRAGClient` - High-level RAG interface
+- `FFVectorStore` - ChromaDB operations wrapper
+- `FFEmbeddings` - LiteLLM-based embedding generation
+- `TextSplitter` - Document chunking utilities
+- `RAGMCPTools` - MCP tool definitions for AI assistants
+
+**Features:**
+- Semantic search with configurable embedding models (Mistral, OpenAI, Azure)
+- Automatic document chunking with configurable overlap
+- Persistent vector storage via ChromaDB
+- Token-efficient context injection vs full document loading
+- Integration with Excel orchestrator via `semantic_query` column
+- MCP tools for AI assistant integration
+
+**See:** [RAG_ARCHITECTURE.md](./RAG_ARCHITECTURE.md)
 
 ## Subsystem Interaction
 
@@ -240,6 +260,14 @@ FFClients/
 │       ├── document_processor.py      # Document parsing and caching
 │       ├── document_registry.py       # Document lookup and injection
 │       └── condition_evaluator.py     # Conditional expression evaluation
+│   │
+│   └── RAG/                           # SUBSYSTEM 4: RAG (Semantic Search)
+│       ├── __init__.py
+│       ├── FFRAGClient.py             # High-level RAG interface
+│       ├── FFVectorStore.py           # ChromaDB operations
+│       ├── FFEmbeddings.py            # LiteLLM embedding wrapper
+│       ├── text_splitter.py           # Document chunking
+│       └── mcp_tools.py               # MCP tool definitions
 │
 ├── scripts/
 │   ├── run_orchestrator.py            # CLI entry point for orchestrator
@@ -298,13 +326,19 @@ FFClients/
 │   ├── test_document_processor.py
 │   ├── test_document_registry.py
 │   ├── test_condition_evaluator.py
+│   ├── test_rag.py                     # RAG subsystem tests
 │   └── test_litellm_orchestrator_integration.py
+│
+│   ├── .venv313/                       # Python 3.13 venv (for RAG/ChromaDB)
+│
+│   ├── chroma_db/                      # RAG vector database (git-ignored)
 │
 ├── docs/
 │   ├── architecture/
 │   │   ├── ARCHITECTURE.md            # This file
 │   │   ├── CLIENTS_ARCHITECTURE.md
-│   │   └── ORCHESTRATOR_ARCHITECTURE.md
+│   │   ├── ORCHESTRATOR_ARCHITECTURE.md
+│   │   └── RAG_ARCHITECTURE.md        # RAG subsystem architecture
 │   ├── designs/
 │   ├── plans/
 │   ├── CLIENT API USER GUIDE.md
@@ -463,6 +497,16 @@ DocumentProcessor
 
 DocumentRegistry
   └── DocumentProcessor
+
+FFRAGClient
+  ├── FFVectorStore
+  │   ├── chromadb (external)
+  │   └── FFEmbeddings
+  │       └── litellm (external)
+  └── text_splitter (internal)
+
+RAGMCPTools
+  └── FFRAGClient
 
 WorkbookBuilder
   └── openpyxl (external)

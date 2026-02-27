@@ -2,14 +2,20 @@
 
 Validates document references and provides content injection for prompts
 referencing external documents via the 'documents' workbook sheet.
+Supports semantic search via RAG for semantic_query prompts.
 """
+
+from __future__ import annotations
 
 import logging
 import os
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .document_processor import DocumentProcessor
+
+if TYPE_CHECKING:
+    from ..RAG import FFRAGClient
 
 logger = logging.getLogger(__name__)
 
@@ -21,10 +27,13 @@ class DocumentRegistry:
     through the DocumentProcessor. This registry validates all references
     and provides content for prompt injection.
 
+    Supports semantic search via RAG for semantic_query functionality.
+
     Attributes:
         documents: Dictionary mapping reference_name to document config
         processor: DocumentProcessor instance for parsing/caching
         workbook_dir: Directory containing the workbook (for relative paths)
+        rag_client: Optional FFRAGClient for semantic search
 
     """
 
@@ -33,6 +42,7 @@ class DocumentRegistry:
         documents: list[dict[str, Any]],
         processor: DocumentProcessor,
         workbook_dir: str,
+        rag_client: FFRAGClient | None = None,
     ) -> None:
         """Initialize the document registry.
 
@@ -40,10 +50,12 @@ class DocumentRegistry:
             documents: List of document configs from workbook sheet.
             processor: DocumentProcessor for parsing documents.
             workbook_dir: Directory containing the workbook.
+            rag_client: Optional FFRAGClient for semantic search.
 
         """
         self.processor = processor
         self.workbook_dir = Path(workbook_dir).resolve()
+        self.rag_client = rag_client
         self.documents: dict[str, dict[str, Any]] = {}
         self._content_cache: dict[str, str] = {}
 
@@ -229,3 +241,100 @@ class DocumentRegistry:
         """Clear the in-memory content cache."""
         self._content_cache.clear()
         logger.info("Document content cache cleared")
+
+    def semantic_search(
+        self,
+        query: str,
+        n_results: int = 5,
+    ) -> list[dict[str, Any]]:
+        """Perform semantic search across indexed documents.
+
+        Args:
+            query: Search query text.
+            n_results: Maximum number of results to return.
+
+        Returns:
+            List of search results with content, metadata, and score.
+
+        Raises:
+            RuntimeError: If RAG client is not configured.
+
+        """
+        if not self.rag_client:
+            raise RuntimeError("RAG client not configured for semantic search")
+
+        logger.debug(f"Semantic search: {query[:50]}...")
+        return self.rag_client.search(query, n_results=n_results)
+
+    def format_semantic_results(
+        self,
+        results: list[dict[str, Any]],
+        max_chars: int | None = None,
+    ) -> str:
+        """Format semantic search results for prompt injection.
+
+        Args:
+            results: Search results from semantic_search().
+            max_chars: Maximum total characters (None = no limit).
+
+        Returns:
+            Formatted string for prompt injection.
+
+        """
+        if not results:
+            return ""
+
+        formatted_chunks = []
+        total_chars = 0
+
+        for i, result in enumerate(results, start=1):
+            content = result.get("content", "")
+            source = result.get("metadata", {}).get("reference_name", "unknown")
+            score = result.get("score", 0.0)
+
+            chunk_text = f"[{i}] (source: {source}, relevance: {score:.2f})\n{content}\n"
+
+            if max_chars and total_chars + len(chunk_text) > max_chars:
+                break
+
+            formatted_chunks.append(chunk_text)
+            total_chars += len(chunk_text)
+
+        return "".join(formatted_chunks)
+
+    def inject_semantic_query(
+        self,
+        prompt: str,
+        semantic_query: str,
+        n_results: int = 5,
+        max_chars: int | None = None,
+    ) -> str:
+        """Inject semantic search results into a prompt.
+
+        Performs semantic search and formats results for RAG-style prompt.
+
+        Args:
+            prompt: Original prompt text.
+            semantic_query: Query for semantic search.
+            n_results: Number of results to retrieve.
+            max_chars: Maximum characters in injected content.
+
+        Returns:
+            Prompt with injected semantic search results.
+
+        Raises:
+            RuntimeError: If RAG client is not configured.
+
+        """
+        if not semantic_query:
+            return prompt
+
+        results = self.semantic_search(semantic_query, n_results=n_results)
+
+        if not results:
+            logger.warning(f"No semantic results for query: {semantic_query}")
+            return prompt
+
+        context = self.format_semantic_results(results, max_chars=max_chars)
+
+        return f"<RELEVANT_CONTEXT>\n{context}</RELEVANT_CONTEXT>\n\n===\nBased on the context above, please answer: {prompt}"

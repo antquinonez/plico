@@ -54,6 +54,7 @@ def _load_all_configs() -> dict[str, Any]:
         "workbook": _load_yaml_file("main.yaml").get("workbook", {}),
         "orchestrator": _load_yaml_file("main.yaml").get("orchestrator", {}),
         "document_processor": _load_yaml_file("main.yaml").get("document_processor", {}),
+        "rag": _load_yaml_file("main.yaml").get("rag", {}),
         "clients": _load_yaml_file("clients.yaml").get("clients", {}),
         "model_defaults": _load_yaml_file("model_defaults.yaml").get("model_defaults", {}),
         "test": _load_yaml_file("test.yaml").get("test_workbooks", {}),
@@ -185,6 +186,18 @@ class DocumentProcessorConfig(BaseSettings):
     }
 
 
+class RAGConfig(BaseSettings):
+    """RAG (Retrieval-Augmented Generation) configuration."""
+
+    enabled: bool = True
+    persist_dir: str = "./chroma_db"
+    collection_name: str = "ffclients_kb"
+    embedding_model: str = "mistral/mistral-embed"
+    chunk_size: int = 1000
+    chunk_overlap: int = 200
+    n_results_default: int = 5
+
+
 class ClientConfig(BaseSettings):
     """Individual client configuration."""
 
@@ -288,6 +301,7 @@ class Config(BaseSettings):
     workbook: WorkbookConfig = Field(default_factory=WorkbookConfig)
     orchestrator: OrchestratorConfig = Field(default_factory=OrchestratorConfig)
     document_processor: DocumentProcessorConfig = Field(default_factory=DocumentProcessorConfig)
+    rag: RAGConfig = Field(default_factory=RAGConfig)
     clients: dict[str, Any] = Field(default_factory=dict)
     model_defaults: ModelDefaultsConfig = Field(default_factory=ModelDefaultsConfig)
     test: TestConfig = Field(default_factory=TestConfig)

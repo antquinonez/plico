@@ -1,12 +1,16 @@
 #!/usr/bin/env python
 """
-Generate test workbook for document reference testing.
+Generate test workbook for document reference and RAG semantic search testing.
 
 Creates a workbook with:
     - config sheet
-    - prompts sheet with references column
+    - prompts sheet with references and semantic_query columns
     - documents sheet
     - data sheet (optional batch data)
+
+Demonstrates:
+    - Full document injection via references column
+    - Semantic search via semantic_query column (RAG)
 
 Uses FFLiteLLMClient with LiteLLM routing for Mistral Small.
 
@@ -17,11 +21,11 @@ Usage:
 import os
 import sys
 from datetime import datetime
-from pathlib import Path
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from openpyxl import Workbook
+
 from src.config import get_config
 
 
@@ -61,7 +65,6 @@ def create_test_workbook(output_path: str):
         ws_documents.cell(row=1, column=col_idx, value=header)
 
     app_config = get_config()
-    library_dir = Path(__file__).parent.parent / app_config.paths.library
 
     documents = [
         (
@@ -110,6 +113,7 @@ def create_test_workbook(output_path: str):
         "client",
         "condition",
         "references",
+        "semantic_query",
     ]
     for col_idx, header in enumerate(prompt_headers, start=1):
         ws_prompts.cell(row=1, column=col_idx, value=header)
@@ -123,6 +127,7 @@ def create_test_workbook(output_path: str):
             None,
             None,
             '["product_spec"]',
+            None,
         ),
         (
             2,
@@ -132,6 +137,7 @@ def create_test_workbook(output_path: str):
             None,
             None,
             '["api_ref"]',
+            None,
         ),
         (
             3,
@@ -141,6 +147,7 @@ def create_test_workbook(output_path: str):
             None,
             None,
             '["config"]',
+            None,
         ),
         (
             4,
@@ -150,6 +157,7 @@ def create_test_workbook(output_path: str):
             None,
             None,
             '["product_spec", "api_ref"]',
+            None,
         ),
         (
             5,
@@ -159,6 +167,7 @@ def create_test_workbook(output_path: str):
             None,
             None,
             '["troubleshoot"]',
+            None,
         ),
         (
             6,
@@ -168,6 +177,7 @@ def create_test_workbook(output_path: str):
             None,
             None,
             '["product_spec", "api_ref", "config", "troubleshoot"]',
+            None,
         ),
         (
             7,
@@ -177,10 +187,41 @@ def create_test_workbook(output_path: str):
             None,
             None,
             "",
+            None,
+        ),
+        (
+            8,
+            "rag_authentication",
+            "How do I authenticate with the API?",
+            None,
+            None,
+            None,
+            None,
+            "authentication API key token",
+        ),
+        (
+            9,
+            "rag_errors",
+            "What are common errors and how do I fix them?",
+            None,
+            None,
+            None,
+            None,
+            "troubleshooting error import dependency",
+        ),
+        (
+            10,
+            "rag_performance",
+            "What are the performance tips for this system?",
+            None,
+            None,
+            None,
+            None,
+            "performance batch concurrency tokens",
         ),
     ]
 
-    for row_idx, (seq, name, prompt, history, client, condition, refs) in enumerate(
+    for row_idx, (seq, name, prompt, history, client, condition, refs, semantic) in enumerate(
         prompts, start=2
     ):
         ws_prompts.cell(row=row_idx, column=1, value=seq)
@@ -190,6 +231,7 @@ def create_test_workbook(output_path: str):
         ws_prompts.cell(row=row_idx, column=5, value=client if client else "")
         ws_prompts.cell(row=row_idx, column=6, value=condition if condition else "")
         ws_prompts.cell(row=row_idx, column=7, value=refs if refs else "")
+        ws_prompts.cell(row=row_idx, column=8, value=semantic if semantic else "")
 
     ws_prompts.column_dimensions["A"].width = 10
     ws_prompts.column_dimensions["B"].width = 20
@@ -197,7 +239,8 @@ def create_test_workbook(output_path: str):
     ws_prompts.column_dimensions["D"].width = 15
     ws_prompts.column_dimensions["E"].width = 12
     ws_prompts.column_dimensions["F"].width = 15
-    ws_prompts.column_dimensions["G"].width = 30
+    ws_prompts.column_dimensions["G"].width = 35
+    ws_prompts.column_dimensions["H"].width = 30
 
     wb.save(output_path)
 
@@ -209,8 +252,12 @@ def create_test_workbook(output_path: str):
     for ref_name, common_name, _, _ in documents:
         print(f"  - {ref_name}: {common_name}")
     print(f"\nPrompts defined: {len(prompts)}")
-    print("  - 6 prompts with document references")
-    print("  - 1 prompt without references")
+    print("  - 6 prompts with document references (full injection)")
+    print("  - 3 prompts with semantic_query (RAG search)")
+    print("  - 1 prompt without references or semantic search")
+    print("\nColumns:")
+    print("  - references: Full document injection (existing behavior)")
+    print("  - semantic_query: RAG semantic search (new RAG feature)")
     print(f"\n{'=' * 60}")
     print(f"Run with: python scripts/run_orchestrator.py {output_path}")
     print(f"{'=' * 60}\n")

@@ -26,7 +26,7 @@ class ConversationHistory:
 
     def get_turns(self):
         result = []
-        for turn in self.turns[-100:]:  # Get the last 100 turns
+        for turn in self.turns:
             if turn["role"] == "user":
                 result.append(
                     {

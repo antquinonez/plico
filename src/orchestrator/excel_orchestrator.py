@@ -6,8 +6,11 @@ workflows defined in Excel workbooks with support for:
 - Batch execution with variable templating
 - Multi-client support
 - Document reference injection
+- Semantic search via RAG (semantic_query)
 - Conditional execution
 """
+
+from __future__ import annotations
 
 import logging
 import os
@@ -17,7 +20,7 @@ from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from ..config import get_config
 from ..FFAI import FFAI
@@ -27,6 +30,9 @@ from .condition_evaluator import ConditionEvaluator
 from .document_processor import DocumentProcessor
 from .document_registry import DocumentRegistry
 from .workbook_builder import WorkbookBuilder
+
+if TYPE_CHECKING:
+    from ..RAG import FFRAGClient
 
 logger = logging.getLogger(__name__)
 
@@ -209,24 +215,44 @@ class ExcelOrchestrator:
                 "document_cache_dir",
                 os.path.join(os.path.dirname(self.workbook_path), "doc_cache"),
             )
+
+            config = get_config()
+            rag_client: FFRAGClient | None = None
+            if config.rag.enabled:
+                try:
+                    from ..RAG import CHROMADB_AVAILABLE, FFRAGClient
+
+                    if CHROMADB_AVAILABLE:
+                        rag_client = FFRAGClient()
+                        logger.info("RAG client initialized for semantic search")
+                    else:
+                        logger.info(
+                            "RAG disabled: chromadb not available (requires Python 3.11-3.13)"
+                        )
+                except Exception as e:
+                    logger.warning(f"Failed to initialize RAG client: {e}")
+
             self.document_processor = DocumentProcessor(
-                cache_dir=cache_dir, api_key=os.environ.get("LLAMACLOUD_TOKEN")
+                cache_dir=cache_dir,
+                api_key=os.environ.get("LLAMACLOUD_TOKEN"),
+                rag_client=rag_client,
             )
 
             self.document_registry = DocumentRegistry(
                 documents=documents_data,
                 processor=self.document_processor,
                 workbook_dir=os.path.dirname(self.workbook_path),
+                rag_client=rag_client,
             )
             self.has_documents = True
             self.document_registry.validate_documents()
             logger.info(f"Document registry initialized with {len(documents_data)} documents")
 
     def _inject_references(self, prompt: dict[str, Any]) -> str:
-        """Inject document references into a prompt.
+        """Inject document references or semantic search results into a prompt.
 
         Args:
-            prompt: Prompt dictionary with optional 'references' field
+            prompt: Prompt dictionary with optional 'references' and/or 'semantic_query' fields
 
         Returns:
             Prompt text with references injected, or original prompt if no references
@@ -236,6 +262,19 @@ class ExcelOrchestrator:
 
         """
         prompt_text = prompt.get("prompt", "")
+        semantic_query = prompt.get("semantic_query")
+
+        if (
+            semantic_query
+            and self.has_documents
+            and self.document_registry
+            and self.document_registry.rag_client
+        ):
+            try:
+                return self.document_registry.inject_semantic_query(prompt_text, semantic_query)
+            except Exception as e:
+                logger.warning(f"Semantic search failed: {e}, falling back to references")
+
         references = prompt.get("references")
 
         if not references or not self.has_documents:
@@ -271,6 +310,7 @@ class ExcelOrchestrator:
             "attempts": 0,
             "error": None,
             "references": prompt.get("references"),
+            "semantic_query": prompt.get("semantic_query"),
         }
 
     def _validate_dependencies(self) -> None:
@@ -594,6 +634,7 @@ class ExcelOrchestrator:
             "attempts": 0,
             "error": None,
             "references": prompt.get("references"),
+            "semantic_query": prompt.get("semantic_query"),
         }
 
         results_by_name = results_by_name or {}
@@ -773,6 +814,7 @@ class ExcelOrchestrator:
                                     "attempts": 1,
                                     "error": str(e),
                                     "references": nodes[seq].prompt.get("references"),
+                                    "semantic_query": nodes[seq].prompt.get("semantic_query"),
                                 }
                             )
                     finally:
@@ -866,6 +908,7 @@ class ExcelOrchestrator:
                     "attempts": 0,
                     "error": None,
                     "references": resolved_prompt.get("references"),
+                    "semantic_query": resolved_prompt.get("semantic_query"),
                 }
 
                 evaluator = ConditionEvaluator(batch_results_by_name)

@@ -86,6 +86,7 @@ class WorkbookBuilder:
         "client",
         "condition",
         "references",
+        "semantic_query",
     ]
     REQUIRED_PROMPTS_HEADERS = ["sequence", "prompt_name", "prompt", "history"]
     DOCUMENTS_HEADERS = [
@@ -119,6 +120,7 @@ class WorkbookBuilder:
         "attempts",
         "error",
         "references",
+        "semantic_query",
     ]
 
     def has_data_sheet(self) -> bool:
@@ -202,6 +204,7 @@ class WorkbookBuilder:
         ws_prompts.column_dimensions["E"].width = 15
         ws_prompts.column_dimensions["F"].width = 40
         ws_prompts.column_dimensions["G"].width = 30
+        ws_prompts.column_dimensions["H"].width = 30
 
         if with_data_sheet:
             ws_data = wb.create_sheet(title=self.DATA_SHEET)
@@ -323,6 +326,9 @@ class WorkbookBuilder:
                 else None,
                 "references": self.parse_history_string(row_dict.get("references"))
                 if row_dict.get("references")
+                else None,
+                "semantic_query": str(row_dict.get("semantic_query", "")).strip()
+                if row_dict.get("semantic_query")
                 else None,
             }
 
@@ -535,6 +541,9 @@ class WorkbookBuilder:
             references_str = json.dumps(references) if references else ""
             ws.cell(row=row_idx, column=15, value=references_str)
 
+            semantic_query = result.get("semantic_query")
+            ws.cell(row=row_idx, column=16, value=semantic_query if semantic_query else "")
+
         ws.column_dimensions["A"].width = 10
         ws.column_dimensions["B"].width = 25
         ws.column_dimensions["C"].width = 10
@@ -550,6 +559,7 @@ class WorkbookBuilder:
         ws.column_dimensions["M"].width = 10
         ws.column_dimensions["N"].width = 40
         ws.column_dimensions["O"].width = 30
+        ws.column_dimensions["P"].width = 30
 
         wb.save(self.workbook_path)
         logger.info(f"Results written to sheet: {sheet_name}")
@@ -600,6 +610,9 @@ class WorkbookBuilder:
             references_str = json.dumps(references) if references else ""
             ws.cell(row=row_idx, column=15, value=references_str)
 
+            semantic_query = result.get("semantic_query")
+            ws.cell(row=row_idx, column=16, value=semantic_query if semantic_query else "")
+
         ws.column_dimensions["A"].width = 10
         ws.column_dimensions["B"].width = 25
         ws.column_dimensions["C"].width = 10
@@ -615,6 +628,7 @@ class WorkbookBuilder:
         ws.column_dimensions["M"].width = 10
         ws.column_dimensions["N"].width = 40
         ws.column_dimensions["O"].width = 30
+        ws.column_dimensions["P"].width = 30
 
         wb.save(self.workbook_path)
         logger.info(f"Batch results written to sheet: {sheet_name}")

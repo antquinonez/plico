@@ -177,7 +177,9 @@ select = ["E", "W", "F", "I", "B", "C4", "UP", "ARG", "SIM"]
 
 ## Environment
 
-- Virtual environment: `.venv/`
+- Virtual environment: `.venv313/` (Python 3.13)
+  - Activate: `source .venv313/bin/activate`
+  - Install: `uv pip install -e ".[dev]"`
 - Environment variables: Load via `python-dotenv` (`load_dotenv()`)
 - Set `POLARS_SKIP_CPU_CHECK=1` for Polars compatibility
 
