@@ -7,6 +7,8 @@
 
 FFClients enables you to define and execute AI prompt workflows using Excel spreadsheets—no coding required. Define prompts, dependencies, and configurations in Excel, then run the orchestrator to execute and capture results with full traceability.
 
+---
+
 ## Why FFClients?
 
 | For Analysts | For Researchers | For Non-Developers |
@@ -15,18 +17,80 @@ FFClients enables you to define and execute AI prompt workflows using Excel spre
 | Batch process data sets | Document Q&A with RAG | Familiar spreadsheet interface |
 | Transparent, repeatable workflows | Literature review & synthesis | All prompts and results visible |
 
+---
+
+## How It Works
+
+```
+┌─────────────────┐     ┌──────────────────┐     ┌─────────────────┐
+│  Excel Workbook │     │   Orchestrator   │     │  Results Sheet  │
+│                 │     │                  │     │                 │
+│  • prompts      │ ──► │  • Parallel exec │ ──► │  • Timestamped  │
+│  • config       │     │  • Multi-model   │     │  • Full audit   │
+│  • data         │     │  • RAG search    │     │  • Traceable    │
+│  • documents    │     │  • Conditional   │     │  • Reproducible │
+└─────────────────┘     └──────────────────┘     └─────────────────┘
+```
+
+Define your workflow in an Excel workbook, run the orchestrator from the command line, and get a timestamped results sheet with complete provenance.
+
+---
+
 ## Key Features
 
-- **Spreadsheet-Based Workflows** - Define prompts, dependencies, and configuration in Excel
-- **Declarative Context** - Reference previous prompts by name for automatic context assembly
-- **Batch Execution** - Run the same workflow across multiple data sets with variable templating (`{{variable}}`)
-- **Parallel Execution** - Execute independent prompts concurrently for faster results
-- **Multi-Model Support** - Use different AI models for different prompts in the same workflow
-- **Conditional Execution** - Skip or run prompts based on previous results
-- **Document Injection** - Reference external documents (PDF, MD, JSON) in prompts with automatic parsing
-- **RAG Integration** - Semantic search over document collections for relevant context retrieval
-- **Full Audit Trail** - All prompts, responses, and timestamps recorded in timestamped results sheets
-- **100+ AI Providers** - Support via LiteLLM including OpenAI, Anthropic, Mistral, Azure, Gemini, and more
+### Core Capabilities
+- **Spreadsheet-Based Workflows** — Define prompts, dependencies, and configuration in Excel
+- **Declarative Context** — Reference previous prompts by name for automatic context assembly
+- **Full Audit Trail** — All prompts, responses, and timestamps recorded in timestamped results sheets
+- **100+ AI Providers** — Support via LiteLLM including OpenAI, Anthropic, Mistral, Azure, Gemini, and more
+
+### Execution
+- **Batch Execution** — Run the same workflow across multiple data sets with variable templating (`{{variable}}`)
+- **Parallel Execution** — Execute independent prompts concurrently for faster results (configurable concurrency)
+- **Multi-Model Support** — Use different AI models for different prompts in the same workflow
+- **Conditional Execution** — Skip or run prompts based on previous results with secure AST-based expressions
+
+### Integration
+- **Document Injection** — Reference external documents (PDF, MD, JSON) in prompts with automatic parsing
+- **RAG Integration** — Semantic search over document collections for relevant context retrieval
+- **Pre-Indexing** — Documents automatically indexed for semantic search at orchestrator startup
+
+---
+
+## How FFClients Compares
+
+| Feature | FFClients | LangChain | CrewAI | LlamaIndex |
+|---------|:---------:|:---------:|:------:|:----------:|
+| **No-code workflow** | ✅ Excel-native | ❌ Python only | Partial | ❌ Python only |
+| **Full audit trail** | ✅ Built-in | ❌ Requires setup | ✅ Via platform | ❌ Requires setup |
+| **Batch processing** | ✅ Native | Manual | Manual | Manual |
+| **Learning curve** | Low | High | Medium | Medium |
+| **Target user** | Analysts | Developers | Developers | Developers |
+| **Multi-agent systems** | ❌ | ✅ | ✅ | Partial |
+| **Tool/function calling** | ❌ | ✅ | ✅ | ✅ |
+| **Real-time streaming** | ❌ | ✅ | ✅ | ✅ |
+
+**FFClients fills a unique niche**: Making AI orchestration accessible to non-programmers while maintaining enterprise-grade traceability.
+
+---
+
+## When to Use FFClients
+
+### ✅ Use FFClients if you:
+- Prefer working in Excel over writing code
+- Need full audit trails for compliance or reproducibility
+- Want to batch process multiple data sets through the same AI workflow
+- Work with a team that includes non-developers
+- Need document Q&A with semantic search
+- Want to compare outputs from multiple AI models side-by-side
+
+### ⚠️ Consider alternatives if you need:
+- Multi-agent collaboration (try CrewAI or AutoGen)
+- Real-time chat applications (try LangChain)
+- Tool/function calling capabilities (try LangChain or LlamaIndex)
+- Production API services (try LangServe)
+
+---
 
 ## Installation
 
@@ -46,6 +110,8 @@ pip install -e ".[dev]"
 cp .env.example .env
 # Edit .env with your API keys
 ```
+
+---
 
 ## Quick Start
 
@@ -82,6 +148,8 @@ ffai.generate_response(
     history=["math"]  # Automatically includes "math" as context
 )
 ```
+
+---
 
 ## Excel Workbook Structure
 
@@ -126,6 +194,8 @@ Reference in prompts with the `client` column.
 
 Reference in prompts with `["product_spec"]` in the `references` column.
 
+---
+
 ## Supported AI Providers
 
 | Provider | Client Type | Notes |
@@ -138,6 +208,8 @@ Reference in prompts with `["product_spec"]` in the `references` column.
 | Perplexity | `perplexity` | Sonar models |
 | Azure OpenAI | `azure-*` | Various deployments |
 | NVIDIA NIM | `nvidia-deepseek` | DeepSeek via NIM |
+
+---
 
 ## Example Use Cases
 
@@ -173,13 +245,18 @@ inv index-clear-type markdown  # Clear specific index type
 inv rag-stats              # View RAG statistics
 ```
 
+---
+
 ## Documentation
 
-- [Orchestrator User Guide](docs/ORCHESTRATOR%20README.md) - Excel-based workflow execution
-- [Client API Guide](docs/CLIENT%20API%20USER%20GUIDE.md) - Python API for developers
-- [Configuration](docs/CONFIGURATION.md) - YAML-based configuration system
-- [Conditional Expressions](docs/CONDITIONAL%20EXPRESSIONS%20USER%20GUIDE.md) - Branching logic
-- [RAG Architecture](docs/architecture/RAG_ARCHITECTURE.md) - Semantic search integration
+- [Orchestrator User Guide](docs/ORCHESTRATOR%20README.md) — Excel-based workflow execution
+- [Client API Guide](docs/CLIENT%20API%20USER%20GUIDE.md) — Python API for developers
+- [Configuration](docs/CONFIGURATION.md) — YAML-based configuration system
+- [Conditional Expressions](docs/CONDITIONAL%20EXPRESSIONS%20USER%20GUIDE.md) — Branching logic
+- [Architecture Overview](docs/architecture/ARCHITECTURE.md) — System design
+- [RAG Architecture](docs/architecture/RAG_ARCHITECTURE.md) — Semantic search integration
+
+---
 
 ## Testing
 
@@ -193,6 +270,8 @@ pytest tests/ --cov=src --cov-report=term-missing
 # Run specific test file
 pytest tests/test_ffai.py -v
 ```
+
+---
 
 ## Project Structure
 
@@ -224,6 +303,8 @@ tests/                   # Test suite
 scripts/                 # Utility scripts
 ```
 
+---
+
 ## Contributing
 
 1. Fork the repository
@@ -232,11 +313,15 @@ scripts/                 # Utility scripts
 4. Push to the branch (`git push origin feature/amazing-feature`)
 5. Open a Pull Request
 
+---
+
 ## License
 
 MIT License - Copyright (c) 2025 Antonio Quinonez / Far Finer LLC
 
 See [LICENSE](LICENSE) for details.
+
+---
 
 ## Contact
 
@@ -244,4 +329,4 @@ Antonio Quinonez - [antquinonez@farfiner.com](mailto:antquinonez@farfiner.com)
 
 ---
 
-**FFClients** - Making AI workflows accessible to everyone, one spreadsheet at a time.
+**FFClients** — Making AI workflows accessible to everyone, one spreadsheet at a time.
