@@ -1,3 +1,7 @@
+# Copyright (c) 2025 Antonio Quinonez / Far Finer LLC
+# SPDX-License-Identifier: MIT
+# Contact: antquinonez@farfiner.com
+
 """Azure AI client factory for LiteLLM-based clients.
 
 Provides a factory function for creating Azure AI clients with

@@ -1,4 +1,8 @@
 #!/usr/bin/env python
+# Copyright (c) 2025 Antonio Quinonez / Far Finer LLC
+# SPDX-License-Identifier: MIT
+# Contact: antquinonez@farfiner.com
+
 """
 Generate test workbook for document reference and RAG semantic search testing.
 

@@ -1,3 +1,7 @@
+# Copyright (c) 2025 Antonio Quinonez / Far Finer LLC
+# SPDX-License-Identifier: MIT
+# Contact: antquinonez@farfiner.com
+
 """Excel-based AI prompt orchestration engine.
 
 This module provides the ExcelOrchestrator class for executing AI prompt

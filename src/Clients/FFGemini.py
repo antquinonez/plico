@@ -1,13 +1,6 @@
-# PROPRIETARY AND CONTROLLED CODE
-# Copyright (C) 2025 Antonio Quinonez / Far Finer LLC. All Rights Reserved.
-#
-# WARNING: This code contains sensitive technology requiring explicit authorization
-# for possession or use. Unauthorized possession is strictly prohibited and will
-# result in legal action. Licensed use requires signed agreement and compliance
-# with all security requirements.
-#
+# Copyright (c) 2025 Antonio Quinonez / Far Finer LLC
+# SPDX-License-Identifier: MIT
 # Contact: antquinonez@farfiner.com
-# filename: src/lib/AI/FFGemini.py
 
 import asyncio
 import logging

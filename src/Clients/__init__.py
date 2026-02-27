@@ -1,3 +1,7 @@
+# Copyright (c) 2025 Antonio Quinonez / Far Finer LLC
+# SPDX-License-Identifier: MIT
+# Contact: antquinonez@farfiner.com
+
 from .FFAnthropic import FFAnthropic
 from .FFAnthropicCached import FFAnthropicCached
 from .FFAzureClientBase import FFAzureClientBase

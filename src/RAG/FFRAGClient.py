@@ -1,3 +1,7 @@
+# Copyright (c) 2025 Antonio Quinonez / Far Finer LLC
+# SPDX-License-Identifier: MIT
+# Contact: antquinonez@farfiner.com
+
 # PROPRIETARY AND CONTROLLED CODE
 # Copyright (C) 2025 Antonio Quinonez / Far Finer LLC. All Rights Reserved.
 

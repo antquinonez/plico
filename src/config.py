@@ -1,3 +1,7 @@
+# Copyright (c) 2025 Antonio Quinonez / Far Finer LLC
+# SPDX-License-Identifier: MIT
+# Contact: antquinonez@farfiner.com
+
 """Configuration management using pydantic-settings.
 
 Provides centralized configuration loaded from config/*.yaml files with

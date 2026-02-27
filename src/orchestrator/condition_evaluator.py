@@ -1,3 +1,7 @@
+# Copyright (c) 2025 Antonio Quinonez / Far Finer LLC
+# SPDX-License-Identifier: MIT
+# Contact: antquinonez@farfiner.com
+
 """Safe condition expression evaluation for conditional prompt execution.
 
 Uses AST parsing to safely evaluate conditions without eval()/exec(),

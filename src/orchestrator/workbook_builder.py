@@ -1,3 +1,7 @@
+# Copyright (c) 2025 Antonio Quinonez / Far Finer LLC
+# SPDX-License-Identifier: MIT
+# Contact: antquinonez@farfiner.com
+
 """Excel workbook builder for prompt orchestration.
 
 Provides utilities for creating, validating, and reading/writing

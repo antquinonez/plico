@@ -63,4 +63,6 @@ pytest tests/ --cov=src --cov-report=term-missing
 
 ## License
 
-Proprietary - Far Finer LLC
+MIT License - Copyright (c) 2025 Antonio Quinonez / Far Finer LLC
+
+See [LICENSE](LICENSE) for details.

@@ -1,3 +1,7 @@
+# Copyright (c) 2025 Antonio Quinonez / Far Finer LLC
+# SPDX-License-Identifier: MIT
+# Contact: antquinonez@farfiner.com
+
 """Model defaults registry for LiteLLM-based clients.
 
 Provides default configuration values (max_tokens, temperature, system_instructions)
