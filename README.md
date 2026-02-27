@@ -159,10 +159,18 @@ Reference in prompts with `["product_spec"]` in the `references` column.
 
 ### Document Q&A with RAG
 ```
-1. Index document library
+1. Index document library (automatic on orchestrator run)
 2. Use semantic_query column for retrieval
 3. Get relevant chunks, not entire documents
 4. Full audit of what context was used
+```
+
+### RAG Index Management
+```bash
+inv index-status           # View indexed documents
+inv index-rebuild          # Rebuild all indexes
+inv index-clear-type markdown  # Clear specific index type
+inv rag-stats              # View RAG statistics
 ```
 
 ## Documentation
@@ -198,11 +206,17 @@ src/
 │   ├── FFMistral.py
 │   ├── FFAnthropic.py
 │   └── ...
-└── orchestrator/        # Excel orchestration
-    ├── excel_orchestrator.py
-    ├── workbook_builder.py
-    ├── condition_evaluator.py
-    └── ...
+├── orchestrator/        # Excel orchestration
+│   ├── excel_orchestrator.py
+│   ├── workbook_builder.py
+│   ├── condition_evaluator.py
+│   └── ...
+└── RAG/                 # Semantic search (RAG)
+    ├── FFRAGClient.py
+    ├── FFVectorStore.py
+    ├── text_splitters/  # Chunking strategies
+    ├── indexing/        # BM25, hierarchical indexes
+    └── search/          # Hybrid search, rerankers
 
 config/                  # YAML configuration files
 docs/                    # Documentation

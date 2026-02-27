@@ -275,38 +275,52 @@ class DocumentProcessor:
         df.write_parquet(parquet_path)
         logger.info(f"Stored document parquet: {parquet_path}")
 
-        self._index_to_rag(reference_name, common_name, content)
-
         return str(parquet_path)
 
-    def _index_to_rag(self, reference_name: str, common_name: str, content: str) -> int:
+    def index_to_rag(
+        self,
+        reference_name: str,
+        common_name: str,
+        content: str,
+        checksum: str,
+        force: bool = False,
+    ) -> int:
         """Index document content to RAG for semantic search.
+
+        This is the preferred method for indexing documents. It checks
+        if reindexing is needed and only indexes when necessary.
 
         Args:
             reference_name: Reference name for the document
             common_name: Human-readable name
             content: Document content to index
+            checksum: Document checksum for change detection
+            force: Force reindexing even if document appears unchanged
 
         Returns:
-            Number of chunks indexed, or 0 if RAG is not configured
+            Number of chunks indexed, or 0 if RAG is not configured or skipped
 
         """
         logger.debug(
-            f"_index_to_rag called: rag_client={self.rag_client is not None}, ref={reference_name}"
+            f"index_to_rag called: rag_client={self.rag_client is not None}, "
+            f"ref={reference_name}, checksum={checksum[:8]}..."
         )
         if not self.rag_client:
             logger.info("RAG client not configured, skipping indexing")
             return 0
 
         try:
-            logger.info(f"Indexing document to RAG: {reference_name}")
-            self.rag_client.delete_by_reference(reference_name)
-            chunks_added = self.rag_client.add_document(
+            chunks_added = self.rag_client.index_document(
                 content=content,
                 reference_name=reference_name,
-                metadata={"common_name": common_name},
+                common_name=common_name,
+                checksum=checksum,
+                force=force,
             )
-            logger.info(f"Indexed {chunks_added} chunks to RAG for: {reference_name}")
+            if chunks_added > 0:
+                logger.info(f"Indexed {chunks_added} chunks to RAG for: {reference_name}")
+            else:
+                logger.debug(f"Document {reference_name} already indexed, skipped")
             return chunks_added
         except Exception as e:
             logger.warning(f"Failed to index document to RAG: {e}")
@@ -335,6 +349,7 @@ class DocumentProcessor:
 
         This is the main entry point for document retrieval.
         Checks checksum to determine if re-parsing is needed.
+        Does NOT index to RAG - use index_to_rag() separately.
 
         Args:
             file_path: Path to source document
@@ -354,15 +369,25 @@ class DocumentProcessor:
         if not self.needs_parsing(file_path, reference_name):
             logger.info(f"Using cached document: {reference_name}")
             doc_data = self.load_document(str(parquet_path))
-            content = doc_data["content"]
-            self._index_to_rag(reference_name, common_name, content)
-            return content
+            return doc_data["content"]
 
         logger.info(f"Parsing document: {reference_name}")
         content = self.parse_document(file_path)
         self.store_document(file_path, reference_name, common_name, content)
 
         return content
+
+    def get_document_checksum(self, file_path: str) -> str:
+        """Get checksum for a document file.
+
+        Args:
+            file_path: Path to the document file.
+
+        Returns:
+            SHA256 checksum string.
+
+        """
+        return self.compute_checksum(file_path)
 
     def clear_cache(self) -> int:
         """Clear all cached parquet files.

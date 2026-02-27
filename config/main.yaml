@@ -70,3 +70,28 @@ rag:
   chunk_size: 1000
   chunk_overlap: 200
   n_results_default: 5
+
+  chunking:
+    strategy: "recursive"
+    chunk_size: 1000
+    chunk_overlap: 200
+    markdown:
+      split_headers: ["h1", "h2", "h3"]
+      preserve_structure: true
+      max_chunk_fallback: true
+    code:
+      language: "python"
+      split_by: "function"
+
+  search:
+    mode: "vector"
+    n_results_default: 5
+    hybrid_alpha: 0.6
+    rerank: false
+    rerank_model: "cross-encoder/ms-marco-MiniLM-L-6-v2"
+
+  hierarchical:
+    enabled: false
+    parent_context: true
+    parent_chunk_size: 1500
+    levels: 2

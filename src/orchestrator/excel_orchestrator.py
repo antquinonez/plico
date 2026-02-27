@@ -248,9 +248,16 @@ class ExcelOrchestrator:
                 workbook_dir=os.path.dirname(self.workbook_path),
                 rag_client=rag_client,
             )
+
             self.has_documents = True
             self.document_registry.validate_documents()
             logger.info(f"Document registry initialized with {len(documents_data)} documents")
+
+            if rag_client:
+                logger.info("Pre-indexing all documents for RAG search")
+                indexing_results = self.document_registry.index_all_documents()
+                indexed_count = sum(1 for v in indexing_results.values() if v > 0)
+                logger.info(f"Indexed {indexed_count} documents for semantic search")
 
     def _inject_references(self, prompt: dict[str, Any]) -> str:
         """Inject document references or semantic search results into a prompt.

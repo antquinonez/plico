@@ -122,6 +122,68 @@ logging:
     backup_count: 10
 ```
 
+### RAG Configuration (`main.yaml`)
+
+The RAG system supports multiple chunking strategies, hybrid search, and hierarchical indexing.
+
+```yaml
+rag:
+  enabled: true
+  persist_dir: "./chroma_db"
+  collection_name: "ffclients_documents"
+  embedding_model: "mistral/mistral-embed"
+  chunk_size: 1000
+  chunk_overlap: 200
+  n_results_default: 5
+
+  # Chunking strategy configuration
+  chunking:
+    strategy: "recursive"        # recursive, markdown, code, hierarchical, character
+    chunk_size: 1000
+    chunk_overlap: 200
+    # Strategy-specific options:
+    # markdown:
+    #   split_headers: ["h1", "h2"]
+    # code:
+    #   language: "python"
+    #   split_by: "function"
+    # hierarchical:
+    #   parent_chunk_size: 1500
+
+  # Search configuration
+  search:
+    mode: "vector"               # vector, bm25, hybrid
+    hybrid_alpha: 0.6            # Vector weight for hybrid (0.0-1.0)
+    rerank: false                # Enable post-retrieval reranking
+    rerank_model: "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    diversity_lambda: 0.7        # Diversity weight (0.0-1.0)
+
+  # Hierarchical indexing
+  hierarchical:
+    enabled: false
+    parent_context: true         # Include parent chunks in results
+    parent_chunk_size: 1500
+    child_chunk_size: 400
+```
+
+#### Chunking Strategies
+
+| Strategy | Best For | Description |
+|----------|----------|-------------|
+| `recursive` | General text | Hierarchical separator splitting (default) |
+| `markdown` | Documentation | Header-aware, preserves section structure |
+| `code` | Source code | Language-specific, function/class boundaries |
+| `hierarchical` | Long documents | Parent-child with context retrieval |
+| `character` | Simple text | Word-boundary aware fixed-size chunks |
+
+#### Search Modes
+
+| Mode | Description |
+|------|-------------|
+| `vector` | Pure semantic similarity search |
+| `bm25` | Sparse keyword matching only |
+| `hybrid` | Combines vector + BM25 with Reciprocal Rank Fusion |
+
 ### Client Configuration (`clients.yaml`)
 
 ```yaml

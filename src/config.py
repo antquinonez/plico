@@ -190,6 +190,50 @@ class DocumentProcessorConfig(BaseSettings):
     }
 
 
+class RAGChunkingMarkdownConfig(BaseSettings):
+    """Markdown chunking configuration."""
+
+    split_headers: list[str] = Field(default_factory=lambda: ["h1", "h2", "h3"])
+    preserve_structure: bool = True
+    max_chunk_fallback: bool = True
+
+
+class RAGChunkingCodeConfig(BaseSettings):
+    """Code chunking configuration."""
+
+    language: str = "python"
+    split_by: str = "function"
+
+
+class RAGChunkingConfig(BaseSettings):
+    """Chunking strategy configuration."""
+
+    strategy: str = "recursive"
+    chunk_size: int = 1000
+    chunk_overlap: int = 200
+    markdown: RAGChunkingMarkdownConfig = Field(default_factory=RAGChunkingMarkdownConfig)
+    code: RAGChunkingCodeConfig = Field(default_factory=RAGChunkingCodeConfig)
+
+
+class RAGSearchConfig(BaseSettings):
+    """Search strategy configuration."""
+
+    mode: str = "vector"
+    n_results_default: int = 5
+    hybrid_alpha: float = 0.6
+    rerank: bool = False
+    rerank_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+
+
+class RAGHierarchicalConfig(BaseSettings):
+    """Hierarchical chunking configuration."""
+
+    enabled: bool = False
+    parent_context: bool = True
+    parent_chunk_size: int = 1500
+    levels: int = 2
+
+
 class RAGConfig(BaseSettings):
     """RAG (Retrieval-Augmented Generation) configuration."""
 
@@ -200,6 +244,9 @@ class RAGConfig(BaseSettings):
     chunk_size: int = 1000
     chunk_overlap: int = 200
     n_results_default: int = 5
+    chunking: RAGChunkingConfig = Field(default_factory=RAGChunkingConfig)
+    search: RAGSearchConfig = Field(default_factory=RAGSearchConfig)
+    hierarchical: RAGHierarchicalConfig = Field(default_factory=RAGHierarchicalConfig)
 
 
 class ClientConfig(BaseSettings):

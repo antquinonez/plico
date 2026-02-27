@@ -80,37 +80,51 @@ The RAG subsystem provides semantic search capabilities over document collection
 
 ```
 src/RAG/
-├── __init__.py              # Exports: FFRAGClient, FFEmbeddings, FFVectorStore,
-│                            #          RAGMCPTools, split_text, CHROMADB_AVAILABLE
-├── text_splitter.py         # Text chunking utilities
-│                            # - split_text(text, chunk_size, chunk_overlap, metadata)
-│                            # - split_documents(documents, text_key, ...)
-│                            # - TextChunk dataclass
-├── FFEmbeddings.py          # LiteLLM embedding wrapper
-│                            # - embed(texts) -> list[list[float]]
-│                            # - embed_single(text) -> list[float]
-│                            # - Supports: mistral, openai, azure, anthropic
-├── FFVectorStore.py         # ChromaDB operations
-│                            # - add_chunks(chunks) -> int
-│                            # - add_documents(documents) -> int
-│                            # - search(query, n_results) -> list[dict]
-│                            # - delete_by_reference(reference_name)
-│                            # - list_documents() -> list[str]
-│                            # - get_stats() -> dict
-│                            # - clear()
-├── FFRAGClient.py           # High-level RAG interface
-│                            # - add_document(content, reference_name, metadata)
-│                            # - search(query, n_results) -> list[dict]
-│                            # - format_results_for_prompt(results, max_chars)
-│                            # - search_and_format(query, n_results, max_chars)
-│                            # - delete_by_reference(reference_name)
-│                            # - get_stats() -> dict
-└── mcp_tools.py             # MCP tool definitions
-                             # - rag_search(query, n_results)
-                             # - rag_add_document(content, reference_name)
-                             # - rag_list_documents()
-                             # - rag_get_stats()
-                             # - rag_delete_document(reference_name)
+├── __init__.py                  # Exports all RAG components
+├── text_splitter.py             # DEPRECATED - backward compatibility wrapper
+├── FFEmbeddings.py              # LiteLLM embedding wrapper
+│                               # - embed(texts) -> list[list[float]]
+│                               # - embed_single(text) -> list[float]
+│                               # - Supports: mistral, openai, azure, anthropic
+├── FFVectorStore.py             # ChromaDB operations
+│                               # - add_chunks(chunks) -> int
+│                               # - add_documents(documents) -> int
+│                               # - search(query, n_results) -> list[dict]
+│                               # - delete_by_reference(reference_name)
+│                               # - list_documents() -> list[str]
+│                               # - get_stats() -> dict
+│                               # - clear()
+├── FFRAGClient.py               # High-level RAG interface
+│                               # - add_document(content, reference_name, metadata)
+│                               # - search(query, n_results) -> list[dict]
+│                               # - format_results_for_prompt(results, max_chars)
+│                               # - search_and_format(query, n_results, max_chars)
+│                               # - delete_by_reference(reference_name)
+│                               # - get_stats() -> dict
+├── mcp_tools.py                 # MCP tool definitions
+│                               # - rag_search(query, n_results)
+│                               # - rag_add_document(content, reference_name)
+│                               # - rag_list_documents()
+│                               # - rag_get_stats()
+│                               # - rag_delete_document(reference_name)
+├── text_splitters/              # Chunking strategies
+│   ├── __init__.py              # Exports all chunkers + factory
+│   ├── base.py                  # ChunkerBase, TextChunk, HierarchicalTextChunk
+│   ├── character.py             # CharacterChunker - word-boundary aware
+│   ├── recursive.py             # RecursiveChunker - hierarchical separators
+│   ├── markdown.py              # MarkdownChunker - header-aware
+│   ├── code.py                  # CodeChunker - AST-style for code
+│   ├── hierarchical.py          # HierarchicalChunker - parent-child
+│   └── factory.py               # get_chunker(), list_chunkers(), chunk_text()
+├── indexing/                    # Index implementations
+│   ├── __init__.py              # Exports all index types
+│   ├── bm25_index.py            # BM25Index - sparse keyword index
+│   ├── hierarchical_index.py    # HierarchicalIndex - parent-child storage
+│   └── contextual_embeddings.py # ContextualEmbeddings - context-aware embedding
+└── search/                      # Search strategies
+    ├── __init__.py              # Exports all search components
+    ├── hybrid_search.py         # HybridSearch, reciprocal_rank_fusion
+    └── rerankers.py             # CrossEncoderReranker, DiversityReranker
 ```
 
 ## Configuration
@@ -145,35 +159,54 @@ rag:
 
 ## Data Flow
 
-### Document Indexing Flow
+### Pre-Indexing Flow (Orchestrator Startup)
 
 ```
-Document (library/doc.pdf)
+ExcelOrchestrator.run()
+         │
+         ▼
+DocumentRegistry.__init__()
+         │
+         ▼
+DocumentRegistry.index_all_documents()
+         │
+         ├──► For each document in documents sheet:
+         │    │
+         │    ├──► DocumentProcessor.get_document_checksum()
+         │    │
+         │    ├──► FFRAGClient.needs_reindex(reference_name, checksum)
+         │    │
+         │    └──► If needs reindex:
+         │         │
+         │         ├──► FFRAGClient.delete_by_reference_and_type()
+         │         │
+         │         └──► DocumentProcessor.index_to_rag()
+         │
+         ▼
+    All documents pre-indexed and searchable
+```
+
+### Document Indexing Flow (Single Document)
+
+```
+DocumentProcessor.index_to_rag()
          │
          ▼
 ┌─────────────────────────┐
-│   DocumentProcessor     │
-│   .parse_document()     │
-└───────────┬─────────────┘
-            │
-            ▼
-┌─────────────────────────┐
-│   DocumentProcessor     │
-│   ._index_to_rag()      │
-└───────────┬─────────────┘
-            │
-            ▼
-┌─────────────────────────┐
 │   FFRAGClient           │
-│   .add_document()       │
+│   .index_document()     │
 └───────────┬─────────────┘
             │
-            ├─── split_text() ───► TextChunks
+            ├─── get_chunker(strategy) ───► Chunker
+            │
+            ├─── chunker.split_text() ───► TextChunks
             │
             ▼
 ┌─────────────────────────┐
 │   FFVectorStore         │
 │   .add_chunks()         │
+│   (with index_type,     │
+│    document_checksum)   │
 └───────────┬─────────────┘
             │
             ├─── FFEmbeddings.embed(chunks) ───► vectors
@@ -316,6 +349,9 @@ Based on the documents above and relevant context, please answer:
 | Field | Description |
 |-------|-------------|
 | `reference_name` | Document identifier |
+| `index_type` | Chunking strategy used (recursive, markdown, code, hierarchical, character) |
+| `document_checksum` | SHA256 hash of original document content |
+| `indexed_at` | ISO timestamp when document was indexed |
 | `_chunk_index` | Index within document |
 | `_start_char` | Start position in original text |
 | `_end_char` | End position in original text |
@@ -331,6 +367,123 @@ chroma_db/
     ├── data_level1.bin
     └── ...
 ```
+
+## Pre-Indexing System
+
+### Overview
+
+Documents are automatically pre-indexed at orchestrator startup, not lazily when referenced. This ensures all documents in the `documents` sheet are searchable immediately.
+
+### Index Tracking
+
+Each chunk in ChromaDB includes metadata for tracking:
+
+| Metadata Field | Description |
+|----------------|-------------|
+| `index_type` | Chunking strategy used (recursive, markdown, code, hierarchical, character) |
+| `document_checksum` | SHA256 hash of document content |
+| `indexed_at` | ISO timestamp when document was indexed |
+| `reference_name` | Document identifier |
+
+### Reindexing Logic
+
+Documents are reindexed when:
+1. Document content changes (checksum mismatch)
+2. Chunking strategy changes (different `index_type`)
+3. Manual rebuild requested via invoke task
+
+### Flow
+
+```
+ExcelOrchestrator.run()
+         │
+         ▼
+DocumentRegistry.__init__()
+         │
+         ▼
+DocumentRegistry.index_all_documents()
+         │
+         ├──► For each document in documents sheet:
+         │    │
+         │    ├──► DocumentProcessor.get_document_checksum()
+         │    │
+         │    ├──► FFRAGClient.needs_reindex(reference_name, checksum)
+         │    │         │
+         │    │         └──► FFVectorStore.get_indexed_documents()
+         │    │                   .filter(checksum != current)
+         │    │
+         │    └──► If needs reindex:
+         │         │
+         │         ├──► FFRAGClient.delete_by_reference_and_type()
+         │         │
+         │         └──► DocumentProcessor.index_to_rag()
+         │                   │
+         │                   └──► FFRAGClient.index_document()
+         │                             │
+         │                             └──► FFVectorStore.add_chunks(index_type, checksum)
+         │
+         ▼
+    Orchestrator continues with all documents pre-indexed
+```
+
+## Index Management Tasks
+
+The following invoke tasks are available for managing RAG indexes:
+
+### List Index Status
+
+```bash
+inv index-status
+```
+
+Shows:
+- Total chunk count
+- Indexed documents by reference name
+- Index types in use
+- Last indexed timestamps
+
+### Clear All Indexes
+
+```bash
+inv index-clear
+```
+
+Removes all chunks from the vector store. Use with caution.
+
+### Clear Specific Index Type
+
+```bash
+inv index-clear-type recursive
+inv index-clear-type markdown
+```
+
+Removes only chunks with the specified `index_type`. Useful when changing chunking strategies.
+
+### Rebuild Indexes
+
+```bash
+inv index-rebuild
+```
+
+Clears all indexes and reindexes all documents from the configured workbook.
+
+### View RAG Statistics
+
+```bash
+inv rag-stats
+```
+
+Shows detailed statistics about the RAG system configuration and current state.
+
+## Invoke Task Reference
+
+| Task | Description |
+|------|-------------|
+| `inv index-status` | Show indexed documents and index types |
+| `inv index-clear` | Clear all indexes (destructive) |
+| `inv index-clear-type <type>` | Clear specific index type only |
+| `inv index-rebuild` | Rebuild all indexes from workbook |
+| `inv rag-stats` | Show RAG configuration and statistics |
 
 ## MCP Tools
 
@@ -542,11 +695,96 @@ source .venv313/bin/activate
 python scripts/run_orchestrator.py workbook.xlsx
 ```
 
+## Implemented Enhancements
+
+### 1. Hybrid Search (Implemented)
+
+Combine vector similarity with BM25 keyword matching using Reciprocal Rank Fusion (RRF).
+
+```yaml
+rag:
+  search:
+    mode: "hybrid"  # "vector", "bm25", or "hybrid"
+    hybrid_alpha: 0.6  # 60% vector, 40% BM25
+```
+
+```python
+from src.RAG import HybridSearch, BM25Index
+
+# Create hybrid search
+hybrid = HybridSearch(
+    vector_search_fn=vector_search,
+    bm25_search_fn=bm25_search,
+    alpha=0.6
+)
+results = hybrid.search("query", n_results=10, mode="hybrid")
+```
+
+### 2. Re-ranking (Implemented)
+
+Post-retrieval relevance scoring using cross-encoders or diversity promotion.
+
+```yaml
+rag:
+  search:
+    rerank: true
+    rerank_model: "cross-encoder/ms-marco-MiniLM-L-6-v2"
+```
+
+```python
+from src.RAG.search import get_reranker, DiversityReranker
+
+# Diversity reranking
+reranker = DiversityReranker(lambda_param=0.7)
+reranked = reranker.rerank(query, results, n_results=5)
+```
+
+### 3. Multiple Chunking Strategies (Implemented)
+
+```python
+from src.RAG.text_splitters import get_chunker, chunk_text
+
+# Recursive chunking (default)
+chunker = get_chunker("recursive", chunk_size=1000, chunk_overlap=200)
+
+# Markdown-aware chunking
+md_chunker = get_chunker("markdown", split_headers=["h1", "h2"])
+
+# Code-aware chunking
+code_chunker = get_chunker("code", language="python", split_by="function")
+
+# Hierarchical chunking (parent-child)
+hier_chunker = get_chunker("hierarchical", chunk_size=400, parent_chunk_size=1500)
+
+# Chunk text with one call
+chunks = chunk_text(text, strategy="markdown", chunk_size=500)
+```
+
+### 4. Hierarchical Indexing (Implemented)
+
+Parent-child chunk relationships for context-aware retrieval.
+
+```yaml
+rag:
+  hierarchical:
+    enabled: true
+    parent_context: true
+    parent_chunk_size: 1500
+```
+
+```python
+from src.RAG.indexing import HierarchicalIndex
+
+index = HierarchicalIndex(include_parent_context=True)
+index.add_chunk(child_id, content, parent_id=parent_id, hierarchy_level=1)
+
+# Get parent context for retrieved children
+enhanced = index.enhance_results_with_context(search_results)
+```
+
 ## Future Enhancements
 
-1. **Hybrid Search** - Combine keyword and semantic search
-2. **Re-ranking** - Post-retrieval relevance scoring
-3. **Multi-collection** - Separate collections by topic/domain
-4. **Streaming** - Stream search results for large datasets
-5. **Caching** - Cache embeddings for repeated queries
-6. **Metadata Filtering** - Search within document subsets
+1. **Multi-collection** - Separate collections by topic/domain
+2. **Streaming** - Stream search results for large datasets
+3. **Caching** - Cache embeddings for repeated queries
+4. **Metadata Filtering** - Enhanced search within document subsets

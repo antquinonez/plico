@@ -422,6 +422,248 @@ def test_all(c: Context) -> None:
     c.run("python -m pytest tests -v", pty=True)
 
 
+# ============================================================================
+# RAG INDEXING TASKS
+# ============================================================================
+
+
+@task
+def index_status(c: Context) -> None:
+    """Show current RAG indexing status.
+
+    Displays all indexed documents grouped by index type,
+    along with their checksums and last indexed time.
+    """
+    from src.RAG import FFRAGClient
+
+    print("\n" + "=" * 60)
+    print("RAG INDEX STATUS")
+    print("=" * 60)
+
+    try:
+        rag = FFRAGClient()
+        indexed_docs = rag.get_indexed_documents()
+
+        if not indexed_docs:
+            print("\nNo documents indexed.")
+            return
+
+        by_type: dict[str, list[dict]] = {}
+        for doc in indexed_docs:
+            idx_type = doc.get("index_type", "unknown")
+            if idx_type not in by_type:
+                by_type[idx_type] = []
+            by_type[idx_type].append(doc)
+
+        total_chunks = rag.count()
+        print(f"\nTotal chunks: {total_chunks}")
+        print(f"Index types: {len(by_type)}")
+
+        for idx_type, docs in sorted(by_type.items()):
+            print(f"\n--- Index Type: {idx_type} ({len(docs)} documents) ---")
+            for doc in docs:
+                ref = doc.get("reference_name", "unknown")
+                checksum = doc.get("document_checksum", "")[:8]
+                indexed_at = doc.get("indexed_at", "unknown")
+                print(f"  {ref}: checksum={checksum}... indexed={indexed_at}")
+
+    except ImportError:
+        print("\nRAG not available. Ensure chromadb is installed.")
+    except Exception as e:
+        print(f"\nError accessing RAG index: {e}")
+
+
+@task
+def index_clear(c: Context, index_type: str = "") -> None:
+    """Clear RAG indexes.
+
+    Args:
+        index_type: Specific index type to clear (e.g., 'recursive', 'markdown').
+                   If empty, clears ALL indexes.
+
+    Examples:
+        inv index-clear                   # Clear all indexes
+        inv index-clear -i recursive      # Clear only 'recursive' indexes
+        inv index-clear -i markdown       # Clear only 'markdown' indexes
+    """
+    from src.RAG import FFRAGClient
+
+    print("\n" + "=" * 60)
+    print("CLEARING RAG INDEXES")
+    print("=" * 60)
+
+    try:
+        rag = FFRAGClient()
+
+        if index_type:
+            print(f"\nClearing index type: {index_type}")
+            count = rag.clear_index_type(index_type)
+            print(f"Cleared {count} documents from index type '{index_type}'")
+        else:
+            print("\nClearing ALL indexes...")
+            rag.clear()
+            print("All indexes cleared.")
+
+    except ImportError:
+        print("\nRAG not available. Ensure chromadb is installed.")
+    except Exception as e:
+        print(f"\nError clearing indexes: {e}")
+
+
+@task
+def index_clear_type(c: Context, index_type: str) -> None:
+    """Clear RAG indexes for a specific index type only.
+
+    Args:
+        index_type: The index type to clear (e.g., 'recursive', 'markdown', 'code').
+
+    Examples:
+        inv index-clear-type recursive
+        inv index-clear-type markdown
+
+    """
+    from src.RAG import FFRAGClient
+
+    print("\n" + "=" * 60)
+    print("CLEAR RAG INDEX TYPE")
+    print("=" * 60)
+
+    if not index_type:
+        print("\nError: index_type is required")
+        print("Usage: inv index-clear-type <index_type>")
+        return
+
+    try:
+        rag = FFRAGClient()
+        print(f"\nClearing all indexes with type: {index_type}")
+
+        cleared = rag.clear_index_type(index_type)
+        print(f"Cleared {cleared} documents with index_type={index_type}")
+
+    except ImportError:
+        print("\nRAG not available. Ensure chromadb is installed.")
+    except Exception as e:
+        print(f"\nError clearing index type: {e}")
+
+
+@task
+def index_rebuild(c: Context, workbook: str = "") -> None:
+    """Rebuild RAG indexes from a workbook's documents.
+
+    This re-indexes all documents defined in a workbook's 'documents' sheet.
+
+    Args:
+        workbook: Path to workbook. If empty, uses default documents workbook.
+
+    Examples:
+        inv index-rebuild                           # Use default documents workbook
+        inv index-rebuild -w ./my_workbook.xlsx     # Use specific workbook
+
+    """
+    import os
+
+    from dotenv import load_dotenv
+
+    from src.orchestrator.document_processor import DocumentProcessor
+    from src.orchestrator.document_registry import DocumentRegistry
+    from src.orchestrator.workbook_builder import WorkbookBuilder
+    from src.RAG import FFRAGClient
+
+    load_dotenv()
+
+    config = get_config()
+    workbook_path = workbook or config.sample.workbooks.documents
+
+    print("\n" + "=" * 60)
+    print("REBUILDING RAG INDEXES")
+    print("=" * 60)
+    print(f"\nWorkbook: {workbook_path}")
+
+    if not os.path.exists(workbook_path):
+        print(f"\nError: Workbook not found: {workbook_path}")
+        return
+
+    try:
+        builder = WorkbookBuilder(workbook_path)
+        documents_data = builder.load_documents()
+
+        if not documents_data:
+            print("\nNo documents found in workbook.")
+            return
+
+        print(f"Found {len(documents_data)} documents to index")
+
+        rag = FFRAGClient()
+        processor = DocumentProcessor(
+            cache_dir=config.paths.doc_cache,
+            rag_client=rag,
+        )
+
+        registry = DocumentRegistry(
+            documents=documents_data,
+            processor=processor,
+            workbook_dir=os.path.dirname(workbook_path),
+            rag_client=rag,
+        )
+
+        registry.validate_documents()
+
+        print("\nIndexing documents...")
+        results = registry.index_all_documents(force=True)
+
+        print("\n" + "-" * 40)
+        print("RESULTS")
+        print("-" * 40)
+
+        total_chunks = 0
+        for ref_name, chunks in results.items():
+            status = "✓" if chunks > 0 else "✗"
+            print(f"  {status} {ref_name}: {chunks} chunks")
+            total_chunks += chunks
+
+        print(f"\nTotal: {total_chunks} chunks indexed")
+        print(f"Index type: {rag.chunking_strategy}")
+
+    except ImportError as e:
+        print(f"\nRAG not available: {e}")
+    except Exception as e:
+        print(f"\nError rebuilding indexes: {e}")
+
+
+@task
+def rag_stats(c: Context) -> None:
+    """Show detailed RAG statistics."""
+    from src.RAG import FFRAGClient
+
+    print("\n" + "=" * 60)
+    print("RAG STATISTICS")
+    print("=" * 60)
+
+    try:
+        rag = FFRAGClient()
+        stats = rag.get_stats()
+
+        print(f"\nCollection: {stats.get('collection_name', 'unknown')}")
+        print(f"Persist dir: {stats.get('persist_dir', 'unknown')}")
+        print(f"Total chunks: {stats.get('count', 0)}")
+        print(f"Embedding model: {stats.get('embedding_model', 'unknown')}")
+        print(f"\nChunking strategy: {stats.get('chunking_strategy', 'unknown')}")
+        print(f"Chunk size: {stats.get('chunk_size', 0)}")
+        print(f"Chunk overlap: {stats.get('chunk_overlap', 0)}")
+        print(f"\nSearch mode: {stats.get('search_mode', 'unknown')}")
+        print(f"Hierarchical: {stats.get('hierarchical_enabled', False)}")
+
+        indexed_docs = rag.get_indexed_documents()
+        index_types = {d.get("index_type", "unknown") for d in indexed_docs}
+        print(f"\nIndex types in use: {', '.join(sorted(index_types)) if index_types else 'none'}")
+        print(f"Documents indexed: {len(indexed_docs)}")
+
+    except ImportError:
+        print("\nRAG not available. Ensure chromadb is installed.")
+    except Exception as e:
+        print(f"\nError getting RAG stats: {e}")
+
+
 # Namespace for better help organization
 ns = {
     "help": help,
@@ -442,4 +684,9 @@ ns = {
     "format": format,
     "test": test,
     "test-all": test_all,
+    "index-status": index_status,
+    "index-clear": index_clear,
+    "index-clear-type": index_clear_type,
+    "index-rebuild": index_rebuild,
+    "rag-stats": rag_stats,
 }

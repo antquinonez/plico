@@ -35,7 +35,7 @@ from src.config import get_config
 
 def create_sample_workbook(output_path: str):
     config = get_config()
-    test_config = config.test
+    sample_config = config.sample
 
     wb = Workbook()
 
@@ -45,13 +45,13 @@ def create_sample_workbook(output_path: str):
     ws_config["B1"] = "value"
 
     config_data = [
-        ("model", test_config.default_model),
-        ("max_retries", str(test_config.default_retries)),
-        ("temperature", str(test_config.default_temperature)),
+        ("model", sample_config.default_model),
+        ("max_retries", str(sample_config.default_retries)),
+        ("temperature", str(sample_config.default_temperature)),
         ("max_tokens", "1000"),
         (
             "system_instructions",
-            "You are a helpful assistant. Analyze documents and answer questions based on their content.",
+            "You are a helpful assistant. Analyze documents and answer questions based on their content. Be concise and accurate.",
         ),
         ("created_at", datetime.now().isoformat()),
     ]
@@ -94,6 +94,60 @@ def create_sample_workbook(output_path: str):
             "Troubleshooting Guide",
             f"{app_config.paths.library}/troubleshooting.txt",
             "Common issues and solutions",
+        ),
+        (
+            "architecture",
+            "System Architecture",
+            f"{app_config.paths.library}/ARCHITECTURE.md",
+            "Overall system architecture documentation",
+        ),
+        (
+            "client_api_guide",
+            "Client API User Guide",
+            f"{app_config.paths.library}/CLIENT API USER GUIDE.md",
+            "User guide for client API usage",
+        ),
+        (
+            "clients_arch",
+            "Clients Architecture",
+            f"{app_config.paths.library}/CLIENTS_ARCHITECTURE.md",
+            "Architecture for AI client implementations",
+        ),
+        (
+            "conditional_guide",
+            "Conditional Expressions Guide",
+            f"{app_config.paths.library}/CONDITIONAL EXPRESSIONS USER GUIDE.md",
+            "Guide for conditional expressions in prompts",
+        ),
+        (
+            "configuration_doc",
+            "Configuration Documentation",
+            f"{app_config.paths.library}/CONFIGURATION.md",
+            "Configuration management documentation",
+        ),
+        (
+            "orchestrator_arch",
+            "Orchestrator Architecture",
+            f"{app_config.paths.library}/ORCHESTRATOR_ARCHITECTURE.md",
+            "Excel orchestrator architecture documentation",
+        ),
+        (
+            "orchestrator_readme",
+            "Orchestrator README",
+            f"{app_config.paths.library}/ORCHESTRATOR README.md",
+            "Orchestrator usage and examples",
+        ),
+        (
+            "rag_architecture",
+            "RAG Architecture",
+            f"{app_config.paths.library}/RAG_ARCHITECTURE.md",
+            "Retrieval-Augmented Generation architecture",
+        ),
+        (
+            "shared_history",
+            "Shared History Design",
+            f"{app_config.paths.library}/SHARED_HISTORY_DESIGN.md",
+            "Conversation history sharing design",
         ),
     ]
 
@@ -223,6 +277,106 @@ def create_sample_workbook(output_path: str):
             None,
             "performance batch concurrency tokens",
         ),
+        (
+            11,
+            "rag_chunking",
+            "What chunking strategies are available for document processing?",
+            None,
+            None,
+            None,
+            None,
+            "chunking strategy recursive markdown hierarchical",
+        ),
+        (
+            12,
+            "rag_hybrid_search",
+            "How does hybrid search work in the RAG system?",
+            None,
+            None,
+            None,
+            None,
+            "hybrid search BM25 vector fusion",
+        ),
+        (
+            13,
+            "rag_indexing",
+            "What indexing strategies does the RAG module support?",
+            None,
+            None,
+            None,
+            None,
+            "indexing BM25 hierarchical contextual embeddings",
+        ),
+        (
+            14,
+            "orchestrator_usage",
+            "How do I use the Excel orchestrator to run prompts?",
+            None,
+            None,
+            None,
+            None,
+            "orchestrator workbook prompts sheet execution",
+        ),
+        (
+            15,
+            "conditional_prompts",
+            "How can I use conditional expressions in prompts?",
+            None,
+            None,
+            None,
+            None,
+            "conditional expression if equals contains",
+        ),
+        (
+            16,
+            "client_types",
+            "What AI client types are supported and how do they differ?",
+            None,
+            None,
+            None,
+            None,
+            "client mistral anthropic openai azure",
+        ),
+        (
+            17,
+            "configuration_yaml",
+            "How is configuration managed in FFClients?",
+            None,
+            None,
+            None,
+            None,
+            "configuration yaml pydantic settings",
+        ),
+        (
+            18,
+            "shared_history",
+            "How does conversation history sharing work between prompts?",
+            None,
+            None,
+            None,
+            None,
+            "history conversation shared previous response",
+        ),
+        (
+            19,
+            "document_references",
+            "How do document references work in the orchestrator?",
+            None,
+            None,
+            None,
+            None,
+            "document reference injection full text",
+        ),
+        (
+            20,
+            "reranking_strategies",
+            "What reranking strategies are available for search results?",
+            None,
+            None,
+            None,
+            None,
+            "rerank cross-encoder diversity re-ranking",
+        ),
     ]
 
     for row_idx, (seq, name, prompt, history, client, condition, refs, semantic) in enumerate(
@@ -257,7 +411,7 @@ def create_sample_workbook(output_path: str):
         print(f"  - {ref_name}: {common_name}")
     print(f"\nPrompts defined: {len(prompts)}")
     print("  - 6 prompts with document references (full injection)")
-    print("  - 3 prompts with semantic_query (RAG search)")
+    print("  - 13 prompts with semantic_query (RAG search)")
     print("  - 1 prompt without references or semantic search")
     print("\nColumns:")
     print("  - references: Full document injection (existing behavior)")

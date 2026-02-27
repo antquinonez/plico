@@ -139,19 +139,26 @@ FFClients is a declarative context handling API wrapper for AI models with Excel
 **Purpose:** Provide semantic search over document collections for context-aware prompt augmentation.
 
 **Key Components:**
-- `FFRAGClient` - High-level RAG interface
-- `FFVectorStore` - ChromaDB operations wrapper
+- `FFRAGClient` - High-level RAG interface with pre-indexing support
+- `FFVectorStore` - ChromaDB operations with index tracking by type/checksum
 - `FFEmbeddings` - LiteLLM-based embedding generation
-- `TextSplitter` - Document chunking utilities
+- `text_splitters/` - Multiple chunking strategies (recursive, markdown, code, hierarchical, character)
+- `indexing/` - BM25 sparse index, hierarchical index, contextual embeddings
+- `search/` - Hybrid search (vector + BM25), cross-encoder and diversity rerankers
 - `RAGMCPTools` - MCP tool definitions for AI assistants
 
 **Features:**
+- Multiple chunking strategies optimized for different content types
+- Hybrid search combining vector similarity with BM25 keyword matching
+- Post-retrieval reranking (cross-encoder, diversity)
+- Pre-indexing at orchestrator startup (all documents indexed automatically)
+- Index tracking by `index_type` and `document_checksum` for clean management
+- Hierarchical indexing with parent-child context
 - Semantic search with configurable embedding models (Mistral, OpenAI, Azure)
-- Automatic document chunking with configurable overlap
 - Persistent vector storage via ChromaDB
 - Token-efficient context injection vs full document loading
 - Integration with Excel orchestrator via `semantic_query` column
-- MCP tools for AI assistant integration
+- Invoke tasks for index management (`index-status`, `index-clear`, `index-rebuild`)
 
 **See:** [RAG_ARCHITECTURE.md](./RAG_ARCHITECTURE.md)
 
@@ -266,8 +273,26 @@ FFClients/
 │       ├── FFRAGClient.py             # High-level RAG interface
 │       ├── FFVectorStore.py           # ChromaDB operations
 │       ├── FFEmbeddings.py            # LiteLLM embedding wrapper
-│       ├── text_splitter.py           # Document chunking
-│       └── mcp_tools.py               # MCP tool definitions
+│       ├── text_splitter.py           # DEPRECATED - backward compatibility
+│       ├── mcp_tools.py               # MCP tool definitions
+│       ├── text_splitters/            # Chunking strategies
+│       │   ├── __init__.py
+│       │   ├── base.py                # ChunkerBase, TextChunk, HierarchicalTextChunk
+│       │   ├── character.py           # Word-boundary aware
+│       │   ├── recursive.py           # Hierarchical separators
+│       │   ├── markdown.py            # Header-aware
+│       │   ├── code.py                # AST-style for code
+│       │   ├── hierarchical.py        # Parent-child
+│       │   └── factory.py             # get_chunker(), chunk_text()
+│       ├── indexing/                  # Index implementations
+│       │   ├── __init__.py
+│       │   ├── bm25_index.py          # Sparse keyword index
+│       │   ├── hierarchical_index.py  # Parent-child storage
+│       │   └── contextual_embeddings.py
+│       └── search/                    # Search strategies
+│           ├── __init__.py
+│           ├── hybrid_search.py       # Vector + BM25 fusion
+│           └── rerankers.py           # Cross-encoder, diversity
 │
 ├── scripts/
 │   ├── run_orchestrator.py            # CLI entry point for orchestrator
@@ -327,6 +352,9 @@ FFClients/
 │   ├── test_document_registry.py
 │   ├── test_condition_evaluator.py
 │   ├── test_rag.py                     # RAG subsystem tests
+│   ├── test_rag_chunkers.py            # Chunking strategy tests
+│   ├── test_rag_indexing.py            # BM25, hierarchical index tests
+│   ├── test_rag_search.py              # Hybrid search, reranker tests
 │   └── test_litellm_orchestrator_integration.py
 │
 │   ├── .venv313/                       # Python 3.13 venv (for RAG/ChromaDB)
@@ -499,14 +527,19 @@ DocumentRegistry
   └── DocumentProcessor
 
 FFRAGClient
-  ├── FFVectorStore
-  │   ├── chromadb (external)
-  │   └── FFEmbeddings
-  │       └── litellm (external)
-  └── text_splitter (internal)
+├── FFVectorStore
+│   ├── chromadb (external)
+│   └── FFEmbeddings
+│       └── litellm (external)
+├── text_splitters (internal)
+│   └── langchain-text-splitters (optional, for some strategies)
+├── indexing (internal)
+│   └── rank_bm25 (external, for BM25Index)
+└── search (internal)
+    └── sentence-transformers (optional, for cross-encoder reranking)
 
 RAGMCPTools
-  └── FFRAGClient
+└── FFRAGClient
 
 WorkbookBuilder
   └── openpyxl (external)

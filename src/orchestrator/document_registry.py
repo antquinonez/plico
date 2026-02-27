@@ -342,3 +342,57 @@ class DocumentRegistry:
         context = self.format_semantic_results(results, max_chars=max_chars)
 
         return f"<RELEVANT_CONTEXT>\n{context}</RELEVANT_CONTEXT>\n\n===\nBased on the context above, please answer: {prompt}"
+
+    def index_all_documents(self, force: bool = False) -> dict[str, int]:
+        """Index all registered documents for RAG search.
+
+        This method should be called at orchestrator startup to ensure
+        all documents in the 'documents' sheet are indexed and searchable.
+
+        Args:
+            force: Force reindexing of all documents, even if unchanged.
+
+        Returns:
+            Dictionary mapping reference_name to number of chunks indexed.
+
+        """
+        if not self.rag_client:
+            logger.info("RAG client not configured, skipping document indexing")
+            return {}
+
+        results: dict[str, int] = {}
+
+        for ref_name, doc in self.documents.items():
+            file_path = self.resolve_path(doc.get("file_path", ""))
+            common_name = doc.get("common_name", ref_name)
+
+            if not os.path.exists(file_path):
+                logger.warning(f"Document file not found, skipping: {file_path}")
+                continue
+
+            try:
+                checksum = self.processor.get_document_checksum(file_path)
+
+                content = self.get_content(ref_name)
+
+                chunks_indexed = self.processor.index_to_rag(
+                    reference_name=ref_name,
+                    common_name=common_name,
+                    content=content,
+                    checksum=checksum,
+                    force=force,
+                )
+                results[ref_name] = chunks_indexed
+
+            except Exception as e:
+                logger.error(f"Failed to index document {ref_name}: {e}")
+                results[ref_name] = 0
+
+        total_chunks = sum(results.values())
+        indexed_count = sum(1 for v in results.values() if v > 0)
+        logger.info(
+            f"Document indexing complete: {indexed_count}/{len(self.documents)} documents, "
+            f"{total_chunks} total chunks"
+        )
+
+        return results

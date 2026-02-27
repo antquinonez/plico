@@ -5,25 +5,28 @@
 # PROPRIETARY AND CONTROLLED CODE
 # Copyright (C) 2025 Antonio Quinonez / Far Finer LLC. All Rights Reserved.
 
-"""Simple text splitting utilities for chunking documents."""
+"""Simple text splitting utilities for chunking documents.
+
+DEPRECATED: This module is maintained for backward compatibility.
+For new code, use the text_splitters package instead:
+
+    from src.RAG.text_splitters import get_chunker, TextChunk
+    chunker = get_chunker("recursive", chunk_size=1000, chunk_overlap=200)
+    chunks = chunker.chunk(text, metadata={"source": "doc.md"})
+
+"""
 
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+import warnings
+
+from .text_splitters import TextChunk as _TextChunk
+from .text_splitters import get_chunker
 
 logger = logging.getLogger(__name__)
 
-
-@dataclass
-class TextChunk:
-    """Represents a chunk of text with metadata."""
-
-    content: str
-    chunk_index: int
-    start_char: int
-    end_char: int
-    metadata: dict | None = None
+TextChunk = _TextChunk
 
 
 def split_text(
@@ -33,6 +36,8 @@ def split_text(
     metadata: dict | None = None,
 ) -> list[TextChunk]:
     """Split text into overlapping chunks.
+
+    DEPRECATED: Use get_chunker("character") instead.
 
     Args:
         text: The text to split.
@@ -44,71 +49,14 @@ def split_text(
         List of TextChunk objects.
 
     """
-    if not text or not text.strip():
-        return []
-
-    if chunk_size <= 0:
-        raise ValueError("chunk_size must be positive")
-    if chunk_overlap < 0:
-        raise ValueError("chunk_overlap cannot be negative")
-    if chunk_overlap >= chunk_size:
-        raise ValueError("chunk_overlap must be less than chunk_size")
-
-    chunks = []
-    start = 0
-    chunk_index = 0
-
-    while start < len(text):
-        end = min(start + chunk_size, len(text))
-
-        if end < len(text):
-            last_newline = text.rfind("\n", start, end)
-            last_space = text.rfind(" ", start, end)
-
-            break_point = max(last_newline, last_space)
-            if break_point > start:
-                end = break_point
-
-        chunk_content = text[start:end].strip()
-
-        if chunk_content:
-            chunks.append(
-                TextChunk(
-                    content=chunk_content,
-                    chunk_index=chunk_index,
-                    start_char=start,
-                    end_char=end,
-                    metadata=metadata.copy() if metadata else None,
-                )
-            )
-            chunk_index += 1
-
-        # Calculate next start position, ensuring forward progress
-        if end < len(text):
-            overlap_start = max(0, end - chunk_overlap)
-            # If overlap would prevent forward progress, continue from end instead
-            start = end if overlap_start <= start else overlap_start
-        else:
-            start = end
-            overlap_start = end  # For consistency in walkback logic below
-
-        # Walk back to word boundary, but never before overlap_start
-        # This handles very long words by accepting mid-word splits when necessary
-        max_walkback = chunk_overlap * 2
-        walkback_distance = 0
-        while (
-            start > overlap_start
-            and start < len(text)
-            and text[start] not in (" ", "\n")
-            and walkback_distance < max_walkback
-        ):
-            start -= 1
-            walkback_distance += 1
-
-    logger.debug(
-        f"Split text into {len(chunks)} chunks (size={chunk_size}, overlap={chunk_overlap})"
+    warnings.warn(
+        "split_text is deprecated. Use get_chunker('character') instead.",
+        DeprecationWarning,
+        stacklevel=2,
     )
-    return chunks
+
+    chunker = get_chunker("character", chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+    return chunker.chunk(text, metadata=metadata)
 
 
 def split_documents(
@@ -118,6 +66,8 @@ def split_documents(
     chunk_overlap: int = 200,
 ) -> list[TextChunk]:
     """Split multiple documents into chunks.
+
+    DEPRECATED: Use get_chunker("character") and iterate over documents.
 
     Args:
         documents: List of document dicts with text content.
@@ -129,7 +79,15 @@ def split_documents(
         List of TextChunk objects from all documents.
 
     """
-    all_chunks = []
+    warnings.warn(
+        "split_documents is deprecated. Use get_chunker() instead.",
+        DeprecationWarning,
+        stacklevel=2,
+    )
+
+    all_chunks: list[TextChunk] = []
+
+    chunker = get_chunker("character", chunk_size=chunk_size, chunk_overlap=chunk_overlap)
 
     for doc in documents:
         text = doc.get(text_key, "")
@@ -137,7 +95,7 @@ def split_documents(
             continue
 
         metadata = {k: v for k, v in doc.items() if k != text_key}
-        chunks = split_text(text, chunk_size, chunk_overlap, metadata)
+        chunks = chunker.chunk(text, metadata=metadata)
         all_chunks.extend(chunks)
 
     logger.info(f"Split {len(documents)} documents into {len(all_chunks)} total chunks")
