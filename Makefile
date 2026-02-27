@@ -1,6 +1,6 @@
 # FFClients Makefile
 # ===============
-# Commands for running test workbooks and validation.
+# Commands for running sample workbooks and validation.
 
 .PHONY: help create clean run validate spot-check all
 
@@ -11,12 +11,12 @@ SCRIPTS_DIR := scripts
 VALIDATION_DIR := $(SCRIPTS_DIR)/validation
 
 # Workbook paths (from config)
-BASIC_WB := ./test_workbook_30.xlsx
-MULTICLIENT_WB := ./test_workbook_multiclient.xlsx
-CONDITIONAL_WB := ./test_workbook_conditional.xlsx
-DOCUMENTS_WB := ./test_workbook_documents.xlsx
-BATCH_WB := ./test_workbook_batch.xlsx
-MAX_WB := ./test_workbook_max.xlsx
+BASIC_WB := ./sample_workbook.xlsx
+MULTICLIENT_WB := ./sample_workbook_multiclient.xlsx
+CONDITIONAL_WB := ./sample_workbook_conditional.xlsx
+DOCUMENTS_WB := ./sample_workbook_documents.xlsx
+BATCH_WB := ./sample_workbook_batch.xlsx
+MAX_WB := ./sample_workbook_max.xlsx
 
 ALL_WORKBOOKS := $(BASIC_WB) $(MULTICLIENT_WB) $(CONDITIONAL_WB) $(DOCUMENTS_WB) $(BATCH_WB) $(MAX_WB)
 
@@ -27,8 +27,8 @@ CONCURRENCY ?= 3
 help:
 	@echo "FFClients Makefile Commands:"
 	@echo ""
-	@echo "  make create      - Create all test workbooks"
-	@echo "  make clean        - Remove all test workbooks"
+	@echo "  make create      - Create all sample workbooks"
+	@echo "  make clean        - Remove all sample workbooks"
 	@echo "  make run          - Run orchestrator on all workbooks"
 	@echo "  make validate     - Validate all workbook results"
 	@echo "  make spot-check   - Spot check responses"
@@ -48,20 +48,20 @@ help:
 # Activate virtual environment and run command
 run-in-venv = source .venv/bin/activate && POLARS_SKIP_CPU_CHECK=1
 
-# Create all test workbooks
+# Create all sample workbooks
 create:
-	@echo "Creating test workbooks..."
-	$(run-in-venv) python $(SCRIPTS_DIR)/create_test_workbook.py
-	$(run-in-venv) python $(SCRIPTS_DIR)/create_test_workbook_multiclient.py
-	$(run-in-venv) python $(SCRIPTS_DIR)/create_test_workbook_max.py
-	$(run-in-venv) python $(SCRIPTS_DIR)/create_test_workbook_documents.py
-	$(run-in-venv) python $(SCRIPTS_DIR)/create_test_workbook_conditional.py
-	$(run-in-venv) python $(SCRIPTS_DIR)/create_test_workbook_batch.py
+	@echo "Creating sample workbooks..."
+	$(run-in-venv) python $(SCRIPTS_DIR)/create_sample_workbook.py
+	$(run-in-venv) python $(SCRIPTS_DIR)/create_sample_workbook_multiclient.py
+	$(run-in-venv) python $(SCRIPTS_DIR)/create_sample_workbook_max.py
+	$(run-in-venv) python $(SCRIPTS_DIR)/create_sample_workbook_documents.py
+	$(run-in-venv) python $(SCRIPTS_DIR)/create_sample_workbook_conditional.py
+	$(run-in-venv) python $(SCRIPTS_DIR)/create_sample_workbook_batch.py
 	@echo "All workbooks created."
 
-# Clean all test workbooks
+# Clean all sample workbooks
 clean:
-	@echo "Removing test workbooks..."
+	@echo "Removing sample workbooks..."
 	rm -f $(ALL_WORKBOOKS)
 	@echo "All workbooks removed."
 

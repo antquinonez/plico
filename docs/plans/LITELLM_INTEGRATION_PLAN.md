@@ -537,7 +537,7 @@ class TestOrchestratorLiteLLMIntegration:
 
         client = FFLiteLLMClient(model_string="openai/gpt-4")
         orchestrator = ExcelOrchestrator(
-            "test_workbook.xlsx",
+            "sample_workbook.xlsx",
             client=client,
             concurrency=3
         )

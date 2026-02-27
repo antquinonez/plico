@@ -122,7 +122,7 @@ library/
 Generated programmatically in `tests/fixtures/documents/`
 
 ### Test Workbooks
-- `test_workbook_documents.xlsx` - 7 prompts with document references
+- `sample_workbook_documents.xlsx` - 7 prompts with document references
 - `library/` folder contains sample documents for testing
 
 ### Unit Tests

@@ -145,10 +145,10 @@ def _get_isolated_ffai(self, client_name=None):
 1. Run unit tests
 2. Run integration tests
 3. Run orchestrator on all workbook types:
-   - test_workbook_30.xlsx (basic)
-   - test_workbook_batch.xlsx (batch)
-   - test_workbook_multiclient.xlsx (multi-client)
-   - test_workbook_conditional.xlsx (conditional)
+   - sample_workbook.xlsx (basic)
+   - sample_workbook_batch.xlsx (batch)
+   - sample_workbook_multiclient.xlsx (multi-client)
+   - sample_workbook_conditional.xlsx (conditional)
 
 ---
 

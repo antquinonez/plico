@@ -4,7 +4,7 @@
 # Contact: antquinonez@farfiner.com
 
 """
-Generate test workbook for batch execution testing.
+Generate sample workbook for batch execution testing.
 
 Creates 35 prompts with {{variable}} templating:
 - Uses 5 data rows (batches) with different regions/products
@@ -14,7 +14,7 @@ Creates 35 prompts with {{variable}} templating:
 Uses FFLiteLLMClient with LiteLLM routing for Mistral Small.
 
 Usage:
-    python scripts/create_test_workbook_batch.py [output_path]
+    python scripts/create_sample_workbook_batch.py [output_path]
 """
 
 import os
@@ -27,7 +27,7 @@ from openpyxl import Workbook
 from src.config import get_config
 
 
-def create_batch_test_workbook(output_path: str):
+def create_batch_sample_workbook(output_path: str):
     config = get_config()
     test_config = config.test
     batch_config = config.workbook.batch
@@ -433,7 +433,7 @@ def create_batch_test_workbook(output_path: str):
     wb.save(output_path)
 
     print(f"\n{'=' * 70}")
-    print(f"Created BATCH test workbook: {output_path}")
+    print(f"Created BATCH sample workbook: {output_path}")
     print(f"{'=' * 70}")
     print(f"\nUsing: FFLiteLLMClient with LiteLLM routing")
     print(f"Total prompts: {len(prompts)}")
@@ -457,4 +457,4 @@ def create_batch_test_workbook(output_path: str):
 if __name__ == "__main__":
     config = get_config()
     output = sys.argv[1] if len(sys.argv) > 1 else config.test.workbooks.batch
-    create_batch_test_workbook(output)
+    create_batch_sample_workbook(output)

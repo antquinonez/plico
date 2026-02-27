@@ -271,12 +271,12 @@ FFClients/
 │
 ├── scripts/
 │   ├── run_orchestrator.py            # CLI entry point for orchestrator
-│   ├── create_test_workbook.py        # Generate test workbooks
-│   ├── create_test_workbook_multiclient.py  # Multi-client test workbooks
-│   ├── create_test_workbook_batch.py  # Batch execution test workbooks
-│   ├── create_test_workbook_conditional.py  # Conditional execution test workbooks
-│   ├── create_test_workbook_documents.py    # Document reference test workbooks
-│   ├── create_test_workbook_max.py    # Stress test workbooks (100 executions)
+│   ├── create_sample_workbook.py        # Generate test workbooks
+│   ├── create_sample_workbook_multiclient.py  # Multi-client test workbooks
+│   ├── create_sample_workbook_batch.py  # Batch execution test workbooks
+│   ├── create_sample_workbook_conditional.py  # Conditional execution test workbooks
+│   ├── create_sample_workbook_documents.py    # Document reference test workbooks
+│   ├── create_sample_workbook_max.py    # Stress test workbooks (100 executions)
 │   ├── try_ai_mistralsmall_script.py  # Example usage script
 │   └── validation/                   # Validation scripts
 │       ├── __init__.py
@@ -292,7 +292,7 @@ FFClients/
 │   ├── paths.yaml                     # File system paths
 │   ├── clients.yaml                   # AI client configurations
 │   ├── model_defaults.yaml            # Per-model defaults
-│   └── test.yaml                      # Test workbook settings
+│   └── test.yaml                      # Sample workbook settings
 │
 ├── logs/                              # Execution logs (git-ignored)
 │   └── orchestrator.log               # Current log (rotates daily)
@@ -321,7 +321,7 @@ FFClients/
 │   ├── test_ordered_prompt_history.py
 │   ├── test_permanent_history.py
 │   ├── test_excel_orchestrator.py
-│   ├── test_workbook_builder.py
+│   ├── sample_workbook_builder.py
 │   ├── test_client_registry.py
 │   ├── test_document_processor.py
 │   ├── test_document_registry.py

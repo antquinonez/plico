@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: MIT
 # Contact: antquinonez@farfiner.com
 
-"""Validate all test workbooks after orchestration."""
+"""Validate all sample workbooks after orchestration."""
 
 import argparse
 import sys
@@ -122,7 +122,7 @@ def check_variable_substitution(path: str, verbose: bool = False) -> list[str]:
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Validate all test workbooks")
+    parser = argparse.ArgumentParser(description="Validate all sample workbooks")
     parser.add_argument("-v", "--verbose", action="store_true", help="Verbose output")
     args = parser.parse_args()
 

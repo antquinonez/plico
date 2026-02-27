@@ -4,7 +4,7 @@
 # Contact: antquinonez@farfiner.com
 
 """
-Generate comprehensive test workbook combining batch, conditional, and multi-client features.
+Generate comprehensive sample workbook combining batch, conditional, and multi-client features.
 
 This workbook demonstrates the full power of FFClients orchestrator:
 - BATCH: Multiple data rows processed through the same prompt chain
@@ -16,7 +16,7 @@ Uses FFLiteLLMClient with LiteLLM routing for Mistral Small.
 Creates 20 prompts across 5 sections with 5 batch data rows.
 
 Usage:
-    python scripts/create_test_workbook_max.py [output_path]
+    python scripts/create_sample_workbook_max.py [output_path]
 """
 
 import os
@@ -29,7 +29,7 @@ from openpyxl import Workbook
 from src.config import get_config
 
 
-def create_max_test_workbook(output_path: str):
+def create_max_sample_workbook(output_path: str):
     config = get_config()
     test_config = config.test
 
@@ -471,7 +471,7 @@ def create_max_test_workbook(output_path: str):
     wb.save(output_path)
 
     print(f"\n{'=' * 70}")
-    print(f"Created MAX test workbook: {output_path}")
+    print(f"Created MAX sample workbook: {output_path}")
     print(f"{'=' * 70}")
     print("\nUsing: FFLiteLLMClient with LiteLLM routing")
 
@@ -518,4 +518,4 @@ def create_max_test_workbook(output_path: str):
 if __name__ == "__main__":
     config = get_config()
     output = sys.argv[1] if len(sys.argv) > 1 else config.test.workbooks.max
-    create_max_test_workbook(output)
+    create_max_sample_workbook(output)

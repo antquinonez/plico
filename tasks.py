@@ -56,12 +56,12 @@ def _get_workbook_configs() -> dict[str, tuple[str, str]]:
     """
     config = get_config()
     return {
-        "basic": (config.test.workbooks.basic, "3"),
-        "multiclient": (config.test.workbooks.multiclient, "2"),
-        "conditional": (config.test.workbooks.conditional, "3"),
-        "documents": (config.test.workbooks.documents, "1"),
-        "batch": (config.test.workbooks.batch, "3"),
-        "max": (config.test.workbooks.max, "3"),
+        "basic": (config.sample.workbooks.basic, "3"),
+        "multiclient": (config.sample.workbooks.multiclient, "2"),
+        "conditional": (config.sample.workbooks.conditional, "3"),
+        "documents": (config.sample.workbooks.documents, "1"),
+        "batch": (config.sample.workbooks.batch, "3"),
+        "max": (config.sample.workbooks.max, "3"),
     }
 
 
@@ -72,12 +72,12 @@ def _create_single_workbook(name: str) -> tuple[str, bool, str]:
         Tuple of (name, success, output/error message)
     """
     script_map = {
-        "basic": "scripts/create_test_workbook.py",
-        "multiclient": "scripts/create_test_workbook_multiclient.py",
-        "conditional": "scripts/create_test_workbook_conditional.py",
-        "documents": "scripts/create_test_workbook_documents.py",
-        "batch": "scripts/create_test_workbook_batch.py",
-        "max": "scripts/create_test_workbook_max.py",
+        "basic": "scripts/create_sample_workbook.py",
+        "multiclient": "scripts/create_sample_workbook_multiclient.py",
+        "conditional": "scripts/create_sample_workbook_conditional.py",
+        "documents": "scripts/create_sample_workbook_documents.py",
+        "batch": "scripts/create_sample_workbook_batch.py",
+        "max": "scripts/create_sample_workbook_max.py",
     }
 
     script = script_map[name]

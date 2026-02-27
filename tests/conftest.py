@@ -164,7 +164,7 @@ def sample_config():
 @pytest.fixture
 def temp_workbook(tmp_path):
     """Create a temporary workbook path."""
-    return str(tmp_path / "test_workbook.xlsx")
+    return str(tmp_path / "sample_workbook.xlsx")
 
 
 @pytest.fixture

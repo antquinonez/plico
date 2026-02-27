@@ -3,7 +3,7 @@
 # SPDX-License-Identifier: MIT
 # Contact: antquinonez@farfiner.com
 
-"""Spot check responses from test workbooks."""
+"""Spot check responses from sample workbooks."""
 
 import argparse
 import sys
@@ -43,7 +43,7 @@ def spot_check_responses(path: str, prompts_to_check: list[str], verbose: bool =
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Spot check responses from test workbooks")
+    parser = argparse.ArgumentParser(description="Spot check responses from sample workbooks")
     parser.add_argument("-v", "--verbose", action="store_true", help="Verbose output")
     args = parser.parse_args()
 

@@ -4,7 +4,7 @@
 # Contact: antquinonez@farfiner.com
 
 """
-Generate test workbook for conditional execution testing with multi-client support.
+Generate sample workbook for conditional execution testing with multi-client support.
 
 Creates 30 prompts with various conditional patterns using multiple client configurations:
 - Basic status checks (success/failed/skipped)
@@ -22,7 +22,7 @@ Different clients are used for different task types:
 Uses FFLiteLLMClient with LiteLLM routing for Mistral Small.
 
 Usage:
-    python scripts/create_test_workbook_conditional.py [output_path]
+    python scripts/create_sample_workbook_conditional.py [output_path]
 """
 
 import os
@@ -35,7 +35,7 @@ from openpyxl import Workbook
 from src.config import get_config
 
 
-def create_conditional_test_workbook(output_path: str):
+def create_conditional_sample_workbook(output_path: str):
     config = get_config()
     test_config = config.test
 
@@ -539,7 +539,7 @@ def create_conditional_test_workbook(output_path: str):
     wb.save(output_path)
 
     print(f"\n{'=' * 70}")
-    print(f"Created conditional execution test workbook: {output_path}")
+    print(f"Created conditional execution sample workbook: {output_path}")
     print(f"{'=' * 70}")
 
     print("\nUsing: FFLiteLLMClient with LiteLLM routing")
@@ -587,4 +587,4 @@ def create_conditional_test_workbook(output_path: str):
 if __name__ == "__main__":
     config = get_config()
     output = sys.argv[1] if len(sys.argv) > 1 else config.test.workbooks.conditional
-    create_conditional_test_workbook(output)
+    create_conditional_sample_workbook(output)

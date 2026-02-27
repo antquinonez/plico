@@ -61,7 +61,7 @@ def _load_all_configs() -> dict[str, Any]:
         "rag": _load_yaml_file("main.yaml").get("rag", {}),
         "clients": _load_yaml_file("clients.yaml").get("clients", {}),
         "model_defaults": _load_yaml_file("model_defaults.yaml").get("model_defaults", {}),
-        "test": _load_yaml_file("test.yaml").get("test_workbooks", {}),
+        "sample": _load_yaml_file("sample_workbook.yaml").get("sample_workbooks", {}),
     }
 
 
@@ -254,19 +254,19 @@ class ModelDefaultsConfig(BaseSettings):
     models: dict[str, dict[str, Any]] = Field(default_factory=dict)
 
 
-class TestWorkbookPathsConfig(BaseSettings):
-    """Test workbook file paths."""
+class SampleWorkbookPathsConfig(BaseSettings):
+    """Sample workbook file paths."""
 
-    basic: str = "./test_workbook_30.xlsx"
-    multiclient: str = "./test_workbook_multiclient.xlsx"
-    conditional: str = "./test_workbook_conditional.xlsx"
-    documents: str = "./test_workbook_documents.xlsx"
-    batch: str = "./test_workbook_batch.xlsx"
-    max: str = "./test_workbook_max.xlsx"
+    basic: str = "./sample_workbook.xlsx"
+    multiclient: str = "./sample_workbook_multiclient.xlsx"
+    conditional: str = "./sample_workbook_conditional.xlsx"
+    documents: str = "./sample_workbook_documents.xlsx"
+    batch: str = "./sample_workbook_batch.xlsx"
+    max: str = "./sample_workbook_max.xlsx"
 
 
-class TestClientConfig(BaseSettings):
-    """Test client configuration for workbook generators."""
+class SampleClientConfig(BaseSettings):
+    """Sample client configuration for workbook generators."""
 
     client_type: str = "litellm-mistral"
     api_key_env: str = "MISTRAL_API_KEY"
@@ -275,8 +275,8 @@ class TestClientConfig(BaseSettings):
     max_tokens: int = 300
 
 
-class TestConfig(BaseSettings):
-    """Test workbook generator configuration."""
+class SampleConfig(BaseSettings):
+    """Sample workbook generator configuration."""
 
     default_model: str = "mistral-small-latest"
     default_temperature: float = 0.7
@@ -287,9 +287,9 @@ class TestConfig(BaseSettings):
         "For math questions, just give the number."
     )
     output_dir: str = "."
-    workbooks: TestWorkbookPathsConfig = Field(default_factory=TestWorkbookPathsConfig)
-    test_clients: dict[str, TestClientConfig] = Field(default_factory=dict)
-    test_clients: dict[str, Any] = Field(default_factory=dict)
+    workbooks: SampleWorkbookPathsConfig = Field(default_factory=SampleWorkbookPathsConfig)
+    sample_clients: dict[str, SampleClientConfig] = Field(default_factory=dict)
+    sample_clients: dict[str, Any] = Field(default_factory=dict)
 
 
 class Config(BaseSettings):
@@ -308,7 +308,7 @@ class Config(BaseSettings):
     rag: RAGConfig = Field(default_factory=RAGConfig)
     clients: dict[str, Any] = Field(default_factory=dict)
     model_defaults: ModelDefaultsConfig = Field(default_factory=ModelDefaultsConfig)
-    test: TestConfig = Field(default_factory=TestConfig)
+    sample: SampleConfig = Field(default_factory=SampleConfig)
 
     @classmethod
     def settings_customise_sources(

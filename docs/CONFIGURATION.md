@@ -13,7 +13,7 @@ config/
 ├── paths.yaml         # File system paths
 ├── clients.yaml       # AI client configurations
 ├── model_defaults.yaml # Per-model default parameters
-└── test.yaml          # Test workbook defaults and paths
+└── sample_workbook.yaml          # Test workbook defaults and paths
 ```
 
 ## Usage
@@ -29,7 +29,7 @@ config = get_config()
 print(config.workbook.defaults.model)           # "mistral-small-2503"
 print(config.orchestrator.default_concurrency)   # 2
 print(config.paths.ffai_data)                    # "./ffai_data"
-print(config.test.workbooks.basic)               # "./test_workbook_30.xlsx"
+print(config.test.workbooks.basic)               # "./sample_workbook.xlsx"
 ```
 
 ### Reload Configuration
@@ -164,10 +164,10 @@ model_defaults:
       temperature: 0.7
 ```
 
-### Test Configuration (`test.yaml`)
+### Test Configuration (`sample_workbook.yaml`)
 
 ```yaml
-test_workbooks:
+sample_workbooks:
   default_model: "mistral-small-latest"
   default_temperature: 0.7
   default_max_tokens: 300
@@ -175,12 +175,12 @@ test_workbooks:
   default_system_instructions: "You are a helpful assistant..."
   output_dir: "."
   workbooks:
-    basic: "./test_workbook_30.xlsx"
-    multiclient: "./test_workbook_multiclient.xlsx"
-    conditional: "./test_workbook_conditional.xlsx"
-    documents: "./test_workbook_documents.xlsx"
-    batch: "./test_workbook_batch.xlsx"
-    max: "./test_workbook_max.xlsx"
+    basic: "./sample_workbook.xlsx"
+    multiclient: "./sample_workbook_multiclient.xlsx"
+    conditional: "./sample_workbook_conditional.xlsx"
+    documents: "./sample_workbook_documents.xlsx"
+    batch: "./sample_workbook_batch.xlsx"
+    max: "./sample_workbook_max.xlsx"
   test_clients:
     default:
       client_type: "litellm-mistral"

@@ -609,7 +609,7 @@ orchestrator.run()
 
 ---
 
-## Test Workbook Generators
+## Sample Workbook Generators
 
 ### Using the Makefile
 
@@ -676,34 +676,34 @@ The `scripts/validation/` folder contains validation scripts:
 
 ### Individual Scripts
 
-### Standard Test Workbook
+### Standard Sample Workbook
 
 ```bash
-python scripts/create_test_workbook.py my_test.xlsx
+python scripts/create_sample_workbook.py my_test.xlsx
 ```
 
 31 prompts with dependency levels for testing parallel execution.
 
-### Batch Test Workbook
+### Batch Sample Workbook
 
 ```bash
-python scripts/create_test_workbook_batch.py batch_test.xlsx
+python scripts/create_sample_workbook_batch.py batch_test.xlsx
 ```
 
 35 prompts × 5 batches = 175 total executions with variable templating.
 
-### Multi-Client Test Workbook
+### Multi-Client Sample Workbook
 
 ```bash
-python scripts/create_test_workbook_multiclient.py multiclient_test.xlsx
+python scripts/create_sample_workbook_multiclient.py multiclient_test.xlsx
 ```
 
 13 prompts using different client configurations.
 
-### Document Reference Test Workbook
+### Document Reference Sample Workbook
 
 ```bash
-python scripts/create_test_workbook_documents.py documents_test.xlsx
+python scripts/create_sample_workbook_documents.py documents_test.xlsx
 ```
 
 7 prompts with document references, using documents from the `library/` folder.

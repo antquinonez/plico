@@ -4,7 +4,7 @@
 # Contact: antquinonez@farfiner.com
 
 """
-Generate test workbook for multi-client execution testing.
+Generate sample workbook for multi-client execution testing.
 
 Creates a workbook with:
 - config sheet
@@ -12,7 +12,7 @@ Creates a workbook with:
 - clients sheet with named client configurations using FFLiteLLMClient
 
 Usage:
-    python scripts/create_test_workbook_multiclient.py [output_path]
+    python scripts/create_sample_workbook_multiclient.py [output_path]
 """
 
 import os
@@ -25,7 +25,7 @@ from openpyxl import Workbook
 from src.config import get_config
 
 
-def create_multiclient_test_workbook(output_path: str):
+def create_multiclient_sample_workbook(output_path: str):
     config = get_config()
     test_config = config.test
 
@@ -240,7 +240,7 @@ def create_multiclient_test_workbook(output_path: str):
     wb.save(output_path)
 
     print(f"\n{'=' * 70}")
-    print(f"Created MULTI-CLIENT test workbook: {output_path}")
+    print(f"Created MULTI-CLIENT sample workbook: {output_path}")
     print(f"{'=' * 70}")
     print("\nUsing: FFLiteLLMClient with LiteLLM routing")
     print("\nClients defined:")
@@ -266,4 +266,4 @@ def create_multiclient_test_workbook(output_path: str):
 if __name__ == "__main__":
     config = get_config()
     output = sys.argv[1] if len(sys.argv) > 1 else config.test.workbooks.multiclient
-    create_multiclient_test_workbook(output)
+    create_multiclient_sample_workbook(output)

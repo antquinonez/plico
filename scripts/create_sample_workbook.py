@@ -4,7 +4,7 @@
 # Contact: antquinonez@farfiner.com
 
 """
-Generate test workbook for parallel execution testing.
+Generate sample workbook for parallel execution testing.
 
 Creates 31 prompts with various dependency patterns:
 - Level 0: 12 independent prompts (fully parallel)
@@ -15,7 +15,7 @@ Creates 31 prompts with various dependency patterns:
 Uses FFLiteLLMClient with LiteLLM routing for Mistral Small.
 
 Usage:
-    python scripts/create_test_workbook.py [output_path]
+    python scripts/create_sample_workbook.py [output_path]
 """
 
 import os
@@ -28,7 +28,7 @@ from openpyxl import Workbook
 from src.config import get_config
 
 
-def create_test_workbook(output_path: str):
+def create_sample_workbook(output_path: str):
     config = get_config()
     test_config = config.test
 
@@ -219,7 +219,7 @@ def create_test_workbook(output_path: str):
     wb.save(output_path)
 
     print(f"\n{'=' * 60}")
-    print(f"Created test workbook: {output_path}")
+    print(f"Created sample workbook: {output_path}")
     print(f"{'=' * 60}")
     print(f"\nUsing: FFLiteLLMClient with LiteLLM routing")
     print(f"Total prompts: {len(prompts)}")
@@ -245,4 +245,4 @@ def create_test_workbook(output_path: str):
 if __name__ == "__main__":
     config = get_config()
     output = sys.argv[1] if len(sys.argv) > 1 else config.test.workbooks.basic
-    create_test_workbook(output)
+    create_sample_workbook(output)

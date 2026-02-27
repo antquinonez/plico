@@ -733,26 +733,26 @@ if summary.get("batch_mode"):
 
 ### Test Workbook Generators
 
-- `create_test_workbook.py` - 31 prompts for parallel testing
-- `create_test_workbook_batch.py` - 35 prompts × 5 batches
-- `create_test_workbook_multiclient.py` - 13 prompts with multiple clients
-- `create_test_workbook_documents.py` - 7 prompts with document references
-- `create_test_workbook_conditional.py` - 30 prompts with conditional execution
-- `create_test_workbook_max.py` - 100 executions for stress testing
+- `create_sample_workbook.py` - 31 prompts for parallel testing
+- `create_sample_workbook_batch.py` - 35 prompts × 5 batches
+- `create_sample_workbook_multiclient.py` - 13 prompts with multiple clients
+- `create_sample_workbook_documents.py` - 7 prompts with document references
+- `create_sample_workbook_conditional.py` - 30 prompts with conditional execution
+- `create_sample_workbook_max.py` - 100 executions for stress testing
 
 ### Test Workbook Paths
 
-Test workbook paths are configured in `config/test.yaml`:
+Sample workbook paths are configured in `config/test.yaml`:
 
 ```yaml
-test_workbooks:
+sample_workbooks:
   workbooks:
-    basic: "./test_workbook_30.xlsx"
-    multiclient: "./test_workbook_multiclient.xlsx"
-    conditional: "./test_workbook_conditional.xlsx"
-    documents: "./test_workbook_documents.xlsx"
-    batch: "./test_workbook_batch.xlsx"
-    max: "./test_workbook_max.xlsx"
+    basic: "./sample_workbook.xlsx"
+    multiclient: "./sample_workbook_multiclient.xlsx"
+    conditional: "./sample_workbook_conditional.xlsx"
+    documents: "./sample_workbook_documents.xlsx"
+    batch: "./sample_workbook_batch.xlsx"
+    max: "./sample_workbook_max.xlsx"
 ```
 
 Access via configuration:
@@ -761,7 +761,7 @@ Access via configuration:
 from src.config import get_config
 
 config = get_config()
-print(config.test.workbooks.basic)  # "./test_workbook_30.xlsx"
+print(config.test.workbooks.basic)  # "./sample_workbook.xlsx"
 ```
 
 ### Validation Scripts
