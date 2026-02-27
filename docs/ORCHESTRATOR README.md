@@ -611,6 +611,71 @@ orchestrator.run()
 
 ## Test Workbook Generators
 
+### Using the Makefile
+
+The project includes a Makefile for convenient test workbook management:
+
+```bash
+# Show available commands
+make help
+
+# Create all test workbooks
+make create
+
+# Run orchestrator on all workbooks
+make run
+
+# Validate all workbook results
+make validate
+
+# Spot check responses
+make spot-check
+
+# Full pipeline: clean, create, run, validate
+make all
+
+# Clean up test workbooks
+make clean
+
+# Run individual workbook
+make basic
+make batch CONCURRENCY=5
+```
+
+### Makefile Commands
+
+| Command | Description |
+|---------|-------------|
+| `make create` | Create all 6 test workbooks |
+| `make run` | Run orchestrator on all workbooks |
+| `make validate` | Validate all workbook results |
+| `make spot-check` | Spot check responses from key prompts |
+| `make all` | Full pipeline: clean → create → run → validate |
+| `make clean` | Remove all test workbooks |
+| `make basic` | Create and run basic workbook |
+| `make multiclient` | Create and run multiclient workbook |
+| `make conditional` | Create and run conditional workbook |
+| `make documents` | Create and run documents workbook |
+| `make batch` | Create and run batch workbook |
+| `make max` | Create and run max workbook |
+
+### Options
+
+| Option | Description |
+|--------|-------------|
+| `CONCURRENCY=N` | Set parallel execution (default: 3) |
+
+### Validation Scripts
+
+The `scripts/validation/` folder contains validation scripts:
+
+| Script | Purpose |
+|--------|---------|
+| `validate_all.py` | Validates all workbook results (success/fail/skip counts, condition errors) |
+| `spot_check.py` | Spot checks responses from key prompts |
+
+### Individual Scripts
+
 ### Standard Test Workbook
 
 ```bash

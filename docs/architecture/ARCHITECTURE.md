@@ -249,7 +249,22 @@ FFClients/
 │   ├── create_test_workbook_conditional.py  # Conditional execution test workbooks
 │   ├── create_test_workbook_documents.py    # Document reference test workbooks
 │   ├── create_test_workbook_max.py    # Stress test workbooks (100 executions)
-│   └── try_ai_mistralsmall_script.py  # Example usage script
+│   ├── try_ai_mistralsmall_script.py  # Example usage script
+│   └── validation/                   # Validation scripts
+│       ├── __init__.py
+│       ├── validate_all.py            # Validate all test workbook results
+│       └── spot_check.py              # Spot check responses
+│
+├── tasks.py                            # Invoke task runner (Python-based Makefile alternative)
+├── Makefile                            # GNU Make task runner
+│
+├── config/                            # Configuration files (pydantic-settings)
+│   ├── main.yaml                      # Core app settings
+│   ├── logging.yaml                   # Logging configuration
+│   ├── paths.yaml                     # File system paths
+│   ├── clients.yaml                   # AI client configurations
+│   ├── model_defaults.yaml            # Per-model defaults
+│   └── test.yaml                      # Test workbook settings
 │
 ├── logs/                              # Execution logs (git-ignored)
 │   └── orchestrator.log               # Current log (rotates daily)
@@ -311,6 +326,7 @@ FFClients/
 | Strategy | Client implementations | Interchangeable AI providers |
 | Template Method | `FFAzureClientBase._initialize_client()` | Allow subclasses to customize |
 | Registry | `ClientRegistry` | Lazy client instantiation, name-to-factory mapping |
+| Singleton | `get_config()` | Global configuration instance |
 
 ## Data Flow
 

@@ -56,7 +56,7 @@ def _load_all_configs() -> dict[str, Any]:
         "document_processor": _load_yaml_file("main.yaml").get("document_processor", {}),
         "clients": _load_yaml_file("clients.yaml").get("clients", {}),
         "model_defaults": _load_yaml_file("model_defaults.yaml").get("model_defaults", {}),
-        "test": _load_yaml_file("test.yaml").get("test", {}),
+        "test": _load_yaml_file("test.yaml").get("test_workbooks", {}),
     }
 
 
@@ -237,6 +237,27 @@ class ModelDefaultsConfig(BaseSettings):
     models: dict[str, dict[str, Any]] = Field(default_factory=dict)
 
 
+class TestWorkbookPathsConfig(BaseSettings):
+    """Test workbook file paths."""
+
+    basic: str = "./test_workbook_30.xlsx"
+    multiclient: str = "./test_workbook_multiclient.xlsx"
+    conditional: str = "./test_workbook_conditional.xlsx"
+    documents: str = "./test_workbook_documents.xlsx"
+    batch: str = "./test_workbook_batch.xlsx"
+    max: str = "./test_workbook_max.xlsx"
+
+
+class TestClientConfig(BaseSettings):
+    """Test client configuration for workbook generators."""
+
+    client_type: str = "litellm-mistral"
+    api_key_env: str = "MISTRAL_API_KEY"
+    model: str = "mistral-small-latest"
+    temperature: float = 0.7
+    max_tokens: int = 300
+
+
 class TestConfig(BaseSettings):
     """Test workbook generator configuration."""
 
@@ -249,6 +270,9 @@ class TestConfig(BaseSettings):
         "For math questions, just give the number."
     )
     output_dir: str = "."
+    workbooks: TestWorkbookPathsConfig = Field(default_factory=TestWorkbookPathsConfig)
+    test_clients: dict[str, TestClientConfig] = Field(default_factory=dict)
+    test_clients: dict[str, Any] = Field(default_factory=dict)
 
 
 class Config(BaseSettings):

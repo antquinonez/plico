@@ -10,3 +10,35 @@ test_workbooks:
   default_retries: 2
   default_system_instructions: "You are a helpful assistant. Give brief, concise answers. For math questions, just give the number."
   output_dir: "."
+  workbooks:
+    basic: "./test_workbook_30.xlsx"
+    multiclient: "./test_workbook_multiclient.xlsx"
+    conditional: "./test_workbook_conditional.xlsx"
+    documents: "./test_workbook_documents.xlsx"
+    batch: "./test_workbook_batch.xlsx"
+    max: "./test_workbook_max.xlsx"
+  test_clients:
+    default:
+      client_type: "litellm-mistral"
+      api_key_env: "MISTRAL_API_KEY"
+      model: "mistral-small-latest"
+      temperature: 0.7
+      max_tokens: 300
+    fast:
+      client_type: "litellm-mistral"
+      api_key_env: "MISTRAL_API_KEY"
+      model: "mistral-small-latest"
+      temperature: 0.3
+      max_tokens: 100
+    creative:
+      client_type: "litellm-mistral"
+      api_key_env: "MISTRAL_API_KEY"
+      model: "mistral-small-latest"
+      temperature: 0.9
+      max_tokens: 500
+    analytical:
+      client_type: "litellm-mistral"
+      api_key_env: "MISTRAL_API_KEY"
+      model: "mistral-small-latest"
+      temperature: 0.2
+      max_tokens: 400

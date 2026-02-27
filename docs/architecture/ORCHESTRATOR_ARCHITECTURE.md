@@ -650,3 +650,138 @@ if summary.get("batch_mode"):
 - `create_test_workbook_documents.py` - 7 prompts with document references
 - `create_test_workbook_conditional.py` - 30 prompts with conditional execution
 - `create_test_workbook_max.py` - 100 executions for stress testing
+
+### Test Workbook Paths
+
+Test workbook paths are configured in `config/test.yaml`:
+
+```yaml
+test_workbooks:
+  workbooks:
+    basic: "./test_workbook_30.xlsx"
+    multiclient: "./test_workbook_multiclient.xlsx"
+    conditional: "./test_workbook_conditional.xlsx"
+    documents: "./test_workbook_documents.xlsx"
+    batch: "./test_workbook_batch.xlsx"
+    max: "./test_workbook_max.xlsx"
+```
+
+Access via configuration:
+
+```python
+from src.config import get_config
+
+config = get_config()
+print(config.test.workbooks.basic)  # "./test_workbook_30.xlsx"
+```
+
+### Validation Scripts
+
+The `scripts/validation/` folder contains scripts for validating test workbook results:
+
+| Script | Purpose |
+|--------|---------|
+| `validate_all.py` | Validates all workbook results (success/fail/skip counts, condition errors) |
+| `spot_check.py` | Spot checks responses from key prompts |
+
+### Makefile Commands
+
+The project includes a `Makefile` for convenient test workbook management:
+
+```bash
+# Show available commands
+make help
+
+# Create all test workbooks
+make create
+
+# Run orchestrator on all workbooks
+make run
+
+# Validate all workbook results
+make validate
+
+# Full pipeline: clean, create, run, validate
+make all
+
+# Run individual workbook
+make basic CONCURRENCY=5
+```
+
+| Command | Description |
+|---------|-------------|
+| `make create` | Create all 6 test workbooks |
+| `make run` | Run orchestrator on all workbooks |
+| `make validate` | Validate all workbook results |
+| `make spot-check` | Spot check responses |
+| `make all` | Full pipeline: clean → create → run → validate |
+| `make clean` | Remove all test workbooks |
+| `make basic` | Create and run basic workbook |
+| `make batch` | Create and run batch workbook |
+| `make max` | Create and run max workbook |
+
+| Option | Description |
+|--------|-------------|
+| `CONCURRENCY=N` | Set parallel execution (default: 3) |
+
+### Invoke Tasks (Python-based task runner)
+
+The project also includes an Invoke-based task runner (`tasks.py`) that uses the config system directly:
+
+```bash
+# Show all available tasks
+inv --list
+
+# Create all test workbooks (sequential)
+inv create
+
+# Create workbooks in parallel
+inv create --parallel
+
+# Run orchestrator on all workbooks
+inv run
+
+# Run with custom concurrency
+inv run -c 4
+
+# Run workbooks in parallel
+inv run --parallel
+
+# Validate all workbook results
+inv validate
+
+# Full pipeline
+inv all
+
+# Individual workbooks
+inv basic
+inv batch
+inv max
+
+# Utility tasks
+inv config-check    # Display current configuration
+inv lint            # Run ruff linting
+inv test            # Run unit tests
+```
+
+| Task | Description |
+|------|-------------|
+| `inv create` | Create all test workbooks |
+| `inv create --parallel` | Create workbooks in parallel |
+| `inv run` | Run orchestrator on all workbooks |
+| `inv run -c N` | Run with custom concurrency |
+| `inv run --parallel` | Run workbooks in parallel |
+| `inv validate` | Validate all workbook results |
+| `inv spot-check` | Spot check responses |
+| `inv all` | Full pipeline: clean → create → run → validate |
+| `inv clean` | Remove all test workbooks |
+| `inv config-check` | Display current configuration values |
+| `inv lint` | Run ruff linting |
+| `inv test` | Run unit tests |
+
+**Advantages of Invoke over Makefile:**
+- Native Python - can import and use config system directly
+- Cross-platform (works on Windows)
+- Tab completion available
+- Task dependencies
+- Better error handling

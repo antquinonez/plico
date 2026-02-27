@@ -70,28 +70,22 @@ def create_multiclient_test_workbook(output_path: str):
     for col_idx, header in enumerate(clients_headers, start=1):
         ws_clients.cell(row=1, column=col_idx, value=header)
 
-    # Define multiple clients using FFLiteLLMClient (litellm-mistral type)
-    # NOTE: These are example configurations. You need to have the appropriate
-    # API keys set in your environment variables (MISTRAL_API_KEY for Mistral).
-    clients_data = [
-        (
-            "default",
-            "litellm-mistral",
-            "MISTRAL_API_KEY",
-            "mistral-small-latest",
-            0.7,
-            300,
-        ),
-        ("fast", "litellm-mistral", "MISTRAL_API_KEY", "mistral-small-latest", 0.3, 100),
-        (
-            "creative",
-            "litellm-mistral",
-            "MISTRAL_API_KEY",
-            "mistral-small-latest",
-            0.9,
-            500,
-        ),
-    ]
+    # Define multiple clients from config
+    test_clients = test_config.test_clients
+    clients_data = []
+    for name in ["default", "fast", "creative"]:
+        if name in test_clients:
+            cfg = test_clients[name]
+            clients_data.append(
+                (
+                    name,
+                    cfg["client_type"],
+                    cfg["api_key_env"],
+                    cfg["model"],
+                    cfg["temperature"],
+                    cfg["max_tokens"],
+                )
+            )
 
     for row_idx, client_row in enumerate(clients_data, start=2):
         for col_idx, value in enumerate(client_row, start=1):
@@ -267,9 +261,5 @@ def create_multiclient_test_workbook(output_path: str):
 
 if __name__ == "__main__":
     config = get_config()
-    output = (
-        sys.argv[1]
-        if len(sys.argv) > 1
-        else os.path.join(config.test.output_dir, "test_workbook_multiclient.xlsx")
-    )
+    output = sys.argv[1] if len(sys.argv) > 1 else config.test.workbooks.multiclient
     create_multiclient_test_workbook(output)

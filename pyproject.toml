@@ -40,6 +40,7 @@ dev = [
     "pytest-cov",
     "pre-commit",
     "ruff",
+    "invoke>=2.0.0",
 ]
 
 [tool.pytest.ini_options]
@@ -106,6 +107,7 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["ARG", "SIM", "E712", "F841", "F811", "SIM117", "C401"]
 "src/Clients/*" = ["B904", "F841", "UP038"]
+"tasks.py" = ["ARG001", "E501"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["src"]
