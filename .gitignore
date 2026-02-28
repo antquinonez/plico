@@ -8,3 +8,4 @@ logs/
 *.xlsx
 src/ideas/*
 chroma_db/*
+library/*
