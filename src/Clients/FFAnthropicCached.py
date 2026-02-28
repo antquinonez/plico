@@ -165,7 +165,7 @@ class FFAnthropicCached:
         return [i.response for i in self.ordered_history.get_all_interactions()]
 
     def get_model_usage_stats(self) -> dict[str, int]:
-        usage_stats = {}
+        usage_stats: dict[str, int] = {}
         for interaction in self.ordered_history.get_all_interactions():
             usage_stats[interaction.model] = usage_stats.get(interaction.model, 0) + 1
         return usage_stats

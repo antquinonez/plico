@@ -31,7 +31,7 @@ class HierarchicalTextChunk(TextChunk):
 
     id: str = ""
     parent_id: str | None = None
-    child_ids: list[str] = None
+    child_ids: list[str] | None = None
     hierarchy_level: int = 0
 
     def __post_init__(self) -> None:

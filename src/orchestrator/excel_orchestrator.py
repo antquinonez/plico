@@ -1113,7 +1113,7 @@ class ExcelOrchestrator:
             summary["total_batches"] = len(batch_ids)
             summary["batch_mode"] = True
 
-            batch_failures = {}
+            batch_failures: dict[int, int] = {}
             for r in self.results:
                 if r["status"] == "failed":
                     batch_id = r.get("batch_id", 0)

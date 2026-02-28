@@ -358,7 +358,6 @@ class SampleConfig(BaseSettings):
     output_dir: str = "."
     workbooks: SampleWorkbookPathsConfig = Field(default_factory=SampleWorkbookPathsConfig)
     sample_clients: dict[str, SampleClientConfig] = Field(default_factory=dict)
-    sample_clients: dict[str, Any] = Field(default_factory=dict)
 
 
 class Config(BaseSettings):

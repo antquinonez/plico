@@ -96,7 +96,7 @@ class OrderedPromptHistory:
 
         return "\n".join(cleaned_lines).strip()
 
-    def get_effective_prompt_name(self, prompt_name: Any) -> str:  # noqa: ANN401
+    def get_effective_prompt_name(self, prompt_name: Any) -> str | tuple[str, ...]:  # noqa: ANN401
         """Get the effective prompt name from various input types.
 
         Args:
@@ -138,6 +138,8 @@ class OrderedPromptHistory:
             else:
                 logger.debug(f"returning effective_prompt: {tuple(values)} | type: tuple")
                 return tuple(values)
+
+        return ""
 
     def add_interaction(
         self,

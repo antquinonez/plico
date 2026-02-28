@@ -77,7 +77,7 @@ class FFAnthropic:
         logger.debug(f"System instructions: {self.system_instructions}")
         logger.debug(f"Max model: {self.max_model}")
 
-        self.conversation_history = []
+        self.conversation_history: list[dict[str, str]] = []
         self.client: Anthropic = self._initialize_client()
 
     def _initialize_client(self) -> Anthropic:

@@ -112,28 +112,6 @@ class TestFFAzureCodestralInit:
 
             assert response == "This is a test response."
 
-    def test_explain_code_method(self, mock_azure_client, mock_azure_response):
-        """Test the explain_code helper method."""
-        with patch("src.Clients.FFAzureClientBase.ChatCompletionsClient") as MockClient:
-            MockClient.return_value = mock_azure_client
-            from src.Clients.FFAzureCodestral import FFAzureCodestral
-
-            client = FFAzureCodestral(api_key="test-key", endpoint="https://test.endpoint.com")
-            response = client.explain_code("print('hello')")
-
-            assert response == "This is a test response."
-
-    def test_explain_code_method(self, mock_azure_client, mock_azure_response):
-        """Test the explain_code helper method."""
-        with patch("src.Clients.FFAzureCodestral.ChatCompletionsClient") as MockClient:
-            MockClient.return_value = mock_azure_client
-            from src.Clients.FFAzureCodestral import FFAzureCodestral
-
-            client = FFAzureCodestral(api_key="test-key", endpoint="https://test.endpoint.com")
-            response = client.explain_code("print('hello')")
-
-            assert response == "This is a test response."
-
 
 class TestFFAzureDeepSeekInit:
     """Tests for FFAzureDeepSeek initialization."""

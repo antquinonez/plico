@@ -102,8 +102,8 @@ class FFAI:
         self._history_lock = history_lock
         self._client_history_lock = threading.Lock()
 
-        self.history = []
-        self.clean_history = []
+        self.history: list[dict[str, Any]] = []
+        self.clean_history: list[dict[str, Any]] = []
 
         if shared_prompt_attr_history is not None:
             self.prompt_attr_history = shared_prompt_attr_history
@@ -478,7 +478,7 @@ class FFAI:
 
     def get_model_usage_stats(self) -> dict[str, int]:
         """Get statistics on model usage."""
-        usage_stats = {}
+        usage_stats: dict[str, int] = {}
         for interaction in self.ordered_history.get_all_interactions():
             usage_stats[interaction.model] = usage_stats.get(interaction.model, 0) + 1
         return usage_stats

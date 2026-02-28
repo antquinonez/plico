@@ -70,7 +70,7 @@ class FFAzureDeepSeek:
         )
         logger.debug(f"System instructions: {self.system_instructions}")
 
-        self.conversation_history = []
+        self.conversation_history: list[dict[str, str]] = []
         self.client = self._initialize_client()
 
     def _initialize_client(self) -> ChatCompletionsClient:

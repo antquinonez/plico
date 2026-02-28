@@ -299,7 +299,7 @@ class FFVectorStore:
             include=["metadatas"],
         )
 
-        indexed_docs = {}
+        indexed_docs: dict[tuple[str, str], dict[str, str]] = {}
         if results["metadatas"]:
             for meta in results["metadatas"]:
                 ref_name = meta.get("reference_name")
