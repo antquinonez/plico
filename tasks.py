@@ -36,7 +36,7 @@ sys.path.insert(0, str(Path(__file__).parent))
 
 from src.config import get_config
 
-VENV_ACTIVATION = "source .venv/bin/activate && POLARS_SKIP_CPU_CHECK=1"
+VENV_ACTIVATION = "source .venv313/bin/activate && POLARS_SKIP_CPU_CHECK=1"
 
 
 def _run_cmd(ctx: Context, cmd: str, capture: bool = False) -> subprocess.CompletedProcess | None:
@@ -160,7 +160,7 @@ EXAMPLES:
 
 CONFIGURATION:
     Workbook paths and client configurations are loaded from config/test.yaml
-    Access via: config.test.workbooks.basic, config.test.test_clients, etc.
+    Access via: config.sample.workbooks.basic, config.sample.sample_clients, etc.
 """)
 
 
@@ -191,9 +191,12 @@ def create(c: Context, parallel: bool = False, quiet: bool = False) -> None:
                     print(f"  ✗ {name}: {output}")
     else:
         for name in workbook_names:
-            _create_single_workbook(name)
+            _, success, output = _create_single_workbook(name)
             if not quiet:
-                print(f"  ✓ {name}")
+                if success:
+                    print(f"  ✓ {name}")
+                else:
+                    print(f"  ✗ {name}: {output}")
 
     print("All workbooks created.")
 
@@ -204,12 +207,12 @@ def clean(c: Context) -> None:
     config = get_config()
 
     paths = [
-        config.test.workbooks.basic,
-        config.test.workbooks.multiclient,
-        config.test.workbooks.conditional,
-        config.test.workbooks.documents,
-        config.test.workbooks.batch,
-        config.test.workbooks.max,
+        config.sample.workbooks.basic,
+        config.sample.workbooks.multiclient,
+        config.sample.workbooks.conditional,
+        config.sample.workbooks.documents,
+        config.sample.workbooks.batch,
+        config.sample.workbooks.max,
     ]
 
     print("Removing test workbooks...")
@@ -305,7 +308,7 @@ def basic(c: Context, concurrency: str = "3") -> None:
     """Create and run basic workbook."""
     config = get_config()
     _run_cmd(
-        c, f"python scripts/run_orchestrator.py {config.test.workbooks.basic} -c {concurrency}"
+        c, f"python scripts/run_orchestrator.py {config.sample.workbooks.basic} -c {concurrency}"
     )
 
 
@@ -315,7 +318,7 @@ def multiclient(c: Context, concurrency: str = "2") -> None:
     config = get_config()
     _run_cmd(
         c,
-        f"python scripts/run_orchestrator.py {config.test.workbooks.multiclient} -c {concurrency}",
+        f"python scripts/run_orchestrator.py {config.sample.workbooks.multiclient} -c {concurrency}",
     )
 
 
@@ -325,7 +328,7 @@ def conditional(c: Context, concurrency: str = "3") -> None:
     config = get_config()
     _run_cmd(
         c,
-        f"python scripts/run_orchestrator.py {config.test.workbooks.conditional} -c {concurrency}",
+        f"python scripts/run_orchestrator.py {config.sample.workbooks.conditional} -c {concurrency}",
     )
 
 
@@ -333,7 +336,7 @@ def conditional(c: Context, concurrency: str = "3") -> None:
 def documents(c: Context) -> None:
     """Create and run documents workbook."""
     config = get_config()
-    _run_cmd(c, f"python scripts/run_orchestrator.py {config.test.workbooks.documents}")
+    _run_cmd(c, f"python scripts/run_orchestrator.py {config.sample.workbooks.documents}")
 
 
 @task(create)
@@ -341,7 +344,7 @@ def batch(c: Context, concurrency: str = "3") -> None:
     """Create and run batch workbook."""
     config = get_config()
     _run_cmd(
-        c, f"python scripts/run_orchestrator.py {config.test.workbooks.batch} -c {concurrency}"
+        c, f"python scripts/run_orchestrator.py {config.sample.workbooks.batch} -c {concurrency}"
     )
 
 
@@ -349,7 +352,9 @@ def batch(c: Context, concurrency: str = "3") -> None:
 def max(c: Context, concurrency: str = "3") -> None:
     """Create and run max workbook."""
     config = get_config()
-    _run_cmd(c, f"python scripts/run_orchestrator.py {config.test.workbooks.max} -c {concurrency}")
+    _run_cmd(
+        c, f"python scripts/run_orchestrator.py {config.sample.workbooks.max} -c {concurrency}"
+    )
 
 
 # ============================================================================
@@ -367,21 +372,21 @@ def config_check(c: Context) -> None:
     print("=" * 60)
 
     print("\nTest Workbook Paths:")
-    print(f"  basic:       {config.test.workbooks.basic}")
-    print(f"  multiclient: {config.test.workbooks.multiclient}")
-    print(f"  conditional: {config.test.workbooks.conditional}")
-    print(f"  documents:   {config.test.workbooks.documents}")
-    print(f"  batch:       {config.test.workbooks.batch}")
-    print(f"  max:         {config.test.workbooks.max}")
+    print(f"  basic:       {config.sample.workbooks.basic}")
+    print(f"  multiclient: {config.sample.workbooks.multiclient}")
+    print(f"  conditional: {config.sample.workbooks.conditional}")
+    print(f"  documents:   {config.sample.workbooks.documents}")
+    print(f"  batch:       {config.sample.workbooks.batch}")
+    print(f"  max:         {config.sample.workbooks.max}")
 
     print("\nTest Defaults:")
-    print(f"  model:       {config.test.default_model}")
-    print(f"  temperature: {config.test.default_temperature}")
-    print(f"  max_tokens:  {config.test.default_max_tokens}")
-    print(f"  retries:     {config.test.default_retries}")
+    print(f"  model:       {config.sample.default_model}")
+    print(f"  temperature: {config.sample.default_temperature}")
+    print(f"  max_tokens:  {config.sample.default_max_tokens}")
+    print(f"  retries:     {config.sample.default_retries}")
 
     print("\nTest Clients:")
-    for name, client_cfg in config.test.test_clients.items():
+    for name, client_cfg in config.sample.sample_clients.items():
         print(f"  {name}:")
         print(f"    client_type:  {client_cfg['client_type']}")
         print(f"    temperature:  {client_cfg['temperature']}")
@@ -431,7 +436,7 @@ def test_all(c: Context) -> None:
 def index_status(c: Context) -> None:
     """Show current RAG indexing status.
 
-    Displays all indexed documents grouped by index type,
+    Displays all indexed documents grouped by chunking strategy,
     along with their checksums and last indexed time.
     """
     from src.RAG import FFRAGClient
@@ -448,19 +453,19 @@ def index_status(c: Context) -> None:
             print("\nNo documents indexed.")
             return
 
-        by_type: dict[str, list[dict]] = {}
+        by_strategy: dict[str, list[dict]] = {}
         for doc in indexed_docs:
-            idx_type = doc.get("index_type", "unknown")
-            if idx_type not in by_type:
-                by_type[idx_type] = []
-            by_type[idx_type].append(doc)
+            strategy = doc.get("chunking_strategy", "unknown")
+            if strategy not in by_strategy:
+                by_strategy[strategy] = []
+            by_strategy[strategy].append(doc)
 
         total_chunks = rag.count()
         print(f"\nTotal chunks: {total_chunks}")
-        print(f"Index types: {len(by_type)}")
+        print(f"Chunking strategies: {len(by_strategy)}")
 
-        for idx_type, docs in sorted(by_type.items()):
-            print(f"\n--- Index Type: {idx_type} ({len(docs)} documents) ---")
+        for strategy, docs in sorted(by_strategy.items()):
+            print(f"\n--- Chunking Strategy: {strategy} ({len(docs)} documents) ---")
             for doc in docs:
                 ref = doc.get("reference_name", "unknown")
                 checksum = doc.get("document_checksum", "")[:8]
@@ -474,17 +479,17 @@ def index_status(c: Context) -> None:
 
 
 @task
-def index_clear(c: Context, index_type: str = "") -> None:
+def index_clear(c: Context, chunking_strategy: str = "") -> None:
     """Clear RAG indexes.
 
     Args:
-        index_type: Specific index type to clear (e.g., 'recursive', 'markdown').
-                   If empty, clears ALL indexes.
+        chunking_strategy: Specific chunking strategy to clear (e.g., 'recursive', 'markdown').
+                    If empty, clears ALL indexes.
 
     Examples:
-        inv index-clear                   # Clear all indexes
-        inv index-clear -i recursive      # Clear only 'recursive' indexes
-        inv index-clear -i markdown       # Clear only 'markdown' indexes
+        inv index-clear                          # Clear all indexes
+        inv index-clear -c recursive             # Clear only 'recursive' indexes
+        inv index-clear -c markdown              # Clear only 'markdown' indexes
     """
     from src.RAG import FFRAGClient
 
@@ -495,10 +500,10 @@ def index_clear(c: Context, index_type: str = "") -> None:
     try:
         rag = FFRAGClient()
 
-        if index_type:
-            print(f"\nClearing index type: {index_type}")
-            count = rag.clear_index_type(index_type)
-            print(f"Cleared {count} documents from index type '{index_type}'")
+        if chunking_strategy:
+            print(f"\nClearing chunking strategy: {chunking_strategy}")
+            count = rag.clear_chunking_strategy(chunking_strategy)
+            print(f"Cleared {count} documents from chunking strategy '{chunking_strategy}'")
         else:
             print("\nClearing ALL indexes...")
             rag.clear()
@@ -511,39 +516,39 @@ def index_clear(c: Context, index_type: str = "") -> None:
 
 
 @task
-def index_clear_type(c: Context, index_type: str) -> None:
-    """Clear RAG indexes for a specific index type only.
+def index_clear_strategy(c: Context, chunking_strategy: str) -> None:
+    """Clear RAG indexes for a specific chunking strategy only.
 
     Args:
-        index_type: The index type to clear (e.g., 'recursive', 'markdown', 'code').
+        chunking_strategy: The chunking strategy to clear (e.g., 'recursive', 'markdown', 'code').
 
     Examples:
-        inv index-clear-type recursive
-        inv index-clear-type markdown
+        inv index-clear-strategy recursive
+        inv index-clear-strategy markdown
 
     """
     from src.RAG import FFRAGClient
 
     print("\n" + "=" * 60)
-    print("CLEAR RAG INDEX TYPE")
+    print("CLEAR RAG INDEXING STRATEGY")
     print("=" * 60)
 
-    if not index_type:
-        print("\nError: index_type is required")
-        print("Usage: inv index-clear-type <index_type>")
+    if not chunking_strategy:
+        print("\nError: chunking_strategy is required")
+        print("Usage: inv index-clear-strategy <chunking_strategy>")
         return
 
     try:
         rag = FFRAGClient()
-        print(f"\nClearing all indexes with type: {index_type}")
+        print(f"\nClearing all indexes with strategy: {chunking_strategy}")
 
-        cleared = rag.clear_index_type(index_type)
-        print(f"Cleared {cleared} documents with index_type={index_type}")
+        cleared = rag.clear_chunking_strategy(chunking_strategy)
+        print(f"Cleared {cleared} documents with chunking_strategy={chunking_strategy}")
 
     except ImportError:
         print("\nRAG not available. Ensure chromadb is installed.")
     except Exception as e:
-        print(f"\nError clearing index type: {e}")
+        print(f"\nError clearing chunking strategy: {e}")
 
 
 @task
@@ -654,8 +659,10 @@ def rag_stats(c: Context) -> None:
         print(f"Hierarchical: {stats.get('hierarchical_enabled', False)}")
 
         indexed_docs = rag.get_indexed_documents()
-        index_types = {d.get("index_type", "unknown") for d in indexed_docs}
-        print(f"\nIndex types in use: {', '.join(sorted(index_types)) if index_types else 'none'}")
+        strategies = {d.get("chunking_strategy", "unknown") for d in indexed_docs}
+        print(
+            f"\nChunking strategies in use: {', '.join(sorted(strategies)) if strategies else 'none'}"
+        )
         print(f"Documents indexed: {len(indexed_docs)}")
 
     except ImportError:
@@ -686,7 +693,7 @@ ns = {
     "test-all": test_all,
     "index-status": index_status,
     "index-clear": index_clear,
-    "index-clear-type": index_clear_type,
+    "index-clear-strategy": index_clear_strategy,
     "index-rebuild": index_rebuild,
     "rag-stats": rag_stats,
 }

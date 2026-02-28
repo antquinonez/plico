@@ -29,7 +29,7 @@ from src.config import get_config
 
 def create_batch_sample_workbook(output_path: str):
     config = get_config()
-    test_config = config.test
+    test_config = config.sample
     batch_config = config.workbook.batch
 
     wb = Workbook()
@@ -456,5 +456,5 @@ def create_batch_sample_workbook(output_path: str):
 
 if __name__ == "__main__":
     config = get_config()
-    output = sys.argv[1] if len(sys.argv) > 1 else config.test.workbooks.batch
+    output = sys.argv[1] if len(sys.argv) > 1 else config.sample.workbooks.batch
     create_batch_sample_workbook(output)

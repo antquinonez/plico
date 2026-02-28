@@ -205,7 +205,7 @@ DocumentProcessor.index_to_rag()
 ┌─────────────────────────┐
 │   FFVectorStore         │
 │   .add_chunks()         │
-│   (with index_type,     │
+│   (with chunking_strategy,   │
 │    document_checksum)   │
 └───────────┬─────────────┘
             │
@@ -349,7 +349,7 @@ Based on the documents above and relevant context, please answer:
 | Field | Description |
 |-------|-------------|
 | `reference_name` | Document identifier |
-| `index_type` | Chunking strategy used (recursive, markdown, code, hierarchical, character) |
+| `chunking_strategy` | Chunking strategy used (recursive, markdown, code, hierarchical, character) |
 | `document_checksum` | SHA256 hash of original document content |
 | `indexed_at` | ISO timestamp when document was indexed |
 | `_chunk_index` | Index within document |
@@ -380,7 +380,7 @@ Each chunk in ChromaDB includes metadata for tracking:
 
 | Metadata Field | Description |
 |----------------|-------------|
-| `index_type` | Chunking strategy used (recursive, markdown, code, hierarchical, character) |
+| `chunking_strategy` | Chunking strategy used (recursive, markdown, code, hierarchical, character) |
 | `document_checksum` | SHA256 hash of document content |
 | `indexed_at` | ISO timestamp when document was indexed |
 | `reference_name` | Document identifier |
@@ -389,7 +389,7 @@ Each chunk in ChromaDB includes metadata for tracking:
 
 Documents are reindexed when:
 1. Document content changes (checksum mismatch)
-2. Chunking strategy changes (different `index_type`)
+2. Chunking strategy changes (different `chunking_strategy`)
 3. Manual rebuild requested via invoke task
 
 ### Flow
@@ -420,7 +420,7 @@ DocumentRegistry.index_all_documents()
          │                   │
          │                   └──► FFRAGClient.index_document()
          │                             │
-         │                             └──► FFVectorStore.add_chunks(index_type, checksum)
+          │                             └──► FFVectorStore.add_chunks(chunking_strategy, checksum)
          │
          ▼
     Orchestrator continues with all documents pre-indexed
@@ -450,14 +450,14 @@ inv index-clear
 
 Removes all chunks from the vector store. Use with caution.
 
-### Clear Specific Index Type
+### Clear Specific Chunking Strategy
 
 ```bash
-inv index-clear-type recursive
-inv index-clear-type markdown
+inv index-clear-strategy recursive
+inv index-clear-strategy markdown
 ```
 
-Removes only chunks with the specified `index_type`. Useful when changing chunking strategies.
+Removes only chunks with the specified `chunking_strategy`. Useful when changing chunking strategies.
 
 ### Rebuild Indexes
 

@@ -48,7 +48,7 @@ def main():
     args = parser.parse_args()
 
     config = get_config()
-    workbooks = config.test.workbooks
+    workbooks = config.sample.workbooks
 
     print("=" * 80)
     print("SPOT CHECK: Basic Workbook")

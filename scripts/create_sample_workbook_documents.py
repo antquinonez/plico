@@ -423,5 +423,5 @@ def create_sample_workbook(output_path: str):
 
 if __name__ == "__main__":
     config = get_config()
-    output = sys.argv[1] if len(sys.argv) > 1 else config.test.workbooks.documents
+    output = sys.argv[1] if len(sys.argv) > 1 else config.sample.workbooks.documents
     create_sample_workbook(output)

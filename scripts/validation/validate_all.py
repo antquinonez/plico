@@ -127,7 +127,7 @@ def main():
     args = parser.parse_args()
 
     config = get_config()
-    workbooks = config.test.workbooks
+    workbooks = config.sample.workbooks
 
     workbook_configs = [
         (workbooks.basic, "Basic", 31),

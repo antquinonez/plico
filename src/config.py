@@ -13,7 +13,7 @@ Config files:
   config/paths.yaml         - File system paths
   config/clients.yaml       - AI client configurations
   config/model_defaults.yaml - Per-model default parameters
-  config/test.yaml          - Test workbook defaults
+  config/sample_workbook.yaml - Sample workbook defaults
 """
 
 from __future__ import annotations

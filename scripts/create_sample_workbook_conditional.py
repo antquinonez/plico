@@ -37,7 +37,7 @@ from src.config import get_config
 
 def create_conditional_sample_workbook(output_path: str):
     config = get_config()
-    test_config = config.test
+    test_config = config.sample
 
     wb = Workbook()
 
@@ -87,7 +87,7 @@ def create_conditional_sample_workbook(output_path: str):
         ws_clients.cell(row=1, column=col_idx, value=header)
 
     # Define multiple clients from config
-    test_clients = test_config.test_clients
+    test_clients = test_config.sample_clients
     clients_data = []
     for name in ["default", "fast", "creative"]:
         if name in test_clients:
@@ -586,5 +586,5 @@ def create_conditional_sample_workbook(output_path: str):
 
 if __name__ == "__main__":
     config = get_config()
-    output = sys.argv[1] if len(sys.argv) > 1 else config.test.workbooks.conditional
+    output = sys.argv[1] if len(sys.argv) > 1 else config.sample.workbooks.conditional
     create_conditional_sample_workbook(output)

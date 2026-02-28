@@ -241,7 +241,7 @@ Reference in prompts with `["product_spec"]` in the `references` column.
 ```bash
 inv index-status           # View indexed documents
 inv index-rebuild          # Rebuild all indexes
-inv index-clear-type markdown  # Clear specific index type
+inv index-clear-strategy markdown  # Clear specific chunking strategy
 inv rag-stats              # View RAG statistics
 ```
 

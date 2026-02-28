@@ -152,7 +152,7 @@ FFClients is a declarative context handling API wrapper for AI models with Excel
 - Hybrid search combining vector similarity with BM25 keyword matching
 - Post-retrieval reranking (cross-encoder, diversity)
 - Pre-indexing at orchestrator startup (all documents indexed automatically)
-- Index tracking by `index_type` and `document_checksum` for clean management
+- Index tracking by `chunking_strategy` and `document_checksum` for clean management
 - Hierarchical indexing with parent-child context
 - Semantic search with configurable embedding models (Mistral, OpenAI, Azure)
 - Persistent vector storage via ChromaDB

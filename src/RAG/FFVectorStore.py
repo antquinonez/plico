@@ -96,7 +96,7 @@ class FFVectorStore:
         self,
         chunks: list[TextChunk],
         ids: list[str] | None = None,
-        index_type: str = "default",
+        chunking_strategy: str = "default",
         document_checksum: str = "",
     ) -> int:
         """Add text chunks to the vector store.
@@ -105,7 +105,7 @@ class FFVectorStore:
             chunks: List of TextChunk objects to add.
             ids: Optional list of unique IDs for each chunk.
                  If not provided, IDs are generated.
-            index_type: The indexing strategy used (for clean index management).
+            chunking_strategy: The chunking strategy used (for clean index management).
             document_checksum: Checksum of the source document.
 
         Returns:
@@ -125,7 +125,7 @@ class FFVectorStore:
 
         if ids is None:
             ids = [
-                f"{(chunk.metadata or {}).get('reference_name', 'doc')}_{index_type}_{chunk.chunk_index}_{i}"
+                f"{(chunk.metadata or {}).get('reference_name', 'doc')}_{chunking_strategy}_{chunk.chunk_index}_{i}"
                 for i, chunk in enumerate(chunks)
             ]
 
@@ -135,7 +135,7 @@ class FFVectorStore:
             meta["_chunk_index"] = chunk.chunk_index
             meta["_start_char"] = chunk.start_char
             meta["_end_char"] = chunk.end_char
-            meta["index_type"] = index_type
+            meta["chunking_strategy"] = chunking_strategy
             meta["document_checksum"] = document_checksum
             meta["indexed_at"] = indexed_at
             metadatas.append(meta)
@@ -256,36 +256,43 @@ class FFVectorStore:
         self._collection.delete(where={"reference_name": reference_name})
         logger.info(f"Deleted all chunks for reference: {reference_name}")
 
-    def delete_by_reference_and_type(self, reference_name: str, index_type: str) -> int:
-        """Delete chunks for a specific document and index type.
+    def delete_by_reference_and_strategy(self, reference_name: str, chunking_strategy: str) -> int:
+        """Delete chunks for a specific document and chunking strategy.
 
         Args:
             reference_name: The reference_name metadata to match.
-            index_type: The index_type metadata to match.
+            chunking_strategy: The chunking_strategy metadata to match.
 
         Returns:
             Number of chunks deleted (approximate).
 
         """
         self._collection.delete(
-            where={"$and": [{"reference_name": reference_name}, {"index_type": index_type}]}
+            where={
+                "$and": [
+                    {"reference_name": reference_name},
+                    {"chunking_strategy": chunking_strategy},
+                ]
+            }
         )
-        logger.info(f"Deleted chunks for reference={reference_name}, index_type={index_type}")
+        logger.info(
+            f"Deleted chunks for reference={reference_name}, chunking_strategy={chunking_strategy}"
+        )
         return 0
 
-    def get_indexed_documents(self, index_type: str | None = None) -> list[dict[str, Any]]:
-        """Get list of indexed documents with their checksums and index types.
+    def get_indexed_documents(self, chunking_strategy: str | None = None) -> list[dict[str, Any]]:
+        """Get list of indexed documents with their checksums and chunking strategies.
 
         Args:
-            index_type: Optional filter by index type.
+            chunking_strategy: Optional filter by chunking strategy.
 
         Returns:
-            List of dicts with reference_name, index_type, document_checksum, indexed_at.
+            List of dicts with reference_name, chunking_strategy, document_checksum, indexed_at.
 
         """
         where_filter = None
-        if index_type:
-            where_filter = {"index_type": index_type}
+        if chunking_strategy:
+            where_filter = {"chunking_strategy": chunking_strategy}
 
         results = self._collection.get(
             where=where_filter,
@@ -296,31 +303,31 @@ class FFVectorStore:
         if results["metadatas"]:
             for meta in results["metadatas"]:
                 ref_name = meta.get("reference_name")
-                idx_type = meta.get("index_type", "unknown")
+                strategy = meta.get("chunking_strategy", "unknown")
                 checksum = meta.get("document_checksum", "")
                 indexed_at = meta.get("indexed_at", "")
 
                 if ref_name:
-                    key = (ref_name, idx_type)
+                    key = (ref_name, strategy)
                     if key not in indexed_docs or (
                         indexed_at and indexed_at > indexed_docs[key].get("indexed_at", "")
                     ):
                         indexed_docs[key] = {
                             "reference_name": ref_name,
-                            "index_type": idx_type,
+                            "chunking_strategy": strategy,
                             "document_checksum": checksum,
                             "indexed_at": indexed_at,
                         }
 
         return list(indexed_docs.values())
 
-    def needs_reindex(self, reference_name: str, checksum: str, index_type: str) -> bool:
+    def needs_reindex(self, reference_name: str, checksum: str, chunking_strategy: str) -> bool:
         """Check if a document needs re-indexing.
 
         Args:
             reference_name: Document reference name.
             checksum: Current document checksum.
-            index_type: Target index type.
+            chunking_strategy: Target chunking strategy.
 
         Returns:
             True if document needs re-indexing (not found or checksum changed).
@@ -330,7 +337,7 @@ class FFVectorStore:
             where={
                 "$and": [
                     {"reference_name": reference_name},
-                    {"index_type": index_type},
+                    {"chunking_strategy": chunking_strategy},
                 ]
             },
             include=["metadatas"],
@@ -338,7 +345,7 @@ class FFVectorStore:
         )
 
         if not results["metadatas"] or len(results["metadatas"]) == 0:
-            logger.debug(f"Document {reference_name} not indexed with type {index_type}")
+            logger.debug(f"Document {reference_name} not indexed with strategy {chunking_strategy}")
             return True
 
         existing_checksum = results["metadatas"][0].get("document_checksum", "")
@@ -349,7 +356,7 @@ class FFVectorStore:
             )
             return True
 
-        logger.debug(f"Document {reference_name} already indexed with type {index_type}")
+        logger.debug(f"Document {reference_name} already indexed with strategy {chunking_strategy}")
         return False
 
     def count(self) -> int:

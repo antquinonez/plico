@@ -208,7 +208,7 @@ class FFRAGClient:
         chunk_size: int | None = None,
         chunk_overlap: int | None = None,
         checksum: str | None = None,
-        index_type: str | None = None,
+        chunking_strategy: str | None = None,
     ) -> int:
         """Add a single document to the knowledge base.
 
@@ -219,7 +219,7 @@ class FFRAGClient:
             chunk_size: Override default chunk size.
             chunk_overlap: Override default chunk overlap.
             checksum: Document checksum for tracking (enables reindex detection).
-            index_type: Index type for clean index management.
+            chunking_strategy: Chunking strategy for clean index management.
 
         Returns:
             Number of chunks added.
@@ -233,7 +233,7 @@ class FFRAGClient:
         if reference_name:
             meta["reference_name"] = reference_name
 
-        effective_index_type = index_type or self.chunking_strategy
+        effective_strategy = chunking_strategy or self.chunking_strategy
 
         if chunk_size or chunk_overlap:
             chunker = get_chunker(
@@ -251,11 +251,11 @@ class FFRAGClient:
             else False
         ):
             return self._add_hierarchical_chunks(
-                chunks, reference_name, checksum=checksum, index_type=effective_index_type
+                chunks, reference_name, checksum=checksum, chunking_strategy=effective_strategy
             )
 
         return self._add_regular_chunks(
-            chunks, reference_name, checksum=checksum, index_type=effective_index_type
+            chunks, reference_name, checksum=checksum, chunking_strategy=effective_strategy
         )
 
     def index_document(
@@ -282,21 +282,21 @@ class FFRAGClient:
             Number of chunks indexed (0 if skipped).
 
         """
-        index_type = self.chunking_strategy
+        strategy = self.chunking_strategy
 
         if not force and not self._vector_store.needs_reindex(
             reference_name=reference_name,
             checksum=checksum,
-            index_type=index_type,
+            chunking_strategy=strategy,
         ):
             logger.debug(f"Document {reference_name} already indexed, skipping")
             return 0
 
-        logger.info(f"Indexing document {reference_name} with type {index_type}")
+        logger.info(f"Indexing document {reference_name} with strategy {strategy}")
 
-        self._vector_store.delete_by_reference_and_type(
+        self._vector_store.delete_by_reference_and_strategy(
             reference_name=reference_name,
-            index_type=index_type,
+            chunking_strategy=strategy,
         )
 
         chunks_added = self.add_document(
@@ -304,7 +304,7 @@ class FFRAGClient:
             reference_name=reference_name,
             metadata={"common_name": common_name},
             checksum=checksum,
-            index_type=index_type,
+            chunking_strategy=strategy,
         )
 
         logger.info(f"Indexed {chunks_added} chunks for {reference_name}")
@@ -315,12 +315,12 @@ class FFRAGClient:
         chunks: list[TextChunk],
         reference_name: str | None = None,
         checksum: str | None = None,
-        index_type: str | None = None,
+        chunking_strategy: str | None = None,
     ) -> int:
         """Add regular (non-hierarchical) chunks."""
         count = self._vector_store.add_chunks(
             chunks,
-            index_type=index_type or self.chunking_strategy,
+            chunking_strategy=chunking_strategy or self.chunking_strategy,
             document_checksum=checksum or "",
         )
 
@@ -342,7 +342,7 @@ class FFRAGClient:
         chunks: list[HierarchicalTextChunk],
         reference_name: str | None = None,
         checksum: str | None = None,
-        index_type: str | None = None,
+        chunking_strategy: str | None = None,
     ) -> int:
         """Add hierarchical chunks with parent-child relationships."""
         if not self._hierarchical_index:
@@ -372,7 +372,7 @@ class FFRAGClient:
         count = self._vector_store.add_chunks(
             child_chunks,
             ids=ids,
-            index_type=index_type or self.chunking_strategy,
+            chunking_strategy=chunking_strategy or self.chunking_strategy,
             document_checksum=checksum or "",
         )
 
@@ -540,24 +540,24 @@ class FFRAGClient:
         if self._hierarchical_index:
             self._hierarchical_index.delete_by_reference(reference_name)
 
-    def clear_index_type(self, index_type: str) -> int:
-        """Clear all chunks for a specific index type.
+    def clear_chunking_strategy(self, chunking_strategy: str) -> int:
+        """Clear all chunks for a specific chunking strategy.
 
         Args:
-            index_type: The index type to clear (e.g., "recursive", "markdown").
+            chunking_strategy: The chunking strategy to clear (e.g., "recursive", "markdown").
 
         Returns:
             Approximate number of chunks cleared.
 
         """
-        logger.info(f"Clearing all chunks with index_type={index_type}")
+        logger.info(f"Clearing all chunks with chunking_strategy={chunking_strategy}")
 
-        indexed_docs = self._vector_store.get_indexed_documents(index_type=index_type)
+        indexed_docs = self._vector_store.get_indexed_documents(chunking_strategy=chunking_strategy)
         count = 0
         for doc in indexed_docs:
             ref_name = doc.get("reference_name")
             if ref_name:
-                self._vector_store.delete_by_reference_and_type(ref_name, index_type)
+                self._vector_store.delete_by_reference_and_strategy(ref_name, chunking_strategy)
                 count += 1
 
         if self._bm25_index:
@@ -566,37 +566,37 @@ class FFRAGClient:
         if self._hierarchical_index:
             self._hierarchical_index.clear()
 
-        logger.info(f"Cleared index_type={index_type} for {count} documents")
+        logger.info(f"Cleared chunking_strategy={chunking_strategy} for {count} documents")
         return count
 
-    def get_indexed_documents(self, index_type: str | None = None) -> list[dict[str, Any]]:
+    def get_indexed_documents(self, chunking_strategy: str | None = None) -> list[dict[str, Any]]:
         """Get list of indexed documents.
 
         Args:
-            index_type: Optional filter by index type.
+            chunking_strategy: Optional filter by chunking strategy.
 
         Returns:
-            List of dicts with reference_name, index_type, document_checksum, indexed_at.
+            List of dicts with reference_name, chunking_strategy, document_checksum, indexed_at.
 
         """
-        return self._vector_store.get_indexed_documents(index_type=index_type)
+        return self._vector_store.get_indexed_documents(chunking_strategy=chunking_strategy)
 
     def needs_reindex(
-        self, reference_name: str, checksum: str, index_type: str | None = None
+        self, reference_name: str, checksum: str, chunking_strategy: str | None = None
     ) -> bool:
         """Check if a document needs re-indexing.
 
         Args:
             reference_name: Document reference name.
             checksum: Current document checksum.
-            index_type: Index type to check (defaults to current strategy).
+            chunking_strategy: Chunking strategy to check (defaults to current strategy).
 
         Returns:
             True if document needs re-indexing.
 
         """
-        effective_type = index_type or self.chunking_strategy
-        return self._vector_store.needs_reindex(reference_name, checksum, effective_type)
+        effective_strategy = chunking_strategy or self.chunking_strategy
+        return self._vector_store.needs_reindex(reference_name, checksum, effective_strategy)
 
     def count(self) -> int:
         """Get total number of chunks in the knowledge base."""

@@ -333,12 +333,14 @@ class DocumentRegistry:
         if not semantic_query:
             return prompt
 
+        logger.info(f"Performing semantic search for query: {semantic_query}")
         results = self.semantic_search(semantic_query, n_results=n_results)
 
         if not results:
             logger.warning(f"No semantic results for query: {semantic_query}")
             return prompt
 
+        logger.info(f"Found {len(results)} semantic results, injecting into prompt")
         context = self.format_semantic_results(results, max_chars=max_chars)
 
         return f"<RELEVANT_CONTEXT>\n{context}</RELEVANT_CONTEXT>\n\n===\nBased on the context above, please answer: {prompt}"
