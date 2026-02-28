@@ -16,7 +16,7 @@ Usage:
     inv run -c 4                # Run with concurrency=4
     inv validate                # Validate all workbook results
     inv all                     # Full pipeline: clean, create, run, validate
-    inv basic                   # Create and run basic workbook only
+    inv basic                   # Create, run, and validate basic workbook
 
 Parallel execution:
     inv create --parallel       # Create workbooks in parallel
@@ -65,22 +65,39 @@ def _get_workbook_configs() -> dict[str, tuple[str, str]]:
     }
 
 
+def _get_create_script(name: str) -> str:
+    """Get the create script path for a workbook type."""
+    script_map = {
+        "basic": "scripts/sample_workbook_basic_create_v001.py",
+        "multiclient": "scripts/sample_workbook_multiclient_create_v001.py",
+        "conditional": "scripts/sample_workbook_conditional_create_v001.py",
+        "documents": "scripts/sample_workbook_documents_create_v001.py",
+        "batch": "scripts/sample_workbook_batch_create_v001.py",
+        "max": "scripts/sample_workbook_max_create_v001.py",
+    }
+    return script_map[name]
+
+
+def _get_validate_script(name: str) -> str:
+    """Get the validate script path for a workbook type."""
+    script_map = {
+        "basic": "scripts/sample_workbook_basic_validate_v001.py",
+        "multiclient": "scripts/sample_workbook_multiclient_validate_v001.py",
+        "conditional": "scripts/sample_workbook_conditional_validate_v001.py",
+        "documents": "scripts/sample_workbook_documents_validate_v001.py",
+        "batch": "scripts/sample_workbook_batch_validate_v001.py",
+        "max": "scripts/sample_workbook_max_validate_v001.py",
+    }
+    return script_map[name]
+
+
 def _create_single_workbook(name: str) -> tuple[str, bool, str]:
     """Create a single workbook. Used for parallel execution.
 
     Returns:
         Tuple of (name, success, output/error message)
     """
-    script_map = {
-        "basic": "scripts/create_sample_workbook.py",
-        "multiclient": "scripts/create_sample_workbook_multiclient.py",
-        "conditional": "scripts/sample_workbook_conditional_create_v001.py",
-        "documents": "scripts/create_sample_workbook_documents.py",
-        "batch": "scripts/create_sample_workbook_batch.py",
-        "max": "scripts/create_sample_workbook_max.py",
-    }
-
-    script = script_map[name]
+    script = _get_create_script(name)
     cmd = f"{VENV_ACTIVATION} && python {script}"
 
     result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
@@ -102,6 +119,26 @@ def _run_single_workbook(name: str, concurrency: str) -> tuple[str, bool, str]:
     conc = concurrency or default_conc
 
     cmd = f"{VENV_ACTIVATION} && python scripts/run_orchestrator.py {path} -c {conc}"
+
+    result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+
+    if result.returncode == 0:
+        return (name, True, result.stdout[-500:] if len(result.stdout) > 500 else result.stdout)
+    else:
+        return (name, False, result.stderr or result.stdout)
+
+
+def _validate_single_workbook(name: str) -> tuple[str, bool, str]:
+    """Validate a single workbook. Used for parallel execution.
+
+    Returns:
+        Tuple of (name, success, output/error message)
+    """
+    configs = _get_workbook_configs()
+    path, _ = configs[name]
+    script = _get_validate_script(name)
+
+    cmd = f"{VENV_ACTIVATION} && python {script} {path}"
 
     result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
 
@@ -138,13 +175,13 @@ MAIN TASKS:
     inv spot-check          # Spot check responses
     inv all                 # Full pipeline: clean, create, run, validate
 
-INDIVIDUAL WORKBOOKS:
-    inv basic               # Create and run basic workbook
-    inv multiclient         # Create and run multiclient workbook
-    inv conditional         # Create and run conditional workbook
-    inv documents           # Create and run documents workbook
-    inv batch               # Create and run batch workbook
-    inv max                 # Create and run max workbook
+INDIVIDUAL WORKBOOKS (create + run + validate):
+    inv basic               # Create, run, and validate basic workbook
+    inv multiclient         # Create, run, and validate multiclient workbook
+    inv conditional         # Create, run, and validate conditional workbook
+    inv documents           # Create, run, and validate documents workbook
+    inv batch               # Create, run, and validate batch workbook
+    inv max                 # Create, run, and validate max workbook
 
 OPTIONS:
     -c, --concurrency N     # Set parallel execution concurrency (default: varies by workbook)
@@ -272,10 +309,45 @@ def run(
 
 
 @task
-def validate(c: Context) -> None:
-    """Validate all workbook results."""
+def validate(c: Context, parallel: bool = False, quiet: bool = False) -> None:
+    """Validate all workbook results using individual validation scripts.
+
+    Args:
+        parallel: Validate workbooks in parallel (faster)
+        quiet: Suppress detailed output
+    """
     print("Validating all workbooks...")
-    _run_cmd(c, "python scripts/validation/validate_all.py")
+
+    workbook_names = ["basic", "multiclient", "conditional", "documents", "batch", "max"]
+
+    if parallel:
+        with ThreadPoolExecutor(max_workers=6) as executor:
+            futures = {
+                executor.submit(_validate_single_workbook, name): name for name in workbook_names
+            }
+
+            for future in as_completed(futures):
+                name, success, output = future.result()
+                if success:
+                    if not quiet:
+                        print(f"  ✓ {name}")
+                else:
+                    print(f"  ✗ {name}: {output}")
+    else:
+        configs = _get_workbook_configs()
+        for name in workbook_names:
+            path, _ = configs[name]
+            script = _get_validate_script(name)
+
+            if not quiet:
+                print(f"  Validating {name}...")
+
+            _run_cmd(c, f"python {script} {path}")
+
+            if not quiet:
+                print(f"  ✓ {name}")
+
+    print("All workbooks validated.")
 
 
 @task
@@ -299,62 +371,90 @@ def all(c: Context, parallel: bool = False, concurrency: str | None = None) -> N
 
 
 # ============================================================================
-# INDIVIDUAL WORKBOOK TASKS
+# INDIVIDUAL WORKBOOK TASKS (create + run + validate)
 # ============================================================================
 
 
-@task(create)
+@task
 def basic(c: Context, concurrency: str = "3") -> None:
-    """Create and run basic workbook."""
+    """Create, run, and validate basic workbook."""
     config = get_config()
+    print("Processing basic workbook...")
+    _run_cmd(c, f"python {_get_create_script('basic')}")
     _run_cmd(
         c, f"python scripts/run_orchestrator.py {config.sample.workbooks.basic} -c {concurrency}"
     )
+    _run_cmd(c, f"python {_get_validate_script('basic')} {config.sample.workbooks.basic}")
+    print("Basic workbook complete!")
 
 
-@task(create)
+@task
 def multiclient(c: Context, concurrency: str = "2") -> None:
-    """Create and run multiclient workbook."""
+    """Create, run, and validate multiclient workbook."""
     config = get_config()
+    print("Processing multiclient workbook...")
+    _run_cmd(c, f"python {_get_create_script('multiclient')}")
     _run_cmd(
         c,
         f"python scripts/run_orchestrator.py {config.sample.workbooks.multiclient} -c {concurrency}",
     )
+    _run_cmd(
+        c, f"python {_get_validate_script('multiclient')} {config.sample.workbooks.multiclient}"
+    )
+    print("Multiclient workbook complete!")
 
 
-@task(create)
+@task
 def conditional(c: Context, concurrency: str = "3") -> None:
-    """Create and run conditional workbook."""
+    """Create, run, and validate conditional workbook."""
     config = get_config()
+    print("Processing conditional workbook...")
+    _run_cmd(c, f"python {_get_create_script('conditional')}")
     _run_cmd(
         c,
         f"python scripts/run_orchestrator.py {config.sample.workbooks.conditional} -c {concurrency}",
     )
+    _run_cmd(
+        c, f"python {_get_validate_script('conditional')} {config.sample.workbooks.conditional}"
+    )
+    print("Conditional workbook complete!")
 
 
-@task(create)
+@task
 def documents(c: Context) -> None:
-    """Create and run documents workbook."""
+    """Create, run, and validate documents workbook."""
     config = get_config()
+    print("Processing documents workbook...")
+    _run_cmd(c, f"python {_get_create_script('documents')}")
     _run_cmd(c, f"python scripts/run_orchestrator.py {config.sample.workbooks.documents}")
+    _run_cmd(c, f"python {_get_validate_script('documents')} {config.sample.workbooks.documents}")
+    print("Documents workbook complete!")
 
 
-@task(create)
+@task
 def batch(c: Context, concurrency: str = "3") -> None:
-    """Create and run batch workbook."""
+    """Create, run, and validate batch workbook."""
     config = get_config()
+    print("Processing batch workbook...")
+    _run_cmd(c, f"python {_get_create_script('batch')}")
     _run_cmd(
         c, f"python scripts/run_orchestrator.py {config.sample.workbooks.batch} -c {concurrency}"
     )
+    _run_cmd(c, f"python {_get_validate_script('batch')} {config.sample.workbooks.batch}")
+    print("Batch workbook complete!")
 
 
-@task(create)
+@task
 def max(c: Context, concurrency: str = "3") -> None:
-    """Create and run max workbook."""
+    """Create, run, and validate max workbook."""
     config = get_config()
+    print("Processing max workbook...")
+    _run_cmd(c, f"python {_get_create_script('max')}")
     _run_cmd(
         c, f"python scripts/run_orchestrator.py {config.sample.workbooks.max} -c {concurrency}"
     )
+    _run_cmd(c, f"python {_get_validate_script('max')} {config.sample.workbooks.max}")
+    print("Max workbook complete!")
 
 
 # ============================================================================

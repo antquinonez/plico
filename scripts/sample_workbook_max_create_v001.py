@@ -15,8 +15,12 @@ Uses FFLiteLLMClient with LiteLLM routing for Mistral Small.
 
 Creates 20 prompts across 5 sections with 5 batch data rows.
 
+Paired with: sample_workbook_max_validate_v001.py
+
 Usage:
-    python scripts/create_sample_workbook_max.py [output_path]
+    python scripts/sample_workbook_max_create_v001.py [output_path]
+
+Version: 001
 """
 
 import os
@@ -90,11 +94,11 @@ def create_max_sample_workbook(output_path: str):
             clients_data.append(
                 (
                     name,
-                    cfg["client_type"],
-                    cfg["api_key_env"],
-                    cfg["model"],
-                    cfg["temperature"],
-                    cfg["max_tokens"],
+                    cfg.client_type,
+                    cfg.api_key_env,
+                    cfg.model,
+                    cfg.temperature,
+                    cfg.max_tokens,
                 )
             )
 

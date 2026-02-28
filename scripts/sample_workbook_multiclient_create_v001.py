@@ -11,8 +11,12 @@ Creates a workbook with:
 - prompts sheet with client column
 - clients sheet with named client configurations using FFLiteLLMClient
 
+Paired with: sample_workbook_multiclient_validate_v001.py
+
 Usage:
-    python scripts/create_sample_workbook_multiclient.py [output_path]
+    python scripts/sample_workbook_multiclient_create_v001.py [output_path]
+
+Version: 001
 """
 
 import os
@@ -83,11 +87,11 @@ def create_multiclient_sample_workbook(output_path: str):
             clients_data.append(
                 (
                     name,
-                    cfg["client_type"],
-                    cfg["api_key_env"],
-                    cfg["model"],
-                    cfg["temperature"],
-                    cfg["max_tokens"],
+                    cfg.client_type,
+                    cfg.api_key_env,
+                    cfg.model,
+                    cfg.temperature,
+                    cfg.max_tokens,
                 )
             )
 

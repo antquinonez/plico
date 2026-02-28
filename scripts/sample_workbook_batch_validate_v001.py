@@ -4,21 +4,22 @@
 # Contact: antquinonez@farfiner.com
 
 """
-Validate conditional execution workbook results.
+Validate batch workbook results.
 
-Validates workbooks created by sample_workbook_conditional_create_v001.py
-by checking condition evaluation results and execution status across all sections.
+Validates workbooks created by sample_workbook_batch_create_v001.py
+by checking batch execution and variable resolution across all levels.
 
 Features:
-    - Section-by-section validation with detailed output
-    - Condition evaluation tracking
+    - Batch data execution verification
+    - Variable resolution tracking
+    - Level-by-level validation with detailed output
     - JSON output for programmatic use
     - Exit code 0 for pass, 1 for failures
 
 Usage:
-    python scripts/sample_workbook_conditional_validate_v001.py <workbook_path>
-    python scripts/sample_workbook_conditional_validate_v001.py <workbook_path> --json
-    python scripts/sample_workbook_conditional_validate_v001.py <workbook_path> --results-sheet results_20250228_123456
+    python scripts/sample_workbook_batch_validate_v001.py <workbook_path>
+    python scripts/sample_workbook_batch_validate_v001.py <workbook_path> --json
+    python scripts/sample_workbook_batch_validate_v001.py <workbook_path> --results-sheet results_20250228_123456
 
 Version: 001
 """
@@ -33,31 +34,26 @@ import openpyxl
 
 VERSION = "001"
 
-SECTION_DEFINITIONS = {
-    "Section 1 - String Methods": {
+LEVEL_DEFINITIONS = {
+    "Level 0 - Independent Prompts": {
         "range": (1, 10),
-        "features": ["startswith", "endswith", "lower", "strip", "count"],
+        "description": "10 independent prompts using {{variable}} templating",
     },
-    "Section 2 - JSON Simple": {
-        "range": (11, 18),
-        "features": ["json_get", "json_has", "json_type"],
+    "Level 1 - Single Dependencies": {
+        "range": (11, 20),
+        "description": "10 prompts with 1-3 dependencies",
     },
-    "Section 3 - JSON Nested": {
-        "range": (19, 26),
-        "features": ["nested paths", "json_get_default"],
+    "Level 2 - Multiple Dependencies": {
+        "range": (21, 30),
+        "description": "10 prompts with 2-3 dependencies",
     },
-    "Section 4 - JSON Array": {
-        "range": (27, 34),
-        "features": ["array indexing", "json_keys", "in operator"],
-    },
-    "Section 5 - JSON Complex": {"range": (35, 38), "features": ["deep nesting", "mixed access"]},
-    "Section 6 - Math Functions": {"range": (39, 44), "features": ["abs", "min", "max"]},
-    "Section 7 - Type Checking": {"range": (45, 47), "features": ["is_empty"]},
-    "Section 8 - Combined": {
-        "range": (48, 50),
-        "features": ["chained conditions", "boolean logic"],
+    "Level 3 - Final Synthesis": {
+        "range": (31, 35),
+        "description": "5 final synthesis prompts",
     },
 }
+
+EXPECTED_BATCHES = 5
 
 
 def find_latest_results_sheet(workbook) -> str | None:
@@ -79,20 +75,29 @@ def parse_sequence_to_row(ws) -> dict[int, int]:
     return seq_to_row
 
 
-def validate_section(
+def count_batches(ws, seq_to_row: dict[int, int]) -> int:
+    """Count unique batch indices in the results."""
+    batch_indices = set()
+    for row in seq_to_row.values():
+        batch_idx = ws.cell(row=row, column=2).value
+        if batch_idx is not None:
+            batch_indices.add(batch_idx)
+    return len(batch_indices)
+
+
+def validate_level(
     ws,
     seq_to_row: dict[int, int],
-    section_name: str,
-    section_def: dict,
+    level_name: str,
+    level_def: dict,
+    batch_count: int,
 ) -> dict:
-    """Validate a single section and return results."""
-    start, end = section_def["range"]
+    """Validate a single level and return results."""
+    start, end = level_def["range"]
     prompts = []
     passed = 0
-    skipped = 0
     failed = 0
-    conditions_true = 0
-    conditions_false = 0
+    expected_executions = (end - start + 1) * batch_count
 
     for seq in range(start, end + 1):
         if seq not in seq_to_row:
@@ -101,40 +106,29 @@ def validate_section(
         row = seq_to_row[seq]
         prompt_name = ws.cell(row=row, column=4).value
         status = ws.cell(row=row, column=12).value
-        cond_result = ws.cell(row=row, column=9).value
-        cond_error = ws.cell(row=row, column=10).value
 
         prompt_info = {
             "sequence": seq,
             "name": prompt_name,
             "status": status,
-            "condition_result": cond_result,
-            "condition_error": cond_error,
         }
         prompts.append(prompt_info)
 
         if status == "success":
             passed += 1
-            if cond_result is True:
-                conditions_true += 1
-        elif status == "skipped":
-            skipped += 1
-            if cond_result is False:
-                conditions_false += 1
         elif status == "failed":
             failed += 1
 
     all_passed = failed == 0
 
     return {
-        "name": section_name,
-        "features": section_def["features"],
+        "name": level_name,
+        "description": level_def["description"],
         "range": [start, end],
+        "batch_count": batch_count,
+        "expected_executions": expected_executions,
         "passed": passed,
-        "skipped": skipped,
         "failed": failed,
-        "conditions_true": conditions_true,
-        "conditions_false": conditions_false,
         "all_passed": all_passed,
         "prompts": prompts,
     }
@@ -163,31 +157,20 @@ def validate_workbook(path: Path, results_sheet: str | None = None) -> dict:
 
     ws = workbook[sheet_name]
     seq_to_row = parse_sequence_to_row(ws)
+    batch_count = count_batches(ws, seq_to_row)
 
-    sections = []
+    levels = []
     total_passed = 0
-    total_skipped = 0
     total_failed = 0
-    total_conditions_true = 0
-    total_conditions_false = 0
 
-    for section_name, section_def in SECTION_DEFINITIONS.items():
-        section_result = validate_section(ws, seq_to_row, section_name, section_def)
-        sections.append(section_result)
+    for level_name, level_def in LEVEL_DEFINITIONS.items():
+        level_result = validate_level(ws, seq_to_row, level_name, level_def, batch_count)
+        levels.append(level_result)
 
-        total_passed += section_result["passed"]
-        total_skipped += section_result["skipped"]
-        total_failed += section_result["failed"]
-        total_conditions_true += section_result["conditions_true"]
-        total_conditions_false += section_result["conditions_false"]
+        total_passed += level_result["passed"]
+        total_failed += level_result["failed"]
 
     all_passed = total_failed == 0
-
-    skipped_prompts = []
-    for section in sections:
-        for prompt in section["prompts"]:
-            if prompt["status"] == "skipped":
-                skipped_prompts.append(prompt["name"])
 
     return {
         "valid": True,
@@ -196,15 +179,14 @@ def validate_workbook(path: Path, results_sheet: str | None = None) -> dict:
         "validated_at": datetime.now().isoformat(),
         "validator_version": VERSION,
         "summary": {
-            "total_prompts": sum(s["passed"] + s["skipped"] + s["failed"] for s in sections),
+            "total_prompts": 35,
+            "batch_count": batch_count,
+            "expected_batches": EXPECTED_BATCHES,
+            "batches_match": batch_count == EXPECTED_BATCHES,
             "passed": total_passed,
-            "skipped": total_skipped,
             "failed": total_failed,
-            "conditions_true": total_conditions_true,
-            "conditions_false": total_conditions_false,
         },
-        "sections": sections,
-        "skipped_prompts": skipped_prompts,
+        "levels": levels,
         "all_passed": all_passed,
     }
 
@@ -212,7 +194,7 @@ def validate_workbook(path: Path, results_sheet: str | None = None) -> dict:
 def print_report(results: dict) -> None:
     """Print human-readable validation report."""
     print("=" * 80)
-    print("CONDITIONAL WORKBOOK VALIDATION RESULTS")
+    print("BATCH WORKBOOK VALIDATION RESULTS")
     print("=" * 80)
 
     if not results.get("valid", False):
@@ -228,57 +210,49 @@ def print_report(results: dict) -> None:
 
     summary = results["summary"]
     print(f"Total Prompts: {summary['total_prompts']}")
+    print(f"Batch Count: {summary['batch_count']} (expected: {summary['expected_batches']})")
     print(f"Passed: {summary['passed']}")
-    print(f"Skipped: {summary['skipped']}")
     print(f"Failed: {summary['failed']}")
-    print(f"Conditions True: {summary['conditions_true']}")
-    print(f"Conditions False: {summary['conditions_false']}")
+
+    if not summary["batches_match"]:
+        print("\n⚠️  WARNING: Batch count mismatch!")
+
     print()
 
-    for section in results["sections"]:
-        status_icon = "✓" if section["all_passed"] else "✗"
-        print(f"\n{status_icon} {section['name']}:")
-        print(f"    Features: {', '.join(section['features'])}")
-        print(f"    Range: sequences {section['range'][0]}-{section['range'][1]}")
+    for level in results["levels"]:
+        status_icon = "✓" if level["all_passed"] else "✗"
+        print(f"\n{status_icon} {level['name']}:")
+        print(f"    {level['description']}")
+        print(f"    Range: sequences {level['range'][0]}-{level['range'][1]}")
         print(
-            f"    Results: {section['passed']} passed, {section['skipped']} skipped, {section['failed']} failed"
+            f"    Expected executions: {level['expected_executions']} ({level['batch_count']} batches)"
         )
+        print(f"    Results: {level['passed']} passed, {level['failed']} failed")
 
-        for prompt in section["prompts"]:
+        for prompt in level["prompts"]:
             if prompt["status"] == "success":
-                if prompt["condition_result"] is True:
-                    print(f"      ✓ {prompt['name']}: condition=True")
-                else:
-                    print(f"      ✓ {prompt['name']}")
-            elif prompt["status"] == "skipped":
-                print(f"      ⊘ {prompt['name']}: SKIPPED (condition={prompt['condition_result']})")
+                print(f"      ✓ {prompt['name']}")
             elif prompt["status"] == "failed":
                 print(f"      ✗ {prompt['name']}: FAILED")
-
-    if results["skipped_prompts"]:
-        print()
-        print("Skipped prompts (condition evaluated to False):")
-        for name in results["skipped_prompts"]:
-            print(f"  - {name}")
 
     print()
     print("=" * 80)
     if results["all_passed"]:
-        print("✅ ALL SECTIONS PASSED!")
+        print("✅ ALL LEVELS PASSED!")
     else:
-        print("❌ SOME SECTIONS HAD FAILURES")
+        print("❌ SOME LEVELS HAD FAILURES")
     print("=" * 80)
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Validate conditional execution workbook results",
+        description="Validate batch workbook results",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-    %(prog)s ./sample_workbook_conditional.xlsx
-    %(prog)s ./sample_workbook_conditional.xlsx --json
-    %(prog)s ./sample_workbook_conditional.xlsx --results-sheet results_20250228_123456
+    %(prog)s ./sample_workbook_batch.xlsx
+    %(prog)s ./sample_workbook_batch.xlsx --json
+    %(prog)s ./sample_workbook_batch.xlsx --results-sheet results_20250228_123456
         """,
     )
     parser.add_argument("workbook", type=Path, help="Path to the workbook to validate")

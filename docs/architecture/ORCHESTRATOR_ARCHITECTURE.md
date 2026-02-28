@@ -733,19 +733,32 @@ if summary.get("batch_mode"):
 
 ### Test Workbook Generators
 
-- `create_sample_workbook.py` - 31 prompts for parallel testing
-- `create_sample_workbook_batch.py` - 35 prompts × 5 batches
-- `create_sample_workbook_multiclient.py` - 13 prompts with multiple clients
-- `create_sample_workbook_documents.py` - 7 prompts with document references
-- `create_sample_workbook_conditional.py` - 30 prompts with conditional execution
-- `create_sample_workbook_max.py` - 100 executions for stress testing
+Sample workbook scripts follow the naming convention:
+
+```
+sample_workbook_<type>_<action>_v<NNN>.py
+```
+
+Where:
+- `<type>`: Workbook type (basic, conditional, documents, multiclient, batch, max)
+- `<action>`: `create` or `validate`
+- `<NNN>`: Three-digit version number (001, 002, etc.)
+
+| Type | Create Script | Validate Script | Prompts | Description |
+|------|---------------|-----------------|---------|-------------|
+| basic | `sample_workbook_basic_create_v001.py` | `sample_workbook_basic_validate_v001.py` | 31 | Parallel execution with 4 dependency levels |
+| conditional | `sample_workbook_conditional_create_v001.py` | `sample_workbook_conditional_validate_v001.py` | 50 | Conditional expression testing |
+| documents | `sample_workbook_documents_create_v001.py` | `sample_workbook_documents_validate_v001.py` | 20 | Document reference and RAG testing |
+| multiclient | `sample_workbook_multiclient_create_v001.py` | `sample_workbook_multiclient_validate_v001.py` | 13 | Multi-client execution |
+| batch | `sample_workbook_batch_create_v001.py` | `sample_workbook_batch_validate_v001.py` | 35 × 5 | Batch execution with variables |
+| max | `sample_workbook_max_create_v001.py` | `sample_workbook_max_validate_v001.py` | 20 | Combined features |
 
 ### Test Workbook Paths
 
 Sample workbook paths are configured in `config/test.yaml`:
 
 ```yaml
-sample_workbooks:
+sample:
   workbooks:
     basic: "./sample_workbook.xlsx"
     multiclient: "./sample_workbook_multiclient.xlsx"
@@ -761,17 +774,20 @@ Access via configuration:
 from src.config import get_config
 
 config = get_config()
-print(config.test.workbooks.basic)  # "./sample_workbook.xlsx"
+print(config.sample.workbooks.basic)  # "./sample_workbook.xlsx"
 ```
 
 ### Validation Scripts
 
-The `scripts/validation/` folder contains scripts for validating test workbook results:
+Each workbook type has a dedicated validation script that checks:
 
-| Script | Purpose |
-|--------|---------|
-| `validate_all.py` | Validates all workbook results (success/fail/skip counts, condition errors) |
-| `spot_check.py` | Spot checks responses from key prompts |
+| Validation | Description |
+|------------|-------------|
+| Execution status | Verify success/failed/skipped counts |
+| Dependency resolution | Confirm dependency chains executed correctly |
+| Condition evaluation | Check conditional expressions evaluated properly |
+| Client assignment | Verify correct clients used (multiclient) |
+| Batch count | Confirm expected number of batches executed |
 
 ### Makefile Commands
 
@@ -781,33 +797,29 @@ The project includes a `Makefile` for convenient test workbook management:
 # Show available commands
 make help
 
-# Create all test workbooks
-make create
-
-# Run orchestrator on all workbooks
-make run
-
-# Validate all workbook results
-make validate
-
 # Full pipeline: clean, create, run, validate
 make all
 
-# Run individual workbook
+# Individual workbook (create + run + validate)
 make basic CONCURRENCY=5
+make batch
+make max
 ```
 
 | Command | Description |
 |---------|-------------|
-| `make create` | Create all 6 test workbooks |
+| `make create` | Create all 6 sample workbooks |
 | `make run` | Run orchestrator on all workbooks |
 | `make validate` | Validate all workbook results |
 | `make spot-check` | Spot check responses |
 | `make all` | Full pipeline: clean → create → run → validate |
-| `make clean` | Remove all test workbooks |
-| `make basic` | Create and run basic workbook |
-| `make batch` | Create and run batch workbook |
-| `make max` | Create and run max workbook |
+| `make clean` | Remove all sample workbooks |
+| `make basic` | Create, run, and validate basic workbook |
+| `make multiclient` | Create, run, and validate multiclient workbook |
+| `make conditional` | Create, run, and validate conditional workbook |
+| `make documents` | Create, run, and validate documents workbook |
+| `make batch` | Create, run, and validate batch workbook |
+| `make max` | Create, run, and validate max workbook |
 
 | Option | Description |
 |--------|-------------|
@@ -821,29 +833,26 @@ The project also includes an Invoke-based task runner (`tasks.py`) that uses the
 # Show all available tasks
 inv --list
 
-# Create all test workbooks (sequential)
-inv create
-
-# Create workbooks in parallel
+# Create all workbooks in parallel
 inv create --parallel
 
 # Run orchestrator on all workbooks
-inv run
+inv run --parallel
 
 # Run with custom concurrency
 inv run -c 4
 
-# Run workbooks in parallel
-inv run --parallel
-
 # Validate all workbook results
-inv validate
+inv validate --parallel
 
 # Full pipeline
-inv all
+inv all --parallel
 
-# Individual workbooks
+# Individual workbooks (create + run + validate)
 inv basic
+inv multiclient
+inv conditional
+inv documents
 inv batch
 inv max
 
@@ -855,15 +864,22 @@ inv test            # Run unit tests
 
 | Task | Description |
 |------|-------------|
-| `inv create` | Create all test workbooks |
+| `inv create` | Create all sample workbooks |
 | `inv create --parallel` | Create workbooks in parallel |
 | `inv run` | Run orchestrator on all workbooks |
 | `inv run -c N` | Run with custom concurrency |
 | `inv run --parallel` | Run workbooks in parallel |
 | `inv validate` | Validate all workbook results |
+| `inv validate --parallel` | Validate workbooks in parallel |
 | `inv spot-check` | Spot check responses |
 | `inv all` | Full pipeline: clean → create → run → validate |
-| `inv clean` | Remove all test workbooks |
+| `inv clean` | Remove all sample workbooks |
+| `inv basic` | Create, run, and validate basic workbook |
+| `inv multiclient` | Create, run, and validate multiclient workbook |
+| `inv conditional` | Create, run, and validate conditional workbook |
+| `inv documents` | Create, run, and validate documents workbook |
+| `inv batch` | Create, run, and validate batch workbook |
+| `inv max` | Create, run, and validate max workbook |
 | `inv config-check` | Display current configuration values |
 | `inv lint` | Run ruff linting |
 | `inv test` | Run unit tests |
@@ -874,3 +890,4 @@ inv test            # Run unit tests
 - Tab completion available
 - Task dependencies
 - Better error handling
+- Parallel execution support

@@ -184,7 +184,7 @@ sample_workbook_<type>_<action>_v<NNN>.py
 ```
 
 Where:
-- `<type>`: Workbook type (`conditional`, `documents`, `multiclient`, `batch`, `max`)
+- `<type>`: Workbook type (`basic`, `conditional`, `documents`, `multiclient`, `batch`, `max`)
 - `<action>`: `create` or `validate`
 - `<NNN>`: Three-digit version number (`001`, `002`, etc.)
 
@@ -192,8 +192,12 @@ Where:
 
 | Type | Create Script | Validate Script |
 |------|---------------|-----------------|
+| Basic | `sample_workbook_basic_create_v001.py` | `sample_workbook_basic_validate_v001.py` |
 | Conditional | `sample_workbook_conditional_create_v001.py` | `sample_workbook_conditional_validate_v001.py` |
 | Documents | `sample_workbook_documents_create_v001.py` | `sample_workbook_documents_validate_v001.py` |
+| Multiclient | `sample_workbook_multiclient_create_v001.py` | `sample_workbook_multiclient_validate_v001.py` |
+| Batch | `sample_workbook_batch_create_v001.py` | `sample_workbook_batch_validate_v001.py` |
+| Max | `sample_workbook_max_create_v001.py` | `sample_workbook_max_validate_v001.py` |
 
 ### Versioning Guidelines
 
@@ -211,20 +215,31 @@ When creating a new workbook type:
 3. Update this AGENTS.md with the new type in the examples table
 4. Include the version number in the script docstring
 
+### Workbook Types
+
+| Type | Description | Key Features |
+|------|-------------|--------------|
+| Basic | Parallel execution with dependencies | 31 prompts, 4 levels of dependency chains |
+| Conditional | Conditional expression testing | 50 prompts testing string methods, JSON functions, math, type checking |
+| Documents | Document reference and RAG testing | Full document injection, semantic search via RAG |
+| Multiclient | Multi-client execution | Named client configurations, client-specific prompts |
+| Batch | Batch execution with variables | 35 prompts × 5 batches, variable templating |
+| Max | Combined features | Batch + conditional + multi-client in one workbook |
+
 ### Workflow
 
 ```bash
 # Create a workbook
-python scripts/sample_workbook_conditional_create_v001.py ./test.xlsx
+python scripts/sample_workbook_basic_create_v001.py ./test.xlsx
 
 # Run the orchestrator
 python scripts/run_orchestrator.py ./test.xlsx -c 3
 
 # Validate the results
-python scripts/sample_workbook_conditional_validate_v001.py ./test.xlsx
+python scripts/sample_workbook_basic_validate_v001.py ./test.xlsx
 
 # Or validate with JSON output for CI/CD
-python scripts/sample_workbook_conditional_validate_v001.py ./test.xlsx --json
+python scripts/sample_workbook_basic_validate_v001.py ./test.xlsx --json
 ```
 
 ## Environment

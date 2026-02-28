@@ -4,21 +4,22 @@
 # Contact: antquinonez@farfiner.com
 
 """
-Validate conditional execution workbook results.
+Validate multiclient workbook results.
 
-Validates workbooks created by sample_workbook_conditional_create_v001.py
-by checking condition evaluation results and execution status across all sections.
+Validates workbooks created by sample_workbook_multiclient_create_v001.py
+by checking client assignments and execution status across all levels.
 
 Features:
-    - Section-by-section validation with detailed output
-    - Condition evaluation tracking
+    - Client assignment verification
+    - Level-by-level validation with detailed output
+    - Dependency chain verification
     - JSON output for programmatic use
     - Exit code 0 for pass, 1 for failures
 
 Usage:
-    python scripts/sample_workbook_conditional_validate_v001.py <workbook_path>
-    python scripts/sample_workbook_conditional_validate_v001.py <workbook_path> --json
-    python scripts/sample_workbook_conditional_validate_v001.py <workbook_path> --results-sheet results_20250228_123456
+    python scripts/sample_workbook_multiclient_validate_v001.py <workbook_path>
+    python scripts/sample_workbook_multiclient_validate_v001.py <workbook_path> --json
+    python scripts/sample_workbook_multiclient_validate_v001.py <workbook_path> --results-sheet results_20250228_123456
 
 Version: 001
 """
@@ -33,29 +34,18 @@ import openpyxl
 
 VERSION = "001"
 
-SECTION_DEFINITIONS = {
-    "Section 1 - String Methods": {
-        "range": (1, 10),
-        "features": ["startswith", "endswith", "lower", "strip", "count"],
+LEVEL_DEFINITIONS = {
+    "Level 0 - Independent Prompts": {
+        "range": (1, 5),
+        "description": "5 independent prompts using different clients",
     },
-    "Section 2 - JSON Simple": {
-        "range": (11, 18),
-        "features": ["json_get", "json_has", "json_type"],
+    "Level 1 - Single Dependencies": {
+        "range": (6, 10),
+        "description": "5 prompts with 1 dependency",
     },
-    "Section 3 - JSON Nested": {
-        "range": (19, 26),
-        "features": ["nested paths", "json_get_default"],
-    },
-    "Section 4 - JSON Array": {
-        "range": (27, 34),
-        "features": ["array indexing", "json_keys", "in operator"],
-    },
-    "Section 5 - JSON Complex": {"range": (35, 38), "features": ["deep nesting", "mixed access"]},
-    "Section 6 - Math Functions": {"range": (39, 44), "features": ["abs", "min", "max"]},
-    "Section 7 - Type Checking": {"range": (45, 47), "features": ["is_empty"]},
-    "Section 8 - Combined": {
-        "range": (48, 50),
-        "features": ["chained conditions", "boolean logic"],
+    "Level 2 - Synthesis Prompts": {
+        "range": (11, 13),
+        "description": "3 synthesis prompts combining earlier results",
     },
 }
 
@@ -79,20 +69,18 @@ def parse_sequence_to_row(ws) -> dict[int, int]:
     return seq_to_row
 
 
-def validate_section(
+def validate_level(
     ws,
     seq_to_row: dict[int, int],
-    section_name: str,
-    section_def: dict,
+    level_name: str,
+    level_def: dict,
 ) -> dict:
-    """Validate a single section and return results."""
-    start, end = section_def["range"]
+    """Validate a single level and return results."""
+    start, end = level_def["range"]
     prompts = []
     passed = 0
-    skipped = 0
     failed = 0
-    conditions_true = 0
-    conditions_false = 0
+    client_usage: dict[str, int] = {}
 
     for seq in range(start, end + 1):
         if seq not in seq_to_row:
@@ -101,40 +89,31 @@ def validate_section(
         row = seq_to_row[seq]
         prompt_name = ws.cell(row=row, column=4).value
         status = ws.cell(row=row, column=12).value
-        cond_result = ws.cell(row=row, column=9).value
-        cond_error = ws.cell(row=row, column=10).value
+        client = ws.cell(row=row, column=8).value or "default"
 
         prompt_info = {
             "sequence": seq,
             "name": prompt_name,
             "status": status,
-            "condition_result": cond_result,
-            "condition_error": cond_error,
+            "client": client,
         }
         prompts.append(prompt_info)
 
         if status == "success":
             passed += 1
-            if cond_result is True:
-                conditions_true += 1
-        elif status == "skipped":
-            skipped += 1
-            if cond_result is False:
-                conditions_false += 1
+            client_usage[client] = client_usage.get(client, 0) + 1
         elif status == "failed":
             failed += 1
 
     all_passed = failed == 0
 
     return {
-        "name": section_name,
-        "features": section_def["features"],
+        "name": level_name,
+        "description": level_def["description"],
         "range": [start, end],
         "passed": passed,
-        "skipped": skipped,
         "failed": failed,
-        "conditions_true": conditions_true,
-        "conditions_false": conditions_false,
+        "client_usage": client_usage,
         "all_passed": all_passed,
         "prompts": prompts,
     }
@@ -164,30 +143,22 @@ def validate_workbook(path: Path, results_sheet: str | None = None) -> dict:
     ws = workbook[sheet_name]
     seq_to_row = parse_sequence_to_row(ws)
 
-    sections = []
+    levels = []
     total_passed = 0
-    total_skipped = 0
     total_failed = 0
-    total_conditions_true = 0
-    total_conditions_false = 0
+    total_client_usage: dict[str, int] = {}
 
-    for section_name, section_def in SECTION_DEFINITIONS.items():
-        section_result = validate_section(ws, seq_to_row, section_name, section_def)
-        sections.append(section_result)
+    for level_name, level_def in LEVEL_DEFINITIONS.items():
+        level_result = validate_level(ws, seq_to_row, level_name, level_def)
+        levels.append(level_result)
 
-        total_passed += section_result["passed"]
-        total_skipped += section_result["skipped"]
-        total_failed += section_result["failed"]
-        total_conditions_true += section_result["conditions_true"]
-        total_conditions_false += section_result["conditions_false"]
+        total_passed += level_result["passed"]
+        total_failed += level_result["failed"]
+
+        for client, count in level_result["client_usage"].items():
+            total_client_usage[client] = total_client_usage.get(client, 0) + count
 
     all_passed = total_failed == 0
-
-    skipped_prompts = []
-    for section in sections:
-        for prompt in section["prompts"]:
-            if prompt["status"] == "skipped":
-                skipped_prompts.append(prompt["name"])
 
     return {
         "valid": True,
@@ -196,15 +167,12 @@ def validate_workbook(path: Path, results_sheet: str | None = None) -> dict:
         "validated_at": datetime.now().isoformat(),
         "validator_version": VERSION,
         "summary": {
-            "total_prompts": sum(s["passed"] + s["skipped"] + s["failed"] for s in sections),
+            "total_prompts": sum(level["passed"] + level["failed"] for level in levels),
             "passed": total_passed,
-            "skipped": total_skipped,
             "failed": total_failed,
-            "conditions_true": total_conditions_true,
-            "conditions_false": total_conditions_false,
+            "client_usage": total_client_usage,
         },
-        "sections": sections,
-        "skipped_prompts": skipped_prompts,
+        "levels": levels,
         "all_passed": all_passed,
     }
 
@@ -212,7 +180,7 @@ def validate_workbook(path: Path, results_sheet: str | None = None) -> dict:
 def print_report(results: dict) -> None:
     """Print human-readable validation report."""
     print("=" * 80)
-    print("CONDITIONAL WORKBOOK VALIDATION RESULTS")
+    print("MULTICLIENT WORKBOOK VALIDATION RESULTS")
     print("=" * 80)
 
     if not results.get("valid", False):
@@ -229,56 +197,41 @@ def print_report(results: dict) -> None:
     summary = results["summary"]
     print(f"Total Prompts: {summary['total_prompts']}")
     print(f"Passed: {summary['passed']}")
-    print(f"Skipped: {summary['skipped']}")
     print(f"Failed: {summary['failed']}")
-    print(f"Conditions True: {summary['conditions_true']}")
-    print(f"Conditions False: {summary['conditions_false']}")
+    print(f"\nClient Usage: {summary['client_usage']}")
     print()
 
-    for section in results["sections"]:
-        status_icon = "✓" if section["all_passed"] else "✗"
-        print(f"\n{status_icon} {section['name']}:")
-        print(f"    Features: {', '.join(section['features'])}")
-        print(f"    Range: sequences {section['range'][0]}-{section['range'][1]}")
-        print(
-            f"    Results: {section['passed']} passed, {section['skipped']} skipped, {section['failed']} failed"
-        )
+    for level in results["levels"]:
+        status_icon = "✓" if level["all_passed"] else "✗"
+        print(f"\n{status_icon} {level['name']}:")
+        print(f"    {level['description']}")
+        print(f"    Range: sequences {level['range'][0]}-{level['range'][1]}")
+        print(f"    Results: {level['passed']} passed, {level['failed']} failed")
 
-        for prompt in section["prompts"]:
+        for prompt in level["prompts"]:
             if prompt["status"] == "success":
-                if prompt["condition_result"] is True:
-                    print(f"      ✓ {prompt['name']}: condition=True")
-                else:
-                    print(f"      ✓ {prompt['name']}")
-            elif prompt["status"] == "skipped":
-                print(f"      ⊘ {prompt['name']}: SKIPPED (condition={prompt['condition_result']})")
+                print(f"      ✓ {prompt['name']} (client={prompt['client']})")
             elif prompt["status"] == "failed":
                 print(f"      ✗ {prompt['name']}: FAILED")
-
-    if results["skipped_prompts"]:
-        print()
-        print("Skipped prompts (condition evaluated to False):")
-        for name in results["skipped_prompts"]:
-            print(f"  - {name}")
 
     print()
     print("=" * 80)
     if results["all_passed"]:
-        print("✅ ALL SECTIONS PASSED!")
+        print("✅ ALL LEVELS PASSED!")
     else:
-        print("❌ SOME SECTIONS HAD FAILURES")
+        print("❌ SOME LEVELS HAD FAILURES")
     print("=" * 80)
 
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Validate conditional execution workbook results",
+        description="Validate multiclient workbook results",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-    %(prog)s ./sample_workbook_conditional.xlsx
-    %(prog)s ./sample_workbook_conditional.xlsx --json
-    %(prog)s ./sample_workbook_conditional.xlsx --results-sheet results_20250228_123456
+    %(prog)s ./sample_workbook_multiclient.xlsx
+    %(prog)s ./sample_workbook_multiclient.xlsx --json
+    %(prog)s ./sample_workbook_multiclient.xlsx --results-sheet results_20250228_123456
         """,
     )
     parser.add_argument("workbook", type=Path, help="Path to the workbook to validate")

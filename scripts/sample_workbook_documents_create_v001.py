@@ -18,8 +18,12 @@ Demonstrates:
 
 Uses FFLiteLLMClient with LiteLLM routing for Mistral Small.
 
+Paired with: sample_workbook_documents_validate_v001.py
+
 Usage:
-    python scripts/create_sample_workbook_documents.py [output_path]
+    python scripts/sample_workbook_documents_create_v001.py [output_path]
+
+Version: 001
 """
 
 import os

@@ -611,15 +611,60 @@ orchestrator.run()
 
 ## Sample Workbook Generators
 
-### Using the Makefile
+Sample workbooks demonstrate orchestrator features and provide test cases for validation. Each workbook type has paired create and validate scripts following the naming convention:
 
-The project includes a Makefile for convenient test workbook management:
+```
+sample_workbook_<type>_<action>_v<NNN>.py
+```
+
+### Workbook Types
+
+| Type | Prompts | Description |
+|------|---------|-------------|
+| **basic** | 31 | Parallel execution with 4 dependency levels |
+| **conditional** | 50 | Conditional expression testing (string, JSON, math, type checking) |
+| **documents** | 20 | Document reference injection and RAG semantic search |
+| **multiclient** | 13 | Multi-client execution with named configurations |
+| **batch** | 35 | Batch execution with variable templating (35 × 5 = 175 executions) |
+| **max** | 20 | Combined features: batch + conditional + multi-client |
+
+### Using Invoke Tasks (Recommended)
+
+```bash
+# Show all available tasks
+inv --list
+
+# Full pipeline for all workbooks: clean → create → run → validate
+inv all
+
+# Create all workbooks in parallel
+inv create --parallel
+
+# Run orchestrator on all workbooks
+inv run --parallel
+
+# Validate all workbook results
+inv validate
+
+# Individual workbook (create + run + validate)
+inv basic
+inv multiclient
+inv conditional
+inv documents
+inv batch
+inv max
+```
+
+### Using Makefile
 
 ```bash
 # Show available commands
 make help
 
-# Create all test workbooks
+# Full pipeline for all workbooks: clean → create → run → validate
+make all
+
+# Create all workbooks
 make create
 
 # Run orchestrator on all workbooks
@@ -628,85 +673,132 @@ make run
 # Validate all workbook results
 make validate
 
-# Spot check responses
-make spot-check
-
-# Full pipeline: clean, create, run, validate
-make all
-
-# Clean up test workbooks
-make clean
-
-# Run individual workbook
+# Individual workbook (create + run + validate)
 make basic
 make batch CONCURRENCY=5
+make max
 ```
 
 ### Makefile Commands
 
 | Command | Description |
 |---------|-------------|
-| `make create` | Create all 6 test workbooks |
+| `make create` | Create all 6 sample workbooks |
 | `make run` | Run orchestrator on all workbooks |
-| `make validate` | Validate all workbook results |
+| `make validate` | Validate all workbook results using individual validation scripts |
 | `make spot-check` | Spot check responses from key prompts |
 | `make all` | Full pipeline: clean → create → run → validate |
-| `make clean` | Remove all test workbooks |
-| `make basic` | Create and run basic workbook |
-| `make multiclient` | Create and run multiclient workbook |
-| `make conditional` | Create and run conditional workbook |
-| `make documents` | Create and run documents workbook |
-| `make batch` | Create and run batch workbook |
-| `make max` | Create and run max workbook |
+| `make clean` | Remove all sample workbooks |
+| `make basic` | Create, run, and validate basic workbook |
+| `make multiclient` | Create, run, and validate multiclient workbook |
+| `make conditional` | Create, run, and validate conditional workbook |
+| `make documents` | Create, run, and validate documents workbook |
+| `make batch` | Create, run, and validate batch workbook |
+| `make max` | Create, run, and validate max workbook |
+
+### Invoke Tasks
+
+| Task | Description |
+|------|-------------|
+| `inv create` | Create all sample workbooks |
+| `inv create --parallel` | Create workbooks in parallel |
+| `inv run` | Run orchestrator on all workbooks |
+| `inv run -c N` | Run with custom concurrency |
+| `inv run --parallel` | Run workbooks in parallel |
+| `inv validate` | Validate all workbook results |
+| `inv validate --parallel` | Validate workbooks in parallel |
+| `inv spot-check` | Spot check responses |
+| `inv all` | Full pipeline: clean → create → run → validate |
+| `inv clean` | Remove all sample workbooks |
+| `inv basic` | Create, run, and validate basic workbook |
+| `inv multiclient` | Create, run, and validate multiclient workbook |
+| `inv conditional` | Create, run, and validate conditional workbook |
+| `inv documents` | Create, run, and validate documents workbook |
+| `inv batch` | Create, run, and validate batch workbook |
+| `inv max` | Create, run, and validate max workbook |
 
 ### Options
 
 | Option | Description |
 |--------|-------------|
-| `CONCURRENCY=N` | Set parallel execution (default: 3) |
+| `CONCURRENCY=N` (Makefile) | Set parallel execution (default: 3) |
+| `-c N` (Invoke) | Set parallel execution (default: varies by workbook) |
 
 ### Validation Scripts
 
-The `scripts/validation/` folder contains validation scripts:
+Each workbook type has a dedicated validation script:
 
 | Script | Purpose |
 |--------|---------|
-| `validate_all.py` | Validates all workbook results (success/fail/skip counts, condition errors) |
-| `spot_check.py` | Spot checks responses from key prompts |
+| `sample_workbook_basic_validate_v001.py` | Validates basic workbook (31 prompts, 4 dependency levels) |
+| `sample_workbook_multiclient_validate_v001.py` | Validates multiclient workbook (client assignment verification) |
+| `sample_workbook_conditional_validate_v001.py` | Validates conditional workbook (50 prompts, condition evaluation) |
+| `sample_workbook_documents_validate_v001.py` | Validates documents workbook (references vs semantic_query) |
+| `sample_workbook_batch_validate_v001.py` | Validates batch workbook (35 prompts × 5 batches) |
+| `sample_workbook_max_validate_v001.py` | Validates max workbook (batch + conditional + multi-client) |
+
+Validation scripts check:
+- Execution status (success/failed/skipped)
+- Dependency chain resolution
+- Condition evaluation results
+- Client assignment (for multiclient)
+- Batch count verification (for batch mode)
 
 ### Individual Scripts
 
-### Standard Sample Workbook
+#### Basic Sample Workbook
 
 ```bash
-python scripts/create_sample_workbook.py my_test.xlsx
+python scripts/sample_workbook_basic_create_v001.py [output_path]
+python scripts/sample_workbook_basic_validate_v001.py [workbook_path]
 ```
 
-31 prompts with dependency levels for testing parallel execution.
+31 prompts with 4 dependency levels for testing parallel execution.
 
-### Batch Sample Workbook
+#### Conditional Sample Workbook
 
 ```bash
-python scripts/create_sample_workbook_batch.py batch_test.xlsx
+python scripts/sample_workbook_conditional_create_v001.py [output_path]
+python scripts/sample_workbook_conditional_validate_v001.py [workbook_path]
+```
+
+50 prompts testing conditional expressions: string methods, JSON functions, math operations, type checking.
+
+#### Documents Sample Workbook
+
+```bash
+python scripts/sample_workbook_documents_create_v001.py [output_path]
+python scripts/sample_workbook_documents_validate_v001.py [workbook_path]
+```
+
+20 prompts demonstrating document reference injection and RAG semantic search.
+
+#### Multi-Client Sample Workbook
+
+```bash
+python scripts/sample_workbook_multiclient_create_v001.py [output_path]
+python scripts/sample_workbook_multiclient_validate_v001.py [workbook_path]
+```
+
+13 prompts using different client configurations (default, fast, creative).
+
+#### Batch Sample Workbook
+
+```bash
+python scripts/sample_workbook_batch_create_v001.py [output_path]
+python scripts/sample_workbook_batch_validate_v001.py [workbook_path]
 ```
 
 35 prompts × 5 batches = 175 total executions with variable templating.
 
-### Multi-Client Sample Workbook
+#### Max Sample Workbook
 
 ```bash
-python scripts/create_sample_workbook_multiclient.py multiclient_test.xlsx
+python scripts/sample_workbook_max_create_v001.py [output_path]
+python scripts/sample_workbook_max_validate_v001.py [workbook_path]
 ```
 
-13 prompts using different client configurations.
-
-### Document Reference Sample Workbook
-
-```bash
-python scripts/create_sample_workbook_documents.py documents_test.xlsx
-```
-
-7 prompts with document references, using documents from the `library/` folder.
+20 prompts combining batch execution, conditional branching, and multi-client configuration.
 
 ---
 
