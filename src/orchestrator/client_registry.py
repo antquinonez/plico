@@ -5,32 +5,27 @@
 """Client registry for multi-client AI orchestration.
 
 Provides lazy instantiation and configuration of AI clients based on
-definitions in the workbook's 'clients' sheet.
+definitions in the workbook's 'clients' sheet and the config system.
 """
 
+import importlib
 import logging
 from typing import Any
 
-from ..Clients.FFAnthropic import FFAnthropic
-from ..Clients.FFAnthropicCached import FFAnthropicCached
-from ..Clients.FFAzureCodestral import FFAzureCodestral
-from ..Clients.FFAzureDeepSeek import FFAzureDeepSeek
-from ..Clients.FFAzureDeepSeekV3 import FFAzureDeepSeekV3
-from ..Clients.FFAzureMistral import FFAzureMistral
-from ..Clients.FFAzureMistralSmall import FFAzureMistralSmall
-from ..Clients.FFAzureMSDeepSeekR1 import FFAzureMSDeepSeekR1
-from ..Clients.FFAzurePhi import FFAzurePhi
-from ..Clients.FFGemini import FFGemini
-from ..Clients.FFLiteLLMClient import FFLiteLLMClient
-from ..Clients.FFMistral import FFMistral
-from ..Clients.FFMistralSmall import FFMistralSmall
-from ..Clients.FFNvidiaDeepSeek import FFNvidiaDeepSeek
-from ..Clients.FFOpenAIAssistant import FFOpenAIAssistant
-from ..Clients.FFPerplexity import FFPerplexity
 from ..config import get_config
 from ..FFAIClientBase import FFAIClientBase
 
 logger = logging.getLogger(__name__)
+
+
+def _get_client_class(client_class_name: str) -> type[FFAIClientBase]:
+    """Dynamically import and return a client class by name."""
+    module_path = f"src.Clients.{client_class_name}"
+    try:
+        module = importlib.import_module(module_path)
+        return getattr(module, client_class_name)
+    except (ImportError, AttributeError) as e:
+        raise ImportError(f"Could not import client class '{client_class_name}': {e}")
 
 
 class ClientRegistry:
@@ -42,48 +37,11 @@ class ClientRegistry:
     Usage:
         registry = ClientRegistry(default_client)
         registry.register("fast", "mistral-small", {"temperature": 0.3})
-        registry.register("smart", "anthropic", {"model": "claude-3-5-sonnet"})
+        registry.register("smart", "litellm-claude-3-5-sonnet", {})
 
         client = registry.get("fast")  # Returns mistral-small client
         client = registry.get()  # Returns default client
     """
-
-    CLIENT_MAP: dict[str, type[FFAIClientBase]] = {
-        "mistral": FFMistral,
-        "mistral-small": FFMistralSmall,
-        "anthropic": FFAnthropic,
-        "anthropic-cached": FFAnthropicCached,
-        "gemini": FFGemini,
-        "perplexity": FFPerplexity,
-        "openai-assistant": FFOpenAIAssistant,
-        "nvidia-deepseek": FFNvidiaDeepSeek,
-        "azure-mistral": FFAzureMistral,
-        "azure-mistral-small": FFAzureMistralSmall,
-        "azure-codestral": FFAzureCodestral,
-        "azure-deepseek": FFAzureDeepSeek,
-        "azure-deepseek-v3": FFAzureDeepSeekV3,
-        "azure-ms-deepseek-r1": FFAzureMSDeepSeekR1,
-        "azure-phi": FFAzurePhi,
-        "litellm": FFLiteLLMClient,
-        "litellm-azure": FFLiteLLMClient,
-        "litellm-anthropic": FFLiteLLMClient,
-        "litellm-mistral": FFLiteLLMClient,
-        "litellm-openai": FFLiteLLMClient,
-        "litellm-gemini": FFLiteLLMClient,
-        "litellm-perplexity": FFLiteLLMClient,
-    }
-
-    @classmethod
-    def _get_api_key(cls, client_type: str) -> str | None:
-        """Get API key for a client type from config."""
-        config = get_config()
-        return config.get_api_key(client_type)
-
-    @classmethod
-    def _get_litellm_prefix(cls, client_type: str) -> str:
-        """Get LiteLLM provider prefix for a client type from config."""
-        config = get_config()
-        return config.get_litellm_prefix(client_type)
 
     def __init__(self, default_client: FFAIClientBase) -> None:
         """Initialize registry with a default client.
@@ -101,18 +59,19 @@ class ClientRegistry:
 
         Args:
             name: Unique identifier for this client
-            client_type: Client type from CLIENT_MAP (e.g., "mistral-small", "anthropic")
+            client_type: Client type from config (e.g., "mistral-small", "litellm-mistral-large")
             config: Optional configuration (api_key_env, model, temperature, max_tokens, etc.)
 
         Raises:
-            ValueError: If client_type is not recognized
+            ValueError: If client_type is not recognized in config
 
         """
-        if client_type not in self.CLIENT_MAP:
-            raise ValueError(
-                f"Unknown client type: '{client_type}'. "
-                f"Available types: {list(self.CLIENT_MAP.keys())}"
-            )
+        app_config = get_config()
+        client_type_config = app_config.get_client_type_config(client_type)
+
+        if client_type_config is None:
+            available = app_config.get_available_client_types()
+            raise ValueError(f"Unknown client type: '{client_type}'. Available types: {available}")
 
         self._client_configs[name] = {
             "client_type": client_type,
@@ -168,25 +127,34 @@ class ClientRegistry:
             A new client instance
 
         """
+        import os
+
         registration = self._client_configs[name]
         client_type = registration["client_type"]
         config = registration["config"]
 
-        client_class = self.CLIENT_MAP[client_type]
+        app_config = get_config()
+        client_type_config = app_config.get_client_type_config(client_type)
 
-        api_key = config.get("api_key") or self._get_api_key(client_type)
-        if not api_key and config.get("api_key_env"):
-            import os
+        if client_type_config is None:
+            raise ValueError(f"Client type '{client_type}' not found in config")
 
-            api_key = os.getenv(config["api_key_env"])
+        client_class = _get_client_class(client_type_config.client_class)
+
+        api_key = config.get("api_key")
+        if not api_key:
+            api_key_env = config.get("api_key_env") or client_type_config.api_key_env
+            if api_key_env:
+                api_key = os.getenv(api_key_env)
 
         kwargs: dict[str, Any] = {}
         if api_key:
             kwargs["api_key"] = api_key
 
-        if client_type.startswith("litellm"):
-            provider_prefix = self._get_litellm_prefix(client_type)
-            model = config.get("model", "gpt-4")
+        model = config.get("model") or client_type_config.default_model
+
+        if client_type_config.type == "litellm":
+            provider_prefix = client_type_config.provider_prefix
             kwargs["model_string"] = f"{provider_prefix}{model}" if provider_prefix else model
             if config.get("api_base"):
                 kwargs["api_base"] = config["api_base"]
@@ -195,8 +163,8 @@ class ClientRegistry:
             if config.get("fallbacks"):
                 kwargs["fallbacks"] = config["fallbacks"]
         else:
-            if config.get("model"):
-                kwargs["model"] = config["model"]
+            if model:
+                kwargs["model"] = model
 
         if config.get("temperature") is not None:
             kwargs["temperature"] = float(config["temperature"])
@@ -219,12 +187,13 @@ class ClientRegistry:
 
     @classmethod
     def get_available_client_types(cls) -> list:
-        """Get list of available client types."""
-        return list(cls.CLIENT_MAP.keys())
+        """Get list of available client types from config."""
+        config = get_config()
+        return config.get_available_client_types()
 
     @classmethod
     def get_default_api_key_env(cls, client_type: str) -> str | None:
         """Get the default API key environment variable for a client type."""
-        cfg = get_config()
-        client_config = cfg.get_client_config(client_type)
-        return client_config.api_key_env if client_config else None
+        config = get_config()
+        client_type_config = config.get_client_type_config(client_type)
+        return client_type_config.api_key_env if client_type_config else None

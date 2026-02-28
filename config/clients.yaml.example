@@ -1,799 +1,510 @@
-# FFClients AI Client Configuration - Example
-# ============================================
-# This file shows all available LiteLLM clients and native clients.
-# Copy relevant entries to clients.yaml and uncomment/configure as needed.
+# FFClients Client Types Configuration - Example
+# ===============================================
+# This file shows all available client types with their default models.
+# Copy the client types you need to clients.yaml and configure as needed.
 #
-# Configuration Options:
-#   type:           - "litellm" (unified routing) or "native" (direct API client)
-#   provider_prefix - LiteLLM provider prefix (e.g., "anthropic/", "azure/")
-#   api_key_env     - Environment variable name containing the API key
-#   api_key         - Direct API key (optional, takes precedence over api_key_env)
-#   client_class    - Native client class (for type: "native" only)
-#   azure_endpoint  - Azure endpoint URL (for Azure native clients)
-#   azure_deployment - Azure deployment name (for Azure native clients)
-
-clients:
-  # ╔═══════════════════════════════════════════════════════════════════════════╗
-  # ║  MISTRAL AI (Direct API)                                                  ║
-  # ╠═══════════════════════════════════════════════════════════════════════════╣
-  # ║  Native Mistral clients using mistralai library                           ║
-  # ╚═══════════════════════════════════════════════════════════════════════════╝
-
-  # mistral:
-  #   type: "native"
-  #   client_class: "FFMistral"
-  #   api_key_env: "MISTRAL_KEY"
-
-  # mistral-small:
-  #   type: "native"
-  #   client_class: "FFMistralSmall"
-  #   api_key_env: "MISTRALSMALL_KEY"
-
-
-  # ╔═══════════════════════════════════════════════════════════════════════════╗
-  # ║  ANTHROPIC                                                                ║
-  # ╠═══════════════════════════════════════════════════════════════════════════╣
-  # ║  Claude models via Anthropic API                                          ║
-  # ╚═══════════════════════════════════════════════════════════════════════════╝
-
-  # anthropic:
-  #   type: "native"
-  #   client_class: "FFAnthropic"
-  #   api_key_env: "ANTHROPIC_TOKEN"
-
-  # anthropic-cached:
-  #   type: "native"
-  #   client_class: "FFAnthropicCached"
-  #   api_key_env: "ANTHROPIC_TOKEN"
-
-
-  # ╔═══════════════════════════════════════════════════════════════════════════╗
-  # ║  GOOGLE GEMINI                                                            ║
-  # ╠═══════════════════════════════════════════════════════════════════════════╣
-  # ║  Gemini models via Google AI API                                          ║
-  # ╚═══════════════════════════════════════════════════════════════════════════╝
-
-  # gemini:
-  #   type: "native"
-  #   client_class: "FFGemini"
-  #   api_key_env: "GOOGLE_APPLICATION_CREDENTIALS"
-
-
-  # ╔═══════════════════════════════════════════════════════════════════════════╗
-  # ║  PERPLEXITY AI                                                            ║
-  # ╠═══════════════════════════════════════════════════════════════════════════╣
-  # ║  Sonar models via Perplexity API                                          ║
-  # ╚═══════════════════════════════════════════════════════════════════════════╝
-
-  # perplexity:
-  #   type: "native"
-  #   client_class: "FFPerplexity"
-  #   api_key_env: "PERPLEXITY_TOKEN"
-
-
-  # ╔═══════════════════════════════════════════════════════════════════════════╗
-  # ║  NVIDIA NIM                                                               ║
-  # ╠═══════════════════════════════════════════════════════════════════════════╣
-  # ║  NVIDIA Inference Microservices (DeepSeek, etc.)                          ║
-  # ╚═══════════════════════════════════════════════════════════════════════════╝
-
-  # nvidia-deepseek:
-  #   type: "native"
-  #   client_class: "FFNvidiaDeepSeek"
-  #   api_key_env: "NVIDIA_API_KEY"
-
-
-  # ╔═══════════════════════════════════════════════════════════════════════════╗
-  # ║  OPENAI ASSISTANT                                                         ║
-  # ╠═══════════════════════════════════════════════════════════════════════════╣
-  # ║  OpenAI Assistant API (threaded conversations)                            ║
-  # ╚═══════════════════════════════════════════════════════════════════════════╝
-
-  # openai-assistant:
-  #   type: "native"
-  #   client_class: "FFOpenAIAssistant"
-  #   api_key_env: "OPENAI_API_KEY"
-
-
-  # ╔═══════════════════════════════════════════════════════════════════════════╗
-  # ║  AZURE AI (Native Clients)                                                ║
-  # ╠═══════════════════════════════════════════════════════════════════════════╣
-  # ║  Azure-hosted models using azure-ai-inference library                     ║
-  # ║  Requires azure_endpoint and azure_deployment configuration               ║
-  # ╚═══════════════════════════════════════════════════════════════════════════╝
-
-  # azure-mistral:
-  #   type: "native"
-  #   client_class: "FFAzureMistral"
-  #   api_key_env: "AZURE_MISTRAL_KEY"
-  #   # azure_endpoint: "https://your-instance.openai.azure.com/"
-  #   # azure_deployment: "mistral"
-
-  # azure-mistral-small:
-  #   type: "native"
-  #   client_class: "FFAzureMistralSmall"
-  #   api_key_env: "AZURE_MISTRALSMALL_KEY"
-
-  # azure-codestral:
-  #   type: "native"
-  #   client_class: "FFAzureCodestral"
-  #   api_key_env: "AZURE_CODESTRAL_KEY"
-
-  # azure-deepseek:
-  #   type: "native"
-  #   client_class: "FFAzureDeepSeek"
-  #   api_key_env: "AZURE_DEEPSEEK_KEY"
-
-  # azure-deepseek-v3:
-  #   type: "native"
-  #   client_class: "FFAzureDeepSeekV3"
-  #   api_key_env: "AZURE_DEEPSEEKV3_KEY"
-
-  # azure-ms-deepseek-r1:
-  #   type: "native"
-  #   client_class: "FFAzureMSDeepSeekR1"
-  #   api_key_env: "AZURE_MSDEEPSEEKR1_KEY"
-
-  # azure-phi:
-  #   type: "native"
-  #   client_class: "FFAzurePhi"
-  #   api_key_env: "AZURE_PHI_KEY"
-
-
-  # ╔═══════════════════════════════════════════════════════════════════════════╗
-  # ║  LITELLM UNIFIED ROUTING                                                  ║
-  # ╠═══════════════════════════════════════════════════════════════════════════╣
-  # ║  Use LiteLLM for unified API access to multiple providers.                ║
-  # ║  Provider prefixes route to correct API:                                  ║
-  # ║    - "mistral/"     → Mistral AI                                          ║
-  # ║    - "anthropic/"   → Anthropic                                           ║
-  # ║    - "openai/"      → OpenAI                                              ║
-  # ║    - "azure/"       → Azure OpenAI                                        ║
-  # ║    - "gemini/"      → Google Gemini                                       ║
-  # ║    - "perplexity/"  → Perplexity                                          ║
-  # ║    - "nvidia_nim/"  → NVIDIA NIM                                          ║
-  # ╚═══════════════════════════════════════════════════════════════════════════╝
-
-  # ── LiteLLM Generic ────────────────────────────────────────────────────────
-  # litellm:
-  #   type: "litellm"
-  #   provider_prefix: ""
-  #   api_key_env: "LITELLM_API_KEY"
-
-  # ── LiteLLM + Mistral ───────────────────────────────────────────────────────
-  # litellm-mistral:
-  #   type: "litellm"
-  #   provider_prefix: "mistral/"
-  #   api_key_env: "MISTRAL_API_KEY"
-
-  # ── LiteLLM + Anthropic ─────────────────────────────────────────────────────
-  # litellm-anthropic:
-  #   type: "litellm"
-  #   provider_prefix: "anthropic/"
-  #   api_key_env: "ANTHROPIC_API_KEY"
-
-  # ── LiteLLM + OpenAI ────────────────────────────────────────────────────────
-  # litellm-openai:
-  #   type: "litellm"
-  #   provider_prefix: "openai/"
-  #   api_key_env: "OPENAI_API_KEY"
-
-  # ── LiteLLM + Azure OpenAI ──────────────────────────────────────────────────
-  # litellm-azure:
-  #   type: "litellm"
-  #   provider_prefix: "azure/"
-  #   api_key_env: "AZURE_API_KEY"
-  #   # api_base: "https://your-instance.openai.azure.com/"
-  #   # api_version: "2024-02-15-preview"
-
-  # ── LiteLLM + Google Gemini ─────────────────────────────────────────────────
-  # litellm-gemini:
-  #   type: "litellm"
-  #   provider_prefix: "gemini/"
-  #   api_key_env: "GEMINI_API_KEY"
-
-  # ── LiteLLM + Perplexity ────────────────────────────────────────────────────
-  # litellm-perplexity:
-  #   type: "litellm"
-  #   provider_prefix: "perplexity/"
-  #   api_key_env: "PERPLEXITY_API_KEY"
-
-
-  # ╔═══════════════════════════════════════════════════════════════════════════╗
-  # ║  LITELLM - ADDITIONAL PROVIDERS                                           ║
-  # ╠═══════════════════════════════════════════════════════════════════════════╣
-  # ║  All other LiteLLM-supported providers                                     ║
-  # ╚═══════════════════════════════════════════════════════════════════════════╝
-
-  # ── AWS ─────────────────────────────────────────────────────────────────────
-  # litellm-bedrock:
-  #   type: "litellm"
-  #   provider_prefix: "bedrock/"
-  #   api_key_env: "AWS_ACCESS_KEY_ID"
-  #   # Also requires: AWS_SECRET_ACCESS_KEY, AWS_REGION_NAME
-
-  # litellm-sagemaker:
-  #   type: "litellm"
-  #   provider_prefix: "sagemaker/"
-  #   api_key_env: "AWS_ACCESS_KEY_ID"
-
-  # ── Azure AI ────────────────────────────────────────────────────────────────
-  # litellm-azure-ai:
-  #   type: "litellm"
-  #   provider_prefix: "azure_ai/"
-  #   api_key_env: "AZURE_AI_API_KEY"
-
-  # ── Google Cloud ────────────────────────────────────────────────────────────
-  # litellm-vertex-ai:
-  #   type: "litellm"
-  #   provider_prefix: "vertex_ai/"
-  #   api_key_env: "VERTEX_AI_ACCESS_TOKEN"
-  #   # Requires GOOGLE_APPLICATION_CREDENTIALS JSON file
-
-  # ── DeepSeek ────────────────────────────────────────────────────────────────
-  # litellm-deepseek:
-  #   type: "litellm"
-  #   provider_prefix: "deepseek/"
-  #   api_key_env: "DEEPSEEK_API_KEY"
-
-  # ── xAI (Grok) ───────────────────────────────────────────────────────────────
-  # litellm-xai:
-  #   type: "litellm"
-  #   provider_prefix: "xai/"
-  #   api_key_env: "XAI_API_KEY"
-
-  # ── Groq ─────────────────────────────────────────────────────────────────────
-  # litellm-groq:
-  #   type: "litellm"
-  #   provider_prefix: "groq/"
-  #   api_key_env: "GROQ_API_KEY"
-
-  # ── Together AI ──────────────────────────────────────────────────────────────
-  # litellm-together-ai:
-  #   type: "litellm"
-  #   provider_prefix: "together_ai/"
-  #   api_key_env: "TOGETHER_AI_API_KEY"
-
-  # ── Cohere ───────────────────────────────────────────────────────────────────
-  # litellm-cohere:
-  #   type: "litellm"
-  #   provider_prefix: "cohere/"
-  #   api_key_env: "COHERE_API_KEY"
-
-  # ── AI21 ─────────────────────────────────────────────────────────────────────
-  # litellm-ai21:
-  #   type: "litellm"
-  #   provider_prefix: "ai21/"
-  #   api_key_env: "AI21_API_KEY"
-
-  # ── Aleph Alpha ──────────────────────────────────────────────────────────────
-  # litellm-aleph-alpha:
-  #   type: "litellm"
-  #   provider_prefix: "aleph_alpha/"
-  #   api_key_env: "ALEPH_ALPHA_API_KEY"
-
-  # ── OpenRouter ───────────────────────────────────────────────────────────────
-  # litellm-openrouter:
-  #   type: "litellm"
-  #   provider_prefix: "openrouter/"
-  #   api_key_env: "OPENROUTER_API_KEY"
-
-  # ── Ollama (Local) ───────────────────────────────────────────────────────────
-  # litellm-ollama:
-  #   type: "litellm"
-  #   provider_prefix: "ollama/"
-  #   api_key_env: "OLLAMA_API_KEY"
-  #   # api_base: "http://localhost:11434"
-
-  # ── LM Studio (Local) ────────────────────────────────────────────────────────
-  # litellm-lm-studio:
-  #   type: "litellm"
-  #   provider_prefix: "lm_studio/"
-  #   api_key_env: "LM_STUDIO_API_KEY"
-  #   # api_base: "http://localhost:1234/v1"
-
-  # ── vLLM ─────────────────────────────────────────────────────────────────────
-  # litellm-vllm:
-  #   type: "litellm"
-  #   provider_prefix: "vllm/"
-  #   api_key_env: "VLLM_API_KEY"
-
-  # ── Replicate ────────────────────────────────────────────────────────────────
-  # litellm-replicate:
-  #   type: "litellm"
-  #   provider_prefix: "replicate/"
-  #   api_key_env: "REPLICATE_API_KEY"
-
-  # ── HuggingFace ──────────────────────────────────────────────────────────────
-  # litellm-huggingface:
-  #   type: "litellm"
-  #   provider_prefix: "huggingface/"
-  #   api_key_env: "HUGGINGFACE_API_KEY"
-
-  # ── Fireworks AI ─────────────────────────────────────────────────────────────
-  # litellm-fireworks:
-  #   type: "litellm"
-  #   provider_prefix: "fireworks_ai/"
-  #   api_key_env: "FIREWORKS_API_KEY"
-
-  # ── DeepInfra ────────────────────────────────────────────────────────────────
-  # litellm-deepinfra:
-  #   type: "litellm"
-  #   provider_prefix: "deepinfra/"
-  #   api_key_env: "DEEPINFRA_API_KEY"
-
-  # ── Databricks ───────────────────────────────────────────────────────────────
-  # litellm-databricks:
-  #   type: "litellm"
-  #   provider_prefix: "databricks/"
-  #   api_key_env: "DATABRICKS_API_KEY"
-
-  # ── SambaNova ────────────────────────────────────────────────────────────────
-  # litellm-sambanova:
-  #   type: "litellm"
-  #   provider_prefix: "sambanova/"
-  #   api_key_env: "SAMBANOVA_API_KEY"
-
-  # ── Cerebras ─────────────────────────────────────────────────────────────────
-  # litellm-cerebras:
-  #   type: "litellm"
-  #   provider_prefix: "cerebras/"
-  #   api_key_env: "CEREBRAS_API_KEY"
-
-  # ── Codestral (Mistral) ──────────────────────────────────────────────────────
-  # litellm-codestral:
-  #   type: "litellm"
-  #   provider_prefix: "codestral/"
-  #   api_key_env: "CODESTRAL_API_KEY"
-
-  # ── Voyage AI (Embeddings) ───────────────────────────────────────────────────
-  # litellm-voyage:
-  #   type: "litellm"
-  #   provider_prefix: "voyage/"
-  #   api_key_env: "VOYAGE_API_KEY"
-
-  # ── Jina AI (Embeddings) ─────────────────────────────────────────────────────
-  # litellm-jina:
-  #   type: "litellm"
-  #   provider_prefix: "jina_ai/"
-  #   api_key_env: "JINA_API_KEY"
-
-  # ── Predibase ────────────────────────────────────────────────────────────────
-  # litellm-predibase:
-  #   type: "litellm"
-  #   provider_prefix: "predibase/"
-  #   api_key_env: "PREDIBASE_API_KEY"
-
-  # ── FriendliAI ───────────────────────────────────────────────────────────────
-  # litellm-friendliai:
-  #   type: "litellm"
-  #   provider_prefix: "friendliai/"
-  #   api_key_env: "FRIENDLIAI_API_KEY"
-
-  # ── Baseten ──────────────────────────────────────────────────────────────────
-  # litellm-baseten:
-  #   type: "litellm"
-  #   provider_prefix: "baseten/"
-  #   api_key_env: "BASETEN_API_KEY"
-
-  # ── Anyscale ─────────────────────────────────────────────────────────────────
-  # litellm-anyscale:
-  #   type: "litellm"
-  #   provider_prefix: "anyscale/"
-  #   api_key_env: "ANYSCALE_API_KEY"
-
-  # ── GitHub Models ────────────────────────────────────────────────────────────
-  # litellm-github:
-  #   type: "litellm"
-  #   provider_prefix: "github/"
-  #   api_key_env: "GITHUB_API_KEY"
-
-  # ── GitHub Copilot ───────────────────────────────────────────────────────────
-  # litellm-github-copilot:
-  #   type: "litellm"
-  #   provider_prefix: "github_copilot/"
-  #   api_key_env: "GITHUB_COPILOT_API_KEY"
-
-  # ── WatsonX (IBM) ────────────────────────────────────────────────────────────
-  # litellm-watsonx:
-  #   type: "litellm"
-  #   provider_prefix: "watsonx/"
-  #   api_key_env: "WATSONX_API_KEY"
-
-  # ── Zhipu AI (Z.AI) ──────────────────────────────────────────────────────────
-  # litellm-zai:
-  #   type: "litellm"
-  #   provider_prefix: "zai/"
-  #   api_key_env: "ZHIPUAI_API_KEY"
-
-  # ── Dashscope (Qwen/Alibaba) ─────────────────────────────────────────────────
-  # litellm-dashscope:
-  #   type: "litellm"
-  #   provider_prefix: "dashscope/"
-  #   api_key_env: "DASHSCOPE_API_KEY"
-
-  # ── MiniMax ──────────────────────────────────────────────────────────────────
-  # litellm-minimax:
-  #   type: "litellm"
-  #   provider_prefix: "minimax/"
-  #   api_key_env: "MINIMAX_API_KEY"
-
-  # ── Moonshot AI ──────────────────────────────────────────────────────────────
-  # litellm-moonshot:
-  #   type: "litellm"
-  #   provider_prefix: "moonshot/"
-  #   api_key_env: "MOONSHOT_API_KEY"
-
-  # ── Lambda AI ────────────────────────────────────────────────────────────────
-  # litellm-lambda:
-  #   type: "litellm"
-  #   provider_prefix: "lambda_ai/"
-  #   api_key_env: "LAMBDA_API_KEY"
-
-  # ── Nscale (EU Sovereign) ────────────────────────────────────────────────────
-  # litellm-nscale:
-  #   type: "litellm"
-  #   provider_prefix: "nscale/"
-  #   api_key_env: "NSCALE_API_KEY"
-
-  # ── Nebius AI Studio ─────────────────────────────────────────────────────────
-  # litellm-nebius:
-  #   type: "litellm"
-  #   provider_prefix: "nebius/"
-  #   api_key_env: "NEBIUS_API_KEY"
-
-  # ── Hyperbolic ───────────────────────────────────────────────────────────────
-  # litellm-hyperbolic:
-  #   type: "litellm"
-  #   provider_prefix: "hyperbolic/"
-  #   api_key_env: "HYPERBOLIC_API_KEY"
-
-  # ── Featherless AI ───────────────────────────────────────────────────────────
-  # litellm-featherless:
-  #   type: "litellm"
-  #   provider_prefix: "featherless/"
-  #   api_key_env: "FEATHERLESS_API_KEY"
-
-  # ── Novita AI ────────────────────────────────────────────────────────────────
-  # litellm-novita:
-  #   type: "litellm"
-  #   provider_prefix: "novita/"
-  #   api_key_env: "NOVITA_API_KEY"
-
-  # ── NanoGPT ──────────────────────────────────────────────────────────────────
-  # litellm-nanogpt:
-  #   type: "litellm"
-  #   provider_prefix: "nano-gpt/"
-  #   api_key_env: "NANOGPT_API_KEY"
-
-  # ── NLP Cloud ────────────────────────────────────────────────────────────────
-  # litellm-nlp-cloud:
-  #   type: "litellm"
-  #   provider_prefix: "nlp_cloud/"
-  #   api_key_env: "NLP_CLOUD_API_KEY"
-
-  # ── Bytez ────────────────────────────────────────────────────────────────────
-  # litellm-bytez:
-  #   type: "litellm"
-  #   provider_prefix: "bytez/"
-  #   api_key_env: "BYTEZ_API_KEY"
-
-  # ── Clarifai ─────────────────────────────────────────────────────────────────
-  # litellm-clarifai:
-  #   type: "litellm"
-  #   provider_prefix: "clarifai/"
-  #   api_key_env: "CLARIFAI_API_KEY"
-
-  # ── Cloudflare Workers AI ────────────────────────────────────────────────────
-  # litellm-cloudflare:
-  #   type: "litellm"
-  #   provider_prefix: "cloudflare/"
-  #   api_key_env: "CLOUDFLARE_API_KEY"
-
-  # ── Stability AI ─────────────────────────────────────────────────────────────
-  # litellm-stability:
-  #   type: "litellm"
-  #   provider_prefix: "stability/"
-  #   api_key_env: "STABILITY_API_KEY"
-
-  # ── Fal AI ───────────────────────────────────────────────────────────────────
-  # litellm-fal:
-  #   type: "litellm"
-  #   provider_prefix: "fal/"
-  #   api_key_env: "FAL_API_KEY"
-
-  # ── Recraft ──────────────────────────────────────────────────────────────────
-  # litellm-recraft:
-  #   type: "litellm"
-  #   provider_prefix: "recraft/"
-  #   api_key_env: "RECRAFT_API_KEY"
-
-  # ── RunwayML ─────────────────────────────────────────────────────────────────
-  # litellm-runway:
-  #   type: "litellm"
-  #   provider_prefix: "runway/"
-  #   api_key_env: "RUNWAY_API_KEY"
-
-  # ── Poe ──────────────────────────────────────────────────────────────────────
-  # litellm-poe:
-  #   type: "litellm"
-  #   provider_prefix: "poe/"
-  #   api_key_env: "POE_API_KEY"
-
-  # ── Llamafile ────────────────────────────────────────────────────────────────
-  # litellm-llamafile:
-  #   type: "litellm"
-  #   provider_prefix: "llamafile/"
-  #   api_key_env: "LLAMAFILE_API_KEY"
-
-  # ── Xinference ───────────────────────────────────────────────────────────────
-  # litellm-xinference:
-  #   type: "litellm"
-  #   provider_prefix: "xinference/"
-  #   api_key_env: "XINFERENCE_API_KEY"
-
-  # ── Petals ───────────────────────────────────────────────────────────────────
-  # litellm-petals:
-  #   type: "litellm"
-  #   provider_prefix: "petals/"
-  #   api_key_env: "PETALS_API_KEY"
-
-  # ── Meta Llama ───────────────────────────────────────────────────────────────
-  # litellm-meta-llama:
-  #   type: "litellm"
-  #   provider_prefix: "meta_llama/"
-  #   api_key_env: "META_LLAMA_API_KEY"
-
-  # ── AI/ML API ────────────────────────────────────────────────────────────────
-  # litellm-aiml:
-  #   type: "litellm"
-  #   provider_prefix: "aiml/"
-  #   api_key_env: "AIML_API_KEY"
-
-  # ── CometAPI ─────────────────────────────────────────────────────────────────
-  # litellm-cometapi:
-  #   type: "litellm"
-  #   provider_prefix: "cometapi/"
-  #   api_key_env: "COMETAPI_API_KEY"
-
-  # ── Apertis AI ───────────────────────────────────────────────────────────────
-  # litellm-apertis:
-  #   type: "litellm"
-  #   provider_prefix: "apertis/"
-  #   api_key_env: "APERTIS_API_KEY"
-
-  # ── Chutes ───────────────────────────────────────────────────────────────────
-  # litellm-chutes:
-  #   type: "litellm"
-  #   provider_prefix: "chutes/"
-  #   api_key_env: "CHUTES_API_KEY"
-
-  # ── Galadriel ────────────────────────────────────────────────────────────────
-  # litellm-galadriel:
-  #   type: "litellm"
-  #   provider_prefix: "galadriel/"
-  #   api_key_env: "GALADRIEL_API_KEY"
-
-  # ── Morph ────────────────────────────────────────────────────────────────────
-  # litellm-morph:
-  #   type: "litellm"
-  #   provider_prefix: "morph/"
-  #   api_key_env: "MORPH_API_KEY"
-
-  # ── GradientAI (DigitalOcean) ────────────────────────────────────────────────
-  # litellm-gradient-ai:
-  #   type: "litellm"
-  #   provider_prefix: "gradient_ai/"
-  #   api_key_env: "GRADIENT_AI_API_KEY"
-
-  # ── DataRobot ────────────────────────────────────────────────────────────────
-  # litellm-datarobot:
-  #   type: "litellm"
-  #   provider_prefix: "datarobot/"
-  #   api_key_env: "DATAROBOT_API_KEY"
-
-  # ── CompactifAI ──────────────────────────────────────────────────────────────
-  # litellm-compactifai:
-  #   type: "litellm"
-  #   provider_prefix: "compactifai/"
-  #   api_key_env: "COMPACTIFAI_API_KEY"
-
-  # ── Deepgram ─────────────────────────────────────────────────────────────────
-  # litellm-deepgram:
-  #   type: "litellm"
-  #   provider_prefix: "deepgram/"
-  #   api_key_env: "DEEPGRAM_API_KEY"
-
-  # ── ElevenLabs ───────────────────────────────────────────────────────────────
-  # litellm-elevenlabs:
-  #   type: "litellm"
-  #   provider_prefix: "elevenlabs/"
-  #   api_key_env: "ELEVENLABS_API_KEY"
-
-  # ── Docker Model Runner ──────────────────────────────────────────────────────
-  # litellm-docker:
-  #   type: "litellm"
-  #   provider_prefix: "docker_model_runner/"
-  #   api_key_env: "DOCKER_MODEL_RUNNER_API_KEY"
-
-  # ── GMI Cloud ────────────────────────────────────────────────────────────────
-  # litellm-gmi:
-  #   type: "litellm"
-  #   provider_prefix: "gmi/"
-  #   api_key_env: "GMI_API_KEY"
-
-  # ── Helicone ─────────────────────────────────────────────────────────────────
-  # litellm-helicone:
-  #   type: "litellm"
-  #   provider_prefix: "helicone/"
-  #   api_key_env: "HELICONE_API_KEY"
-
-  # ── Heroku ───────────────────────────────────────────────────────────────────
-  # litellm-heroku:
-  #   type: "litellm"
-  #   provider_prefix: "heroku/"
-  #   api_key_env: "HEROKU_API_KEY"
-
-  # ── Infinity ─────────────────────────────────────────────────────────────────
-  # litellm-infinity:
-  #   type: "litellm"
-  #   provider_prefix: "infinity/"
-  #   api_key_env: "INFINITY_API_KEY"
-
-  # ── LangGraph ────────────────────────────────────────────────────────────────
-  # litellm-langgraph:
-  #   type: "litellm"
-  #   provider_prefix: "langgraph/"
-  #   api_key_env: "LANGGRAPH_API_KEY"
-
-  # ── Lemonade (AMD) ───────────────────────────────────────────────────────────
-  # litellm-lemonade:
-  #   type: "litellm"
-  #   provider_prefix: "lemonade/"
-  #   api_key_env: "LEMONADE_API_KEY"
-
-  # ── LlamaGate ────────────────────────────────────────────────────────────────
-  # litellm-llamagate:
-  #   type: "litellm"
-  #   provider_prefix: "llamagate/"
-  #   api_key_env: "LLAMAGATE_API_KEY"
-
-  # ── Manus ────────────────────────────────────────────────────────────────────
-  # litellm-manus:
-  #   type: "litellm"
-  #   provider_prefix: "manus/"
-  #   api_key_env: "MANUS_API_KEY"
-
-  # ── Milvus (Vector Store) ────────────────────────────────────────────────────
-  # litellm-milvus:
-  #   type: "litellm"
-  #   provider_prefix: "milvus/"
-  #   api_key_env: "MILVUS_API_KEY"
-
-  # ── PublicAI ─────────────────────────────────────────────────────────────────
-  # litellm-publicai:
-  #   type: "litellm"
-  #   provider_prefix: "publicai/"
-  #   api_key_env: "PUBLICAI_API_KEY"
-
-  # ── Pydantic AI Agents ───────────────────────────────────────────────────────
-  # litellm-pydantic-ai:
-  #   type: "litellm"
-  #   provider_prefix: "pydantic_ai_agent/"
-  #   api_key_env: "PYDANTIC_AI_API_KEY"
-
-  # ── RAGFlow ──────────────────────────────────────────────────────────────────
-  # litellm-ragflow:
-  #   type: "litellm"
-  #   provider_prefix: "ragflow/"
-  #   api_key_env: "RAGFLOW_API_KEY"
-
-  # ── Synthetic ────────────────────────────────────────────────────────────────
-  # litellm-synthetic:
-  #   type: "litellm"
-  #   provider_prefix: "synthetic/"
-  #   api_key_env: "SYNTHETIC_API_KEY"
-
-  # ── Topaz ────────────────────────────────────────────────────────────────────
-  # litellm-topaz:
-  #   type: "litellm"
-  #   provider_prefix: "topaz/"
-  #   api_key_env: "TOPAZ_API_KEY"
-
-  # ── Triton Inference Server ──────────────────────────────────────────────────
-  # litellm-triton:
-  #   type: "litellm"
-  #   provider_prefix: "triton/"
-  #   api_key_env: "TRITON_API_KEY"
-
-  # ── v0 ───────────────────────────────────────────────────────────────────────
-  # litellm-v0:
-  #   type: "litellm"
-  #   provider_prefix: "v0/"
-  #   api_key_env: "V0_API_KEY"
-
-  # ── Vercel AI Gateway ────────────────────────────────────────────────────────
-  # litellm-vercel:
-  #   type: "litellm"
-  #   provider_prefix: "vercel/"
-  #   api_key_env: "VERCEL_API_KEY"
-
-  # ── Volcano Engine ───────────────────────────────────────────────────────────
-  # litellm-volcano:
-  #   type: "litellm"
-  #   provider_prefix: "volcano/"
-  #   api_key_env: "VOLCANO_API_KEY"
-
-  # ── Weights & Biases Inference ───────────────────────────────────────────────
-  # litellm-wandb:
-  #   type: "litellm"
-  #   provider_prefix: "wandb/"
-  #   api_key_env: "WANDB_API_KEY"
-
-  # ── Xiaomi MiMo ──────────────────────────────────────────────────────────────
-  # litellm-xiaomi-mimo:
-  #   type: "litellm"
-  #   provider_prefix: "xiaomi_mimo/"
-  #   api_key_env: "XIAOMI_MIMO_API_KEY"
-
-  # ── Sarvam.ai ────────────────────────────────────────────────────────────────
-  # litellm-sarvam:
-  #   type: "litellm"
-  #   provider_prefix: "sarvam/"
-  #   api_key_env: "SARVAM_API_KEY"
-
-  # ── OVHCloud AI ──────────────────────────────────────────────────────────────
-  # litellm-ovhcloud:
-  #   type: "litellm"
-  #   provider_prefix: "ovhcloud/"
-  #   api_key_env: "OVHCLOUD_API_KEY"
-
-  # ── Oracle Cloud (OCI) ───────────────────────────────────────────────────────
-  # litellm-oci:
-  #   type: "litellm"
-  #   provider_prefix: "oci/"
-  #   api_key_env: "OCI_API_KEY"
-
-  # ── SAP Generative AI Hub ────────────────────────────────────────────────────
-  # litellm-sap:
-  #   type: "litellm"
-  #   provider_prefix: "sap/"
-  #   api_key_env: "SAP_API_KEY"
-
-  # ── Scaleway ─────────────────────────────────────────────────────────────────
-  # litellm-scaleway:
-  #   type: "litellm"
-  #   provider_prefix: "scaleway/"
-  #   api_key_env: "SCALEWAY_API_KEY"
-
-  # ── Snowflake ────────────────────────────────────────────────────────────────
-  # litellm-snowflake:
-  #   type: "litellm"
-  #   provider_prefix: "snowflake/"
-  #   api_key_env: "SNOWFLAKE_API_KEY"
-
-  # ── ChatGPT Subscription ─────────────────────────────────────────────────────
-  # litellm-chatgpt:
-  #   type: "litellm"
-  #   provider_prefix: "chatgpt/"
-  #   api_key_env: "CHATGPT_API_KEY"
-
-  # ── LiteLLM Proxy (Self-hosted Gateway) ──────────────────────────────────────
-  # litellm-proxy:
-  #   type: "litellm"
-  #   provider_prefix: "litellm_proxy/"
-  #   api_key_env: "LITELLM_PROXY_API_KEY"
-  #   # api_base: "http://localhost:4000"
-
-  # ── Custom API Server ────────────────────────────────────────────────────────
-  # litellm-custom:
-  #   type: "litellm"
-  #   provider_prefix: "custom_llm/"
-  #   api_key_env: "CUSTOM_LLM_API_KEY"
-  #   # api_base: "http://your-server:8000/v1"
-
-  # ── Abliteration ─────────────────────────────────────────────────────────────
-  # litellm-abliteration:
-  #   type: "litellm"
-  #   provider_prefix: "abliteration/"
-  #   api_key_env: "ABLITERATION_API_KEY"
+# API keys should be set via environment variables (see api_key_env field).
+#
+# Structure:
+#   default_client: Name of the client type to use by default
+#   client_types: Dictionary of client type configurations
+#
+# Each client_type has:
+#   client_class: The Python class name (e.g., "FFLiteLLMClient", "FFMistralSmall")
+#   type: Either "native" (direct API) or "litellm" (via LiteLLM routing)
+#   api_key_env: Environment variable name for the API key
+#   provider_prefix: LiteLLM provider prefix (only for type: litellm)
+#   default_model: Default model identifier
+
+default_client: "litellm-mistral-small"
+
+client_types:
+  # ===========================================
+  # NATIVE CLIENTS (Direct API, no LiteLLM)
+  # ===========================================
+
+  mistral-small:
+    client_class: "FFMistralSmall"
+    type: "native"
+    api_key_env: "MISTRALSMALL_KEY"
+    default_model: "mistral-small-2503"
+
+  mistral:
+    client_class: "FFMistral"
+    type: "native"
+    api_key_env: "MISTRAL_API_KEY"
+    default_model: "mistral-large-latest"
+
+  anthropic:
+    client_class: "FFAnthropic"
+    type: "native"
+    api_key_env: "ANTHROPIC_TOKEN"
+    default_model: "claude-3-5-sonnet-20241022"
+
+  anthropic-cached:
+    client_class: "FFAnthropicCached"
+    type: "native"
+    api_key_env: "ANTHROPIC_TOKEN"
+    default_model: "claude-3-5-sonnet-20241022"
+
+  gemini:
+    client_class: "FFGemini"
+    type: "native"
+    api_key_env: "GEMINI_API_KEY"
+    default_model: "gemini-1.5-pro"
+
+  perplexity:
+    client_class: "FFPerplexity"
+    type: "native"
+    api_key_env: "PERPLEXITY_API_KEY"
+    default_model: "llama-3.1-sonar-large-128k-online"
+
+  openai-assistant:
+    client_class: "FFOpenAIAssistant"
+    type: "native"
+    api_key_env: "OPENAI_API_KEY"
+    default_model: "gpt-4-turbo"
+
+  nvidia-deepseek:
+    client_class: "FFNvidiaDeepSeek"
+    type: "native"
+    api_key_env: "NVIDIA_API_KEY"
+    default_model: "deepseek-ai/deepseek-r1"
+
+  # Azure native clients
+  azure-mistral:
+    client_class: "FFAzureMistral"
+    type: "native"
+    api_key_env: "AZURE_API_KEY"
+    default_model: "mistral-large"
+
+  azure-mistral-small:
+    client_class: "FFAzureMistralSmall"
+    type: "native"
+    api_key_env: "AZURE_API_KEY"
+    default_model: "mistral-small"
+
+  azure-codestral:
+    client_class: "FFAzureCodestral"
+    type: "native"
+    api_key_env: "AZURE_API_KEY"
+    default_model: "codestral"
+
+  azure-deepseek:
+    client_class: "FFAzureDeepSeek"
+    type: "native"
+    api_key_env: "AZURE_API_KEY"
+    default_model: "deepseek-r1"
+
+  azure-deepseek-v3:
+    client_class: "FFAzureDeepSeekV3"
+    type: "native"
+    api_key_env: "AZURE_API_KEY"
+    default_model: "deepseek-v3"
+
+  azure-ms-deepseek-r1:
+    client_class: "FFAzureMSDeepSeekR1"
+    type: "native"
+    api_key_env: "AZURE_API_KEY"
+    default_model: "DeepSeek-R1"
+
+  azure-phi:
+    client_class: "FFAzurePhi"
+    type: "native"
+    api_key_env: "AZURE_API_KEY"
+    default_model: "phi-4"
+
+  # ===========================================
+  # LITELLM CLIENTS - MISTRAL
+  # ===========================================
+
+  litellm-mistral-small:
+    client_class: "FFLiteLLMClient"
+    type: "litellm"
+    provider_prefix: "mistral/"
+    api_key_env: "MISTRAL_API_KEY"
+    default_model: "mistral-small-latest"
+
+  litellm-mistral-medium:
+    client_class: "FFLiteLLMClient"
+    type: "litellm"
+    provider_prefix: "mistral/"
+    api_key_env: "MISTRAL_API_KEY"
+    default_model: "mistral-medium-latest"
+
+  litellm-mistral-large:
+    client_class: "FFLiteLLMClient"
+    type: "litellm"
+    provider_prefix: "mistral/"
+    api_key_env: "MISTRAL_API_KEY"
+    default_model: "mistral-large-latest"
+
+  litellm-codestral:
+    client_class: "FFLiteLLMClient"
+    type: "litellm"
+    provider_prefix: "mistral/"
+    api_key_env: "MISTRAL_API_KEY"
+    default_model: "codestral-latest"
+
+  litellm-open-mistral-7b:
+    client_class: "FFLiteLLMClient"
+    type: "litellm"
+    provider_prefix: "mistral/"
+    api_key_env: "MISTRAL_API_KEY"
+    default_model: "open-mistral-7b"
+
+  litellm-open-mixtral-8x7b:
+    client_class: "FFLiteLLMClient"
+    type: "litellm"
+    provider_prefix: "mistral/"
+    api_key_env: "MISTRAL_API_KEY"
+    default_model: "open-mixtral-8x7b"
+
+  litellm-open-mixtral-8x22b:
+    client_class: "FFLiteLLMClient"
+    type: "litellm"
+    provider_prefix: "mistral/"
+    api_key_env: "MISTRAL_API_KEY"
+    default_model: "open-mixtral-8x22b"
+
+  # ===========================================
+  # LITELLM CLIENTS - ANTHROPIC
+  # ===========================================
+
+  litellm-claude-3-opus:
+    client_class: "FFLiteLLMClient"
+    type: "litellm"
+    provider_prefix: "anthropic/"
+    api_key_env: "ANTHROPIC_API_KEY"
+    default_model: "claude-3-opus-20240229"
+
+  litellm-claude-3-sonnet:
+    client_class: "FFLiteLLMClient"
+    type: "litellm"
+    provider_prefix: "anthropic/"
+    api_key_env: "ANTHROPIC_API_KEY"
+    default_model: "claude-3-sonnet-20240229"
+
+  litellm-claude-3-haiku:
+    client_class: "FFLiteLLMClient"
+    type: "litellm"
+    provider_prefix: "anthropic/"
+    api_key_env: "ANTHROPIC_API_KEY"
+    default_model: "claude-3-haiku-20240307"
+
+  litellm-claude-3-5-sonnet:
+    client_class: "FFLiteLLMClient"
+    type: "litellm"
+    provider_prefix: "anthropic/"
+    api_key_env: "ANTHROPIC_API_KEY"
+    default_model: "claude-3-5-sonnet-20241022"
+
+  litellm-claude-3-5-haiku:
+    client_class: "FFLiteLLMClient"
+    type: "litellm"
+    provider_prefix: "anthropic/"
+    api_key_env: "ANTHROPIC_API_KEY"
+    default_model: "claude-3-5-haiku-20241022"
+
+  # ===========================================
+  # LITELLM CLIENTS - OPENAI
+  # ===========================================
+
+  litellm-gpt-4:
+    client_class: "FFLiteLLMClient"
+    type: "litellm"
+    provider_prefix: "openai/"
+    api_key_env: "OPENAI_API_KEY"
+    default_model: "gpt-4"
+
+  litellm-gpt-4-turbo:
+    client_class: "FFLiteLLMClient"
+    type: "litellm"
+    provider_prefix: "openai/"
+    api_key_env: "OPENAI_API_KEY"
+    default_model: "gpt-4-turbo"
+
+  litellm-gpt-4o:
+    client_class: "FFLiteLLMClient"
+    type: "litellm"
+    provider_prefix: "openai/"
+    api_key_env: "OPENAI_API_KEY"
+    default_model: "gpt-4o"
+
+  litellm-gpt-4o-mini:
+    client_class: "FFLiteLLMClient"
+    type: "litellm"
+    provider_prefix: "openai/"
+    api_key_env: "OPENAI_API_KEY"
+    default_model: "gpt-4o-mini"
+
+  litellm-gpt-3.5-turbo:
+    client_class: "FFLiteLLMClient"
+    type: "litellm"
+    provider_prefix: "openai/"
+    api_key_env: "OPENAI_API_KEY"
+    default_model: "gpt-3.5-turbo"
+
+  litellm-o1:
+    client_class: "FFLiteLLMClient"
+    type: "litellm"
+    provider_prefix: "openai/"
+    api_key_env: "OPENAI_API_KEY"
+    default_model: "o1"
+
+  litellm-o1-mini:
+    client_class: "FFLiteLLMClient"
+    type: "litellm"
+    provider_prefix: "openai/"
+    api_key_env: "OPENAI_API_KEY"
+    default_model: "o1-mini"
+
+  litellm-o1-preview:
+    client_class: "FFLiteLLMClient"
+    type: "litellm"
+    provider_prefix: "openai/"
+    api_key_env: "OPENAI_API_KEY"
+    default_model: "o1-preview"
+
+  # ===========================================
+  # LITELLM CLIENTS - GEMINI
+  # ===========================================
+
+  litellm-gemini-pro:
+    client_class: "FFLiteLLMClient"
+    type: "litellm"
+    provider_prefix: "gemini/"
+    api_key_env: "GEMINI_API_KEY"
+    default_model: "gemini-pro"
+
+  litellm-gemini-1.5-pro:
+    client_class: "FFLiteLLMClient"
+    type: "litellm"
+    provider_prefix: "gemini/"
+    api_key_env: "GEMINI_API_KEY"
+    default_model: "gemini-1.5-pro"
+
+  litellm-gemini-1.5-flash:
+    client_class: "FFLiteLLMClient"
+    type: "litellm"
+    provider_prefix: "gemini/"
+    api_key_env: "GEMINI_API_KEY"
+    default_model: "gemini-1.5-flash"
+
+  # ===========================================
+  # LITELLM CLIENTS - PERPLEXITY
+  # ===========================================
+
+  litellm-perplexity-sonar-small:
+    client_class: "FFLiteLLMClient"
+    type: "litellm"
+    provider_prefix: "perplexity/"
+    api_key_env: "PERPLEXITY_API_KEY"
+    default_model: "llama-3.1-sonar-small-128k-online"
+
+  litellm-perplexity-sonar-large:
+    client_class: "FFLiteLLMClient"
+    type: "litellm"
+    provider_prefix: "perplexity/"
+    api_key_env: "PERPLEXITY_API_KEY"
+    default_model: "llama-3.1-sonar-large-128k-online"
+
+  # ===========================================
+  # LITELLM CLIENTS - AZURE (generic)
+  # ===========================================
+
+  litellm-azure:
+    client_class: "FFLiteLLMClient"
+    type: "litellm"
+    provider_prefix: "azure/"
+    api_key_env: "AZURE_API_KEY"
+    default_model: "gpt-4o"
+
+  # ===========================================
+  # LITELLM CLIENTS - DEEPSEEK
+  # ===========================================
+
+  litellm-deepseek-chat:
+    client_class: "FFLiteLLMClient"
+    type: "litellm"
+    provider_prefix: "deepseek/"
+    api_key_env: "DEEPSEEK_API_KEY"
+    default_model: "deepseek-chat"
+
+  litellm-deepseek-coder:
+    client_class: "FFLiteLLMClient"
+    type: "litellm"
+    provider_prefix: "deepseek/"
+    api_key_env: "DEEPSEEK_API_KEY"
+    default_model: "deepseek-coder"
+
+  litellm-deepseek-reasoner:
+    client_class: "FFLiteLLMClient"
+    type: "litellm"
+    provider_prefix: "deepseek/"
+    api_key_env: "DEEPSEEK_API_KEY"
+    default_model: "deepseek-reasoner"
+
+  # ===========================================
+  # LITELLM CLIENTS - GROQ
+  # ===========================================
+
+  litellm-groq-llama-70b:
+    client_class: "FFLiteLLMClient"
+    type: "litellm"
+    provider_prefix: "groq/"
+    api_key_env: "GROQ_API_KEY"
+    default_model: "llama-3.3-70b-versatile"
+
+  litellm-groq-mixtral:
+    client_class: "FFLiteLLMClient"
+    type: "litellm"
+    provider_prefix: "groq/"
+    api_key_env: "GROQ_API_KEY"
+    default_model: "mixtral-8x7b-32768"
+
+  # ===========================================
+  # LITELLM CLIENTS - XAI (Grok)
+  # ===========================================
+
+  litellm-xai-grok:
+    client_class: "FFLiteLLMClient"
+    type: "litellm"
+    provider_prefix: "xai/"
+    api_key_env: "XAI_API_KEY"
+    default_model: "grok-beta"
+
+  # ===========================================
+  # LITELLM CLIENTS - TOGETHER AI
+  # ===========================================
+
+  litellm-together-llama:
+    client_class: "FFLiteLLMClient"
+    type: "litellm"
+    provider_prefix: "together_ai/"
+    api_key_env: "TOGETHER_AI_API_KEY"
+    default_model: "meta-llama/Llama-3-70b-chat-hf"
+
+  # ===========================================
+  # LITELLM CLIENTS - COHERE
+  # ===========================================
+
+  litellm-cohere-command:
+    client_class: "FFLiteLLMClient"
+    type: "litellm"
+    provider_prefix: "cohere/"
+    api_key_env: "COHERE_API_KEY"
+    default_model: "command"
+
+  litellm-cohere-command-r:
+    client_class: "FFLiteLLMClient"
+    type: "litellm"
+    provider_prefix: "cohere/"
+    api_key_env: "COHERE_API_KEY"
+    default_model: "command-r"
+
+  # ===========================================
+  # LITELLM CLIENTS - AWS BEDROCK
+  # ===========================================
+
+  litellm-bedrock-claude:
+    client_class: "FFLiteLLMClient"
+    type: "litellm"
+    provider_prefix: "bedrock/"
+    api_key_env: "AWS_ACCESS_KEY_ID"
+    default_model: "anthropic.claude-3-sonnet-20240229-v1:0"
+
+  # ===========================================
+  # LITELLM CLIENTS - VERTEX AI
+  # ===========================================
+
+  litellm-vertex-gemini:
+    client_class: "FFLiteLLMClient"
+    type: "litellm"
+    provider_prefix: "vertex_ai/"
+    api_key_env: "VERTEX_AI_ACCESS_TOKEN"
+    default_model: "gemini-1.5-pro"
+
+  # ===========================================
+  # LITELLM CLIENTS - OPENROUTER
+  # ===========================================
+
+  litellm-openrouter:
+    client_class: "FFLiteLLMClient"
+    type: "litellm"
+    provider_prefix: "openrouter/"
+    api_key_env: "OPENROUTER_API_KEY"
+    default_model: "anthropic/claude-3.5-sonnet"
+
+  # ===========================================
+  # LITELLM CLIENTS - LOCAL (Ollama, LM Studio)
+  # ===========================================
+
+  litellm-ollama:
+    client_class: "FFLiteLLMClient"
+    type: "litellm"
+    provider_prefix: "ollama/"
+    api_key_env: "OLLAMA_API_KEY"
+    default_model: "llama3.1"
+
+  litellm-lm-studio:
+    client_class: "FFLiteLLMClient"
+    type: "litellm"
+    provider_prefix: "lm_studio/"
+    api_key_env: "LM_STUDIO_API_KEY"
+    default_model: "local-model"
+
+  # ===========================================
+  # LITELLM CLIENTS - VLLM
+  # ===========================================
+
+  litellm-vllm:
+    client_class: "FFLiteLLMClient"
+    type: "litellm"
+    provider_prefix: "vllm/"
+    api_key_env: "VLLM_API_KEY"
+    default_model: "meta-llama/Llama-3-70b"
+
+  # ===========================================
+  # LITELLM CLIENTS - REPLICATE
+  # ===========================================
+
+  litellm-replicate:
+    client_class: "FFLiteLLMClient"
+    type: "litellm"
+    provider_prefix: "replicate/"
+    api_key_env: "REPLICATE_API_KEY"
+    default_model: "meta/llama-2-70b-chat"
+
+  # ===========================================
+  # LITELLM CLIENTS - HUGGINGFACE
+  # ===========================================
+
+  litellm-huggingface:
+    client_class: "FFLiteLLMClient"
+    type: "litellm"
+    provider_prefix: "huggingface/"
+    api_key_env: "HUGGINGFACE_API_KEY"
+    default_model: "meta-llama/Llama-2-7b-chat-hf"
+
+  # ===========================================
+  # LITELLM CLIENTS - FIREWORKS AI
+  # ===========================================
+
+  litellm-fireworks:
+    client_class: "FFLiteLLMClient"
+    type: "litellm"
+    provider_prefix: "fireworks_ai/"
+    api_key_env: "FIREWORKS_API_KEY"
+    default_model: "accounts/fireworks/models/llama-v3-70b-instruct"
+
+  # ===========================================
+  # LITELLM CLIENTS - CUSTOM/GENERIC
+  # ===========================================
+
+  litellm-custom:
+    client_class: "FFLiteLLMClient"
+    type: "litellm"
+    provider_prefix: "custom_llm/"
+    api_key_env: "CUSTOM_LLM_API_KEY"
+    default_model: "my-model"

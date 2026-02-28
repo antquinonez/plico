@@ -87,8 +87,8 @@ class TestClientRegistryGet:
         """Test getting a registered client by name."""
         from src.orchestrator.client_registry import ClientRegistry
 
-        with patch("src.orchestrator.client_registry.FFMistralSmall") as MockClient:
-            MockClient.return_value = mock_ffmistralsmall
+        with patch("src.orchestrator.client_registry._get_client_class") as mock_get_class:
+            mock_get_class.return_value = MagicMock(return_value=mock_ffmistralsmall)
 
             registry = ClientRegistry(mock_ffmistralsmall)
             registry.register("fast", "mistral-small", {"temperature": 0.3})

@@ -24,6 +24,7 @@ Examples:
 """
 
 import argparse
+import importlib
 import logging
 import os
 import sys
@@ -35,20 +36,6 @@ from dotenv import load_dotenv
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from src.config import get_config
-from src.Clients.FFAnthropic import FFAnthropic
-from src.Clients.FFAnthropicCached import FFAnthropicCached
-from src.Clients.FFAzureCodestral import FFAzureCodestral
-from src.Clients.FFAzureDeepSeek import FFAzureDeepSeek
-from src.Clients.FFAzureDeepSeekV3 import FFAzureDeepSeekV3
-from src.Clients.FFAzureMistral import FFAzureMistral
-from src.Clients.FFAzureMistralSmall import FFAzureMistralSmall
-from src.Clients.FFAzurePhi import FFAzurePhi
-from src.Clients.FFGemini import FFGemini
-from src.Clients.FFLiteLLMClient import FFLiteLLMClient
-from src.Clients.FFMistral import FFMistral
-from src.Clients.FFMistralSmall import FFMistralSmall
-from src.Clients.FFNvidiaDeepSeek import FFNvidiaDeepSeek
-from src.Clients.FFPerplexity import FFPerplexity
 from src.orchestrator import ExcelOrchestrator
 
 load_dotenv()
@@ -94,34 +81,67 @@ def setup_logging(quiet: bool = False, verbose: bool = False):
 
 logger = setup_logging(quiet=False)
 
-CLIENT_MAP = {
-    "mistral-small": FFMistralSmall,
-    "mistral": FFMistral,
-    "anthropic": FFAnthropic,
-    "anthropic-cached": FFAnthropicCached,
-    "gemini": FFGemini,
-    "perplexity": FFPerplexity,
-    "nvidia-deepseek": FFNvidiaDeepSeek,
-    "azure-mistral": FFAzureMistral,
-    "azure-mistral-small": FFAzureMistralSmall,
-    "azure-codestral": FFAzureCodestral,
-    "azure-deepseek": FFAzureDeepSeek,
-    "azure-deepseek-v3": FFAzureDeepSeekV3,
-    "azure-phi": FFAzurePhi,
-    "litellm": FFLiteLLMClient,
-    "litellm-mistral": FFLiteLLMClient,
-    "litellm-anthropic": FFLiteLLMClient,
-    "litellm-openai": FFLiteLLMClient,
-    "litellm-azure": FFLiteLLMClient,
-    "litellm-gemini": FFLiteLLMClient,
-    "litellm-perplexity": FFLiteLLMClient,
-}
+
+def get_client_class(client_class_name: str) -> type:
+    """Dynamically import and return a client class by name."""
+    module_path = f"src.Clients.{client_class_name}"
+    try:
+        module = importlib.import_module(module_path)
+        return getattr(module, client_class_name)
+    except (ImportError, AttributeError) as e:
+        raise ImportError(f"Could not import client class '{client_class_name}': {e}")
 
 
-def _get_litellm_prefix(client_type: str) -> str:
-    """Get LiteLLM provider prefix for a client type from config."""
-    config = get_config()
-    return config.get_litellm_prefix(client_type)
+def get_client(client_type: str, workbook_config: dict) -> object:
+    """Instantiate the appropriate client from config.
+
+    Args:
+        client_type: Name of the client type from config
+        workbook_config: Config from workbook (can override model, api_key_env, etc.)
+
+    Returns:
+        Instantiated client object
+
+    """
+    app_config = get_config()
+    client_type_config = app_config.get_client_type_config(client_type)
+
+    if client_type_config is None:
+        available = app_config.get_available_client_types()
+        raise ValueError(f"Unknown client type: '{client_type}'. Available types: {available}")
+
+    client_class = get_client_class(client_type_config.client_class)
+
+    api_key_env = workbook_config.get("api_key_env") or client_type_config.api_key_env
+    api_key = os.getenv(api_key_env)
+
+    if not api_key:
+        raise ValueError(f"API key not found in environment variable: {api_key_env}")
+
+    model = workbook_config.get("model") or client_type_config.default_model
+    temperature = workbook_config.get("temperature")
+    max_tokens = workbook_config.get("max_tokens")
+    system_instructions = workbook_config.get("system_instructions")
+
+    if client_type_config.type == "litellm":
+        provider_prefix = client_type_config.provider_prefix
+        model_string = f"{provider_prefix}{model}" if provider_prefix else model
+
+        return client_class(
+            model_string=model_string,
+            api_key=api_key,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            system_instructions=system_instructions,
+        )
+    else:
+        return client_class(
+            api_key=api_key,
+            model=model,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            system_instructions=system_instructions,
+        )
 
 
 class ProgressIndicator:
@@ -188,53 +208,12 @@ class ProgressIndicator:
         sys.stdout.flush()
 
 
-def get_client(client_type: str, config: dict) -> object:
-    """Instantiate the appropriate client."""
-    client_class = CLIENT_MAP.get(client_type)
-
-    if not client_class:
-        raise ValueError(
-            f"Unknown client type: {client_type}. Available: {list(CLIENT_MAP.keys())}"
-        )
-
-    if client_type.startswith("litellm"):
-        provider_prefix = _get_litellm_prefix(client_type)
-        model = config.get("model", "gpt-4")
-        model_string = f"{provider_prefix}{model}" if provider_prefix else model
-
-        api_key_env = config.get("api_key_env", "MISTRAL_API_KEY")
-        api_key = os.getenv(api_key_env)
-
-        if not api_key:
-            raise ValueError(f"API key not found in environment variable: {api_key_env}")
-
-        return client_class(
-            model_string=model_string,
-            api_key=api_key,
-            temperature=config.get("temperature"),
-            max_tokens=config.get("max_tokens"),
-            system_instructions=config.get("system_instructions"),
-        )
-
-    api_key_env = config.get("api_key_env", "MISTRALSMALL_KEY")
-    api_key = os.getenv(api_key_env)
-
-    if not api_key:
-        raise ValueError(f"API key not found in environment variable: {api_key_env}")
-
-    return client_class(
-        api_key=api_key,
-        model=config.get("model"),
-        temperature=config.get("temperature"),
-        max_tokens=config.get("max_tokens"),
-        system_instructions=config.get("system_instructions"),
-    )
-
-
 def main():
     app_config = get_config()
     default_concurrency = app_config.orchestrator.default_concurrency
     max_concurrency = app_config.orchestrator.max_concurrency
+    default_client = app_config.get_default_client_type()
+    available_clients = app_config.get_available_client_types()
 
     parser = argparse.ArgumentParser(
         description="Run Excel-based prompt orchestration",
@@ -244,9 +223,9 @@ def main():
     parser.add_argument("workbook", help="Path to Excel workbook (will be created if not exists)")
     parser.add_argument(
         "--client",
-        choices=list(CLIENT_MAP.keys()),
-        default="litellm-mistral",
-        help="AI client to use (default: litellm-mistral)",
+        choices=available_clients,
+        default=default_client,
+        help=f"AI client to use (default: {default_client})",
     )
     parser.add_argument(
         "--concurrency",
@@ -287,18 +266,19 @@ def main():
         return 0
 
     builder.validate_workbook()
-    config = builder.load_config()
+    workbook_config = builder.load_config()
 
     if args.dry_run:
         prompts = builder.load_prompts()
         print(f"\nWorkbook validated: {workbook_path}")
-        print(f"Config: {config}")
+        print(f"Config: {workbook_config}")
         print(f"Prompts loaded: {len(prompts)}")
         for p in prompts:
             print(f"  - Seq {p['sequence']}: {p.get('prompt_name', '(unnamed)')}")
         return 0
 
-    client = get_client(args.client, config)
+    client_type = workbook_config.get("client") or args.client
+    client = get_client(client_type, workbook_config)
 
     prompts = builder.load_prompts()
     progress = ProgressIndicator(len(prompts), show_names=True)
@@ -311,6 +291,7 @@ def main():
     )
 
     print(f"\nStarting orchestration with concurrency={args.concurrency}")
+    print(f"Client type: {client_type}")
     print(f"Total prompts: {len(prompts)}")
     log_dir = os.path.join(
         os.path.dirname(os.path.dirname(os.path.abspath(__file__))), app_config.logging.directory

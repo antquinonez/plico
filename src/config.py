@@ -20,7 +20,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 from pydantic import Field
@@ -52,6 +52,7 @@ def _load_yaml_file(filename: str) -> dict[str, Any]:
 
 def _load_all_configs() -> dict[str, Any]:
     """Load all configuration files and merge them."""
+    clients_yaml = _load_yaml_file("clients.yaml")
     return {
         "logging": _load_yaml_file("logging.yaml").get("logging", {}),
         "paths": _load_yaml_file("paths.yaml").get("paths", {}),
@@ -59,7 +60,7 @@ def _load_all_configs() -> dict[str, Any]:
         "orchestrator": _load_yaml_file("main.yaml").get("orchestrator", {}),
         "document_processor": _load_yaml_file("main.yaml").get("document_processor", {}),
         "rag": _load_yaml_file("main.yaml").get("rag", {}),
-        "clients": _load_yaml_file("clients.yaml").get("clients", {}),
+        "clients": clients_yaml,
         "model_defaults": _load_yaml_file("model_defaults.yaml").get("model_defaults", {}),
         "sample": _load_yaml_file("sample_workbook.yaml").get("sample_workbooks", {}),
     }
@@ -250,7 +251,7 @@ class RAGConfig(BaseSettings):
 
 
 class ClientConfig(BaseSettings):
-    """Individual client configuration."""
+    """Individual client configuration (legacy format)."""
 
     type: str = "litellm"
     provider_prefix: str = ""
@@ -265,19 +266,40 @@ class ClientConfig(BaseSettings):
     fallbacks: list[str] = Field(default_factory=list)
 
 
+class ClientTypeConfig(BaseSettings):
+    """Configuration for a single client type."""
+
+    client_class: str = ""
+    type: Literal["native", "litellm"] = "litellm"
+    api_key_env: str = ""
+    provider_prefix: str = ""
+    default_model: str = ""
+
+
 class ClientsConfig(BaseSettings):
-    """All clients configuration (dynamic dict)."""
+    """All clients configuration with client type definitions."""
 
     model_config = SettingsConfigDict(extra="allow")
 
+    default_client: str = "litellm-mistral-small"
+    client_types: dict[str, ClientTypeConfig] = Field(default_factory=dict)
+
     def get_client(self, name: str) -> ClientConfig | None:
-        """Get a client configuration by name."""
+        """Get a client configuration by name (legacy support)."""
         data = getattr(self, name, None)
         if data is None:
             return None
         if isinstance(data, dict):
             return ClientConfig(**data)
         return data
+
+    def get_client_type(self, name: str) -> ClientTypeConfig | None:
+        """Get a client type configuration by name."""
+        return self.client_types.get(name)
+
+    def get_available_client_types(self) -> list[str]:
+        """Get list of available client type names."""
+        return list(self.client_types.keys())
 
 
 class ModelDefaultsGenericConfig(BaseSettings):
@@ -353,7 +375,7 @@ class Config(BaseSettings):
     orchestrator: OrchestratorConfig = Field(default_factory=OrchestratorConfig)
     document_processor: DocumentProcessorConfig = Field(default_factory=DocumentProcessorConfig)
     rag: RAGConfig = Field(default_factory=RAGConfig)
-    clients: dict[str, Any] = Field(default_factory=dict)
+    clients: ClientsConfig = Field(default_factory=ClientsConfig)
     model_defaults: ModelDefaultsConfig = Field(default_factory=ModelDefaultsConfig)
     sample: SampleConfig = Field(default_factory=SampleConfig)
 
@@ -371,34 +393,38 @@ class Config(BaseSettings):
         return (init_settings, yaml_source, env_settings)
 
     def get_client_config(self, name: str) -> ClientConfig | None:
-        """Get a client configuration by name."""
-        data = self.clients.get(name)
-        if data is None:
-            return None
-        if isinstance(data, dict):
-            return ClientConfig(**data)
-        return data
+        """Get a client configuration by name (legacy support)."""
+        return self.clients.get_client(name)
+
+    def get_client_type_config(self, name: str) -> ClientTypeConfig | None:
+        """Get a client type configuration by name."""
+        return self.clients.get_client_type(name)
+
+    def get_default_client_type(self) -> str:
+        """Get the default client type name."""
+        return self.clients.default_client
+
+    def get_available_client_types(self) -> list[str]:
+        """Get list of available client type names."""
+        return self.clients.get_available_client_types()
 
     def get_api_key(self, client_name: str) -> str | None:
         """Get API key for a client, checking direct key first, then env var."""
-        client_config = self.get_client_config(client_name)
-        if client_config is None:
+        client_type_config = self.get_client_type_config(client_name)
+        if client_type_config is None:
             return None
 
-        if client_config.api_key:
-            return client_config.api_key
-
-        if client_config.api_key_env:
-            return os.getenv(client_config.api_key_env)
+        if client_type_config.api_key_env:
+            return os.getenv(client_type_config.api_key_env)
 
         return None
 
     def get_litellm_prefix(self, client_name: str) -> str:
         """Get LiteLLM provider prefix for a client."""
-        client_config = self.get_client_config(client_name)
-        if client_config is None:
+        client_type_config = self.get_client_type_config(client_name)
+        if client_type_config is None:
             return ""
-        return client_config.provider_prefix
+        return client_type_config.provider_prefix
 
 
 _config: Config | None = None

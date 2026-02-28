@@ -1,34 +1,128 @@
-# FFClients AI Client Configuration
-# ==================================
-# Configure AI clients for LiteLLM routing and direct API access.
-# API keys can be set via environment variables or directly below.
-# See clients.yaml.example for all available client types.
+# FFClients Client Types Configuration
+# =====================================
+# Copy additional client types from clients.yaml.example as needed.
+#
+# API keys should be set via environment variables (see api_key_env field).
 
-clients:
+default_client: "litellm-mistral-small"
+
+client_types:
+  # ===========================================
+  # NATIVE CLIENTS (Direct API, no LiteLLM)
+  # ===========================================
+
   mistral-small:
-    type: "litellm"
-    provider_prefix: "mistral/"
+    client_class: "FFMistralSmall"
+    type: "native"
     api_key_env: "MISTRALSMALL_KEY"
-    # api_key: ""  # Optional: set directly or use api_key_env
+    default_model: "mistral-small-2503"
+
+  anthropic:
+    client_class: "FFAnthropic"
+    type: "native"
+    api_key_env: "ANTHROPIC_TOKEN"
+    default_model: "claude-3-5-sonnet-20241022"
+
+  gemini:
+    client_class: "FFGemini"
+    type: "native"
+    api_key_env: "GEMINI_API_KEY"
+    default_model: "gemini-1.5-pro"
+
+  # ===========================================
+  # LITELLM CLIENTS - GENERIC
+  # ===========================================
+
+  litellm:
+    client_class: "FFLiteLLMClient"
+    type: "litellm"
+    provider_prefix: ""
+    api_key_env: "LITELLM_API_KEY"
+    default_model: "gpt-4"
+
+  # ===========================================
+  # LITELLM CLIENTS - MISTRAL
+  # ===========================================
 
   litellm-mistral:
+    client_class: "FFLiteLLMClient"
     type: "litellm"
     provider_prefix: "mistral/"
     api_key_env: "MISTRAL_API_KEY"
+    default_model: "mistral-small-latest"
 
-  litellm-azure:
+  litellm-mistral-small:
+    client_class: "FFLiteLLMClient"
     type: "litellm"
-    provider_prefix: "azure/"
-    api_key_env: "AZURE_API_KEY"
-    model: "mistral-small-2503"
+    provider_prefix: "mistral/"
+    api_key_env: "MISTRAL_API_KEY"
+    default_model: "mistral-small-latest"
+
+  litellm-mistral-large:
+    client_class: "FFLiteLLMClient"
+    type: "litellm"
+    provider_prefix: "mistral/"
+    api_key_env: "MISTRAL_API_KEY"
+    default_model: "mistral-large-latest"
+
+  # ===========================================
+  # LITELLM CLIENTS - ANTHROPIC
+  # ===========================================
 
   litellm-anthropic:
+    client_class: "FFLiteLLMClient"
     type: "litellm"
     provider_prefix: "anthropic/"
     api_key_env: "ANTHROPIC_API_KEY"
-    model: "claude-3-opus"
+    default_model: "claude-3-5-sonnet-20241022"
 
-  anthropic:
-    type: "native"
-    client_class: "FFAnthropic"
-    api_key_env: "ANTHROPIC_TOKEN"
+  litellm-claude-3-5-sonnet:
+    client_class: "FFLiteLLMClient"
+    type: "litellm"
+    provider_prefix: "anthropic/"
+    api_key_env: "ANTHROPIC_API_KEY"
+    default_model: "claude-3-5-sonnet-20241022"
+
+  # ===========================================
+  # LITELLM CLIENTS - OPENAI
+  # ===========================================
+
+  litellm-openai:
+    client_class: "FFLiteLLMClient"
+    type: "litellm"
+    provider_prefix: "openai/"
+    api_key_env: "OPENAI_API_KEY"
+    default_model: "gpt-4"
+
+  # ===========================================
+  # LITELLM CLIENTS - AZURE
+  # ===========================================
+
+  litellm-azure:
+    client_class: "FFLiteLLMClient"
+    type: "litellm"
+    provider_prefix: "azure/"
+    api_key_env: "AZURE_API_KEY"
+    default_model: "gpt-4o"
+
+  # ===========================================
+  # LITELLM CLIENTS - GEMINI
+  # ===========================================
+
+  litellm-gemini:
+    client_class: "FFLiteLLMClient"
+    type: "litellm"
+    provider_prefix: "gemini/"
+    api_key_env: "GEMINI_API_KEY"
+    default_model: "gemini-1.5-pro"
+
+  # ===========================================
+  # LITELLM CLIENTS - PERPLEXITY
+  # ===========================================
+
+  litellm-perplexity:
+    client_class: "FFLiteLLMClient"
+    type: "litellm"
+    provider_prefix: "perplexity/"
+    api_key_env: "PERPLEXITY_API_KEY"
+    default_model: "llama-3.1-sonar-large-128k-online"

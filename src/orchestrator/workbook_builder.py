@@ -64,6 +64,7 @@ class WorkbookBuilder:
     def CONFIG_FIELDS(self) -> list[tuple[str, str]]:
         defaults = self._config.workbook.defaults
         return [
+            ("client", ""),
             ("model", defaults.model),
             ("api_key_env", defaults.api_key_env),
             ("max_retries", str(defaults.max_retries)),
