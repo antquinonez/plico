@@ -5,23 +5,147 @@
 """Safe condition expression evaluation for conditional prompt execution.
 
 Uses AST parsing to safely evaluate conditions without eval()/exec(),
-supporting comparisons, boolean logic, and function calls.
+supporting comparisons, boolean logic, function calls, and method access.
 """
 
 import ast
+import json
 import logging
 import operator
 import re
 from typing import Any
 
+from json_repair import repair_json
+
 logger = logging.getLogger(__name__)
+
+
+def _parse_llm_json(obj: str | dict) -> dict | list | None:
+    """Parse JSON from LLM output, handling common malformations.
+
+    Uses json-repair to handle:
+        - Markdown code blocks (```json...```)
+        - Trailing commas
+        - Unquoted keys
+        - Single quotes instead of double quotes
+        - Comments in JSON
+
+    Args:
+        obj: JSON string or already-parsed dict/list
+
+    Returns:
+        Parsed JSON object, or None if parsing fails
+
+    """
+    if isinstance(obj, dict | list):
+        return obj
+    if not isinstance(obj, str) or not obj.strip():
+        return None
+
+    try:
+        repaired = repair_json(obj)
+        return json.loads(repaired)
+    except (json.JSONDecodeError, ValueError, TypeError):
+        return None
+
+
+def _safe_json_get(obj: str | dict, path: str, default: Any = None) -> Any:  # noqa: ANN401
+    """Safely navigate JSON with dot/array notation.
+
+    Args:
+        obj: JSON string or parsed dict
+        path: Path like "data.items[0].name" or "result.score"
+        default: Value to return if path not found
+
+    Returns:
+        Value at path, or default if not found/invalid
+
+    """
+    try:
+        data = _parse_llm_json(obj)
+        if data is None:
+            return default
+
+        for part in re.split(r"\.|\[|\]", path):
+            if not part:
+                continue
+            data = data[int(part)] if part.isdigit() else data[part]
+        return data
+    except (KeyError, IndexError, TypeError, AttributeError):
+        logger.debug(f"JSON path '{path}' not found or invalid JSON")
+        return default
+
+
+def _safe_json_has(obj: str | dict, path: str) -> bool:
+    """Check if a JSON path exists.
+
+    Args:
+        obj: JSON string or parsed dict
+        path: Path like "data.items[0].name"
+
+    Returns:
+        True if path exists, False otherwise
+
+    """
+    try:
+        data = _parse_llm_json(obj)
+        if data is None:
+            return False
+
+        for part in re.split(r"\.|\[|\]", path):
+            if not part:
+                continue
+            data = data[int(part)] if part.isdigit() else data[part]
+        return True
+    except (KeyError, IndexError, TypeError, AttributeError):
+        return False
+
+
+def _safe_json_type(obj: str | dict, path: str) -> str:
+    """Get the type of value at a JSON path.
+
+    Args:
+        obj: JSON string or parsed dict
+        path: Path like "data.items"
+
+    Returns:
+        Type name: "string", "number", "boolean", "array", "object", "null", or "unknown"
+
+    """
+    try:
+        data = _parse_llm_json(obj)
+        if data is None:
+            return "null"
+
+        for part in re.split(r"\.|\[|\]", path):
+            if not part:
+                continue
+            data = data[int(part)] if part.isdigit() else data[part]
+
+        if data is None:
+            return "null"
+        elif isinstance(data, bool):
+            return "boolean"
+        elif isinstance(data, int | float):
+            return "number"
+        elif isinstance(data, str):
+            return "string"
+        elif isinstance(data, list):
+            return "array"
+        elif isinstance(data, dict):
+            return "object"
+        else:
+            return "unknown"
+    except (KeyError, IndexError, TypeError, AttributeError):
+        return "unknown"
 
 
 class ConditionEvaluator:
     """Safely evaluates condition expressions for conditional prompt execution.
 
     Security model: Never uses eval() or exec() on user input. Conditions are
-    parsed using AST and evaluated using a restricted set of operators.
+    parsed using AST and evaluated using a restricted set of operators, functions,
+    and method calls.
 
     Syntax:
         {{prompt_name.property}} == "value"
@@ -33,6 +157,19 @@ class ConditionEvaluator:
         {{a.status}} == "success" and {{b.status}} == "success"
         {{a.status}} == "success" or {{b.status}} == "success"
         not {{prompt_name.has_response}}
+
+    String methods:
+        {{prompt_name.response}}.startswith("prefix")
+        {{prompt_name.response}}.endswith("suffix")
+        {{prompt_name.response}}.lower() == "value"
+        {{prompt_name.response}}.split(",")[0]
+
+    JSON functions:
+        json_get({{prompt_name.response}}, "key.nested[0]")
+        json_get_default({{prompt_name.response}}, "key", "default")
+        json_has({{prompt_name.response}}, "key")
+        json_keys({{prompt_name.response}})
+        "key" in json_keys({{prompt_name.response}})
 
     Available properties:
         - status: "success", "failed", "skipped"
@@ -58,14 +195,108 @@ class ConditionEvaluator:
     }
 
     ALLOWED_FUNCTIONS = {
+        # Type conversion
         "len": len,
-        "lower": lambda s: str(s).lower() if s is not None else "",
-        "upper": lambda s: str(s).upper() if s is not None else "",
-        "trim": lambda s: str(s).strip() if s is not None else "",
         "int": lambda x: int(x) if x is not None else 0,
         "float": lambda x: float(x) if x is not None else 0.0,
         "str": lambda x: str(x) if x is not None else "",
+        "bool": lambda x: bool(x) if x is not None else False,
+        # String functions
+        "lower": lambda s: str(s).lower() if s is not None else "",
+        "upper": lambda s: str(s).upper() if s is not None else "",
+        "trim": lambda s: str(s).strip() if s is not None else "",
+        "strip": lambda s: str(s).strip() if s is not None else "",
+        "lstrip": lambda s: str(s).lstrip() if s is not None else "",
+        "rstrip": lambda s: str(s).rstrip() if s is not None else "",
+        "split": lambda s, sep=None: str(s).split(sep) if s is not None else [],
+        "rsplit": lambda s, sep=None, maxsplit=-1: (
+            str(s).rsplit(sep, maxsplit) if s is not None else []
+        ),
+        "replace": lambda s, old, new: str(s).replace(old, new) if s is not None else "",
+        "count": lambda s, sub: str(s).count(sub) if s is not None else 0,
+        "find": lambda s, sub: str(s).find(sub) if s is not None else -1,
+        "rfind": lambda s, sub: str(s).rfind(sub) if s is not None else -1,
+        "slice": lambda s, start=0, end=None: str(s)[start:end] if s is not None else "",
+        # Math functions
+        "abs": abs,
+        "min": min,
+        "max": max,
+        "round": round,
+        # Type checking
+        "is_null": lambda x: x is None,
+        "is_empty": lambda x: (
+            x is None
+            or (isinstance(x, str) and len(x.strip()) == 0)
+            or (isinstance(x, list | dict) and len(x) == 0)
+        ),
+        # JSON functions
+        "json_parse": lambda s: _parse_llm_json(s) if s else {},
+        "json_get": lambda s, path: _safe_json_get(s, path),
+        "json_get_default": lambda s, path, default: _safe_json_get(s, path, default),
+        "json_has": lambda s, path: _safe_json_has(s, path),
+        "json_keys": lambda s: (
+            list(_parse_llm_json(s).keys())
+            if _parse_llm_json(s) and isinstance(_parse_llm_json(s), dict)
+            else []
+        ),
+        "json_values": lambda s: (
+            list(_parse_llm_json(s).values())
+            if _parse_llm_json(s) and isinstance(_parse_llm_json(s), dict)
+            else []
+        ),
+        "json_type": lambda s, path: _safe_json_type(s, path),
     }
+
+    ALLOWED_STRING_METHODS = frozenset(
+        {
+            "startswith",
+            "endswith",
+            "strip",
+            "lstrip",
+            "rstrip",
+            "lower",
+            "upper",
+            "title",
+            "capitalize",
+            "replace",
+            "count",
+            "find",
+            "rfind",
+            "index",
+            "rindex",
+            "split",
+            "rsplit",
+            "join",
+            "isalpha",
+            "isdigit",
+            "isalnum",
+            "isspace",
+            "isnumeric",
+            "isdecimal",
+            "islower",
+            "isupper",
+            "istitle",
+            "center",
+            "ljust",
+            "rjust",
+            "zfill",
+        }
+    )
+
+    ALLOWED_LIST_METHODS = frozenset(
+        {
+            "count",
+            "index",
+        }
+    )
+
+    ALLOWED_DICT_METHODS = frozenset(
+        {
+            "keys",
+            "values",
+            "get",
+        }
+    )
 
     VARIABLE_PATTERN = re.compile(r"\{\{(\w+)\.(\w+)\}\}")
 
@@ -219,8 +450,14 @@ class ConditionEvaluator:
         if isinstance(node, ast.Call):
             return self._eval_call(node)
 
+        if isinstance(node, ast.Attribute):
+            return self._eval_attribute(node)
+
         if isinstance(node, ast.BinOp):
             return self._eval_binop(node)
+
+        if isinstance(node, ast.Subscript):
+            return self._eval_subscript(node)
 
         if isinstance(node, ast.IfExp):
             return self._eval_ifexp(node)
@@ -235,13 +472,9 @@ class ConditionEvaluator:
             right = self._eval_node(comparator)
 
             if isinstance(op, ast.In):
-                if not isinstance(left, str) or not isinstance(right, str):
-                    raise ValueError("'contains' operator requires string values")
-                result = left in right
+                result = self._eval_in_operator(left, right)
             elif isinstance(op, ast.NotIn):
-                if not isinstance(left, str) or not isinstance(right, str):
-                    raise ValueError("'not contains' operator requires string values")
-                result = left not in right
+                result = not self._eval_in_operator(left, right)
             elif type(op) in self.ALLOWED_OPERATORS:
                 result = self.ALLOWED_OPERATORS[type(op)](left, right)
             else:
@@ -250,6 +483,17 @@ class ConditionEvaluator:
             left = result
 
         return bool(left)
+
+    def _eval_in_operator(self, left: Any, right: Any) -> bool:  # noqa: ANN401
+        """Evaluate 'in' operator for strings, lists, and dict keys."""
+        if isinstance(right, str):
+            if not isinstance(left, str):
+                raise ValueError("'in' operator with string requires string left operand")
+            return left in right
+        elif isinstance(right, list | dict):
+            return left in right
+        else:
+            raise ValueError(f"'in' operator not supported on type: {type(right).__name__}")
 
     def _eval_boolop(self, node: ast.BoolOp) -> bool:
         """Evaluate boolean operations (and, or)."""
@@ -274,20 +518,98 @@ class ConditionEvaluator:
             raise ValueError(f"Unsupported unary operator: {type(node.op).__name__}")
 
     def _eval_call(self, node: ast.Call) -> Any:  # noqa: ANN401
-        """Evaluate function calls."""
-        if not isinstance(node.func, ast.Name):
-            raise ValueError("Only simple function calls are allowed")
+        """Evaluate function calls and method calls."""
+        if isinstance(node.func, ast.Name):
+            func_name = node.func.id
+            if func_name not in self.ALLOWED_FUNCTIONS:
+                raise ValueError(f"Unknown function: '{func_name}'")
 
-        func_name = node.func.id
-        if func_name not in self.ALLOWED_FUNCTIONS:
-            raise ValueError(f"Unknown function: '{func_name}'")
+            args = [self._eval_node(arg) for arg in node.args]
 
-        args = [self._eval_node(arg) for arg in node.args]
+            if node.keywords:
+                raise ValueError("Keyword arguments are not supported in conditions")
 
-        if node.keywords:
-            raise ValueError("Keyword arguments are not supported in conditions")
+            return self.ALLOWED_FUNCTIONS[func_name](*args)
 
-        return self.ALLOWED_FUNCTIONS[func_name](*args)
+        elif isinstance(node.func, ast.Attribute):
+            obj = self._eval_node(node.func.value)
+            method_name = node.func.attr
+
+            args = [self._eval_node(arg) for arg in node.args]
+
+            if node.keywords:
+                raise ValueError("Keyword arguments are not supported in conditions")
+
+            return self._call_allowed_method(obj, method_name, args)
+
+        else:
+            raise ValueError("Only simple function calls and method calls are allowed")
+
+    def _eval_attribute(self, node: ast.Attribute) -> Any:  # noqa: ANN401
+        """Evaluate attribute access with method whitelisting."""
+        value = self._eval_node(node.value)
+        attr_name = node.attr
+
+        if attr_name.startswith("_"):
+            raise ValueError(f"Access to private attributes blocked: '{attr_name}'")
+
+        if isinstance(value, str):
+            if attr_name in self.ALLOWED_STRING_METHODS:
+                return getattr(value, attr_name)
+            raise ValueError(f"Unknown string method: '{attr_name}'")
+
+        elif isinstance(value, list):
+            if attr_name in self.ALLOWED_LIST_METHODS:
+                return getattr(value, attr_name)
+            raise ValueError(f"Unknown list method: '{attr_name}'")
+
+        elif isinstance(value, dict):
+            if attr_name in self.ALLOWED_DICT_METHODS:
+                return getattr(value, attr_name)
+            raise ValueError(f"Unknown dict method: '{attr_name}'")
+
+        else:
+            raise ValueError(f"Attribute access not supported on type: {type(value).__name__}")
+
+    def _eval_subscript(self, node: ast.Subscript) -> Any:  # noqa: ANN401
+        """Evaluate subscript access (list/dict indexing)."""
+        value = self._eval_node(node.value)
+
+        if isinstance(node.slice, ast.Constant | ast.Index):
+            key = node.slice.value
+        else:
+            raise ValueError("Only simple subscript access is supported")
+
+        try:
+            return value[key]
+        except (KeyError, IndexError, TypeError) as e:
+            raise ValueError(f"Subscript access failed: {e}")
+
+    def _call_allowed_method(self, obj: Any, method_name: str, args: list) -> Any:  # noqa: ANN401
+        """Call a whitelisted method on an object."""
+        if method_name.startswith("_"):
+            raise ValueError(f"Access to private methods blocked: '{method_name}'")
+
+        if isinstance(obj, str):
+            if method_name not in self.ALLOWED_STRING_METHODS:
+                raise ValueError(f"Unknown string method: '{method_name}'")
+            method = getattr(obj, method_name)
+            return method(*args)
+
+        elif isinstance(obj, list):
+            if method_name not in self.ALLOWED_LIST_METHODS:
+                raise ValueError(f"Unknown list method: '{method_name}'")
+            method = getattr(obj, method_name)
+            return method(*args)
+
+        elif isinstance(obj, dict):
+            if method_name not in self.ALLOWED_DICT_METHODS:
+                raise ValueError(f"Unknown dict method: '{method_name}'")
+            method = getattr(obj, method_name)
+            return method(*args)
+
+        else:
+            raise ValueError(f"Method calls not supported on type: {type(obj).__name__}")
 
     def _eval_binop(self, node: ast.BinOp) -> Any:  # noqa: ANN401
         """Evaluate binary operations (for 'matches' via % operator)."""

@@ -472,3 +472,618 @@ class TestConditionEvaluator:
         result, error = evaluator.evaluate('{{step1.error}} == ""')
         assert result is True
         assert error is None
+
+    # ========================================
+    # String Method Tests
+    # ========================================
+
+    def test_startswith_method(self):
+        """Test .startswith() string method."""
+        results = {"step1": self.create_results(response="SUCCESS: Operation completed")}
+        evaluator = ConditionEvaluator(results)
+
+        result, error = evaluator.evaluate('{{step1.response}}.startswith("SUCCESS")')
+        assert result is True
+        assert error is None
+
+    def test_startswith_method_false(self):
+        """Test .startswith() string method returns False correctly."""
+        results = {"step1": self.create_results(response="ERROR: Something went wrong")}
+        evaluator = ConditionEvaluator(results)
+
+        result, error = evaluator.evaluate('{{step1.response}}.startswith("SUCCESS")')
+        assert result is False
+        assert error is None
+
+    def test_endswith_method(self):
+        """Test .endswith() string method."""
+        results = {"step1": self.create_results(response="file.json")}
+        evaluator = ConditionEvaluator(results)
+
+        result, error = evaluator.evaluate('{{step1.response}}.endswith(".json")')
+        assert result is True
+        assert error is None
+
+    def test_lower_method(self):
+        """Test .lower() string method."""
+        results = {"step1": self.create_results(response="YES")}
+        evaluator = ConditionEvaluator(results)
+
+        result, error = evaluator.evaluate('{{step1.response}}.lower() == "yes"')
+        assert result is True
+        assert error is None
+
+    def test_upper_method(self):
+        """Test .upper() string method."""
+        results = {"step1": self.create_results(response="yes")}
+        evaluator = ConditionEvaluator(results)
+
+        result, error = evaluator.evaluate('{{step1.response}}.upper() == "YES"')
+        assert result is True
+        assert error is None
+
+    def test_strip_method(self):
+        """Test .strip() string method."""
+        results = {"step1": self.create_results(response="  hello  ")}
+        evaluator = ConditionEvaluator(results)
+
+        result, error = evaluator.evaluate('{{step1.response}}.strip() == "hello"')
+        assert result is True
+        assert error is None
+
+    def test_replace_method(self):
+        """Test .replace() string method."""
+        results = {"step1": self.create_results(response="hello world")}
+        evaluator = ConditionEvaluator(results)
+
+        result, error = evaluator.evaluate(
+            '{{step1.response}}.replace("world", "there") == "hello there"'
+        )
+        assert result is True
+        assert error is None
+
+    def test_count_method(self):
+        """Test .count() string method."""
+        results = {"step1": self.create_results(response="error error error")}
+        evaluator = ConditionEvaluator(results)
+
+        result, error = evaluator.evaluate('{{step1.response}}.count("error") == 3')
+        assert result is True
+        assert error is None
+
+    def test_split_method_with_subscript(self):
+        """Test .split() string method with subscript access."""
+        results = {"step1": self.create_results(response="a,b,c")}
+        evaluator = ConditionEvaluator(results)
+
+        result, error = evaluator.evaluate('{{step1.response}}.split(",")[0] == "a"')
+        assert result is True
+        assert error is None
+
+    def test_find_method(self):
+        """Test .find() string method."""
+        results = {"step1": self.create_results(response="hello world")}
+        evaluator = ConditionEvaluator(results)
+
+        result, error = evaluator.evaluate('{{step1.response}}.find("world") == 6')
+        assert result is True
+        assert error is None
+
+    def test_isdigit_method(self):
+        """Test .isdigit() string method."""
+        results = {"step1": self.create_results(response="12345")}
+        evaluator = ConditionEvaluator(results)
+
+        result, error = evaluator.evaluate("{{step1.response}}.isdigit() == True")
+        assert result is True
+        assert error is None
+
+    def test_isalpha_method(self):
+        """Test .isalpha() string method."""
+        results = {"step1": self.create_results(response="hello")}
+        evaluator = ConditionEvaluator(results)
+
+        result, error = evaluator.evaluate("{{step1.response}}.isalpha() == True")
+        assert result is True
+        assert error is None
+
+    def test_chained_string_methods(self):
+        """Test chained string method calls."""
+        results = {"step1": self.create_results(response="  SUCCESS  ")}
+        evaluator = ConditionEvaluator(results)
+
+        result, error = evaluator.evaluate('{{step1.response}}.strip().lower() == "success"')
+        assert result is True
+        assert error is None
+
+    def test_private_method_blocked(self):
+        """Test that private methods are blocked."""
+        results = {"step1": self.create_results(response="test")}
+        evaluator = ConditionEvaluator(results)
+
+        result, error = evaluator.evaluate("{{step1.response}}.__class__")
+        assert result is False
+        assert error is not None
+        assert "private" in error.lower()
+
+    # ========================================
+    # JSON Function Tests
+    # ========================================
+
+    def test_json_get_simple_key(self):
+        """Test json_get with simple key."""
+        results = {"step1": self.create_results(response='{"status": "ok", "count": 42}')}
+        evaluator = ConditionEvaluator(results)
+
+        result, error = evaluator.evaluate('json_get({{step1.response}}, "status") == "ok"')
+        assert result is True
+        assert error is None
+
+    def test_json_get_nested_key(self):
+        """Test json_get with nested key using dot notation."""
+        results = {"step1": self.create_results(response='{"data": {"user": {"name": "Alice"}}}')}
+        evaluator = ConditionEvaluator(results)
+
+        result, error = evaluator.evaluate(
+            'json_get({{step1.response}}, "data.user.name") == "Alice"'
+        )
+        assert result is True
+        assert error is None
+
+    def test_json_get_array_index(self):
+        """Test json_get with array index."""
+        results = {"step1": self.create_results(response='{"items": ["a", "b", "c"]}')}
+        evaluator = ConditionEvaluator(results)
+
+        result, error = evaluator.evaluate('json_get({{step1.response}}, "items[0]") == "a"')
+        assert result is True
+        assert error is None
+
+    def test_json_get_nested_array(self):
+        """Test json_get with nested array access."""
+        results = {
+            "step1": self.create_results(response='{"data": {"items": [{"id": 1}, {"id": 2}]}}')
+        }
+        evaluator = ConditionEvaluator(results)
+
+        result, error = evaluator.evaluate('json_get({{step1.response}}, "data.items[1].id") == 2')
+        assert result is True
+        assert error is None
+
+    def test_json_get_default_missing_key(self):
+        """Test json_get returns None for missing keys."""
+        results = {"step1": self.create_results(response='{"status": "ok"}')}
+        evaluator = ConditionEvaluator(results)
+
+        result, error = evaluator.evaluate('json_get({{step1.response}}, "missing") == None')
+        assert result is True
+        assert error is None
+
+    def test_json_get_default_function(self):
+        """Test json_get_default with custom default value."""
+        results = {"step1": self.create_results(response='{"status": "ok"}')}
+        evaluator = ConditionEvaluator(results)
+
+        result, error = evaluator.evaluate('json_get_default({{step1.response}}, "count", 0) == 0')
+        assert result is True
+        assert error is None
+
+    def test_json_get_default_returns_value(self):
+        """Test json_get_default returns actual value when present."""
+        results = {"step1": self.create_results(response='{"count": 10}')}
+        evaluator = ConditionEvaluator(results)
+
+        result, error = evaluator.evaluate('json_get_default({{step1.response}}, "count", 0) == 10')
+        assert result is True
+        assert error is None
+
+    def test_json_has_existing_key(self):
+        """Test json_has returns True for existing key."""
+        results = {"step1": self.create_results(response='{"error": "something failed"}')}
+        evaluator = ConditionEvaluator(results)
+
+        result, error = evaluator.evaluate('json_has({{step1.response}}, "error") == True')
+        assert result is True
+        assert error is None
+
+    def test_json_has_missing_key(self):
+        """Test json_has returns False for missing key."""
+        results = {"step1": self.create_results(response='{"status": "ok"}')}
+        evaluator = ConditionEvaluator(results)
+
+        result, error = evaluator.evaluate('json_has({{step1.response}}, "error") == False')
+        assert result is True
+        assert error is None
+
+    def test_json_keys_function(self):
+        """Test json_keys returns list of keys."""
+        results = {"step1": self.create_results(response='{"a": 1, "b": 2, "c": 3}')}
+        evaluator = ConditionEvaluator(results)
+
+        result, error = evaluator.evaluate('"a" in json_keys({{step1.response}})')
+        assert result is True
+        assert error is None
+
+    def test_json_keys_count(self):
+        """Test json_keys with len function."""
+        results = {"step1": self.create_results(response='{"a": 1, "b": 2}')}
+        evaluator = ConditionEvaluator(results)
+
+        result, error = evaluator.evaluate("len(json_keys({{step1.response}})) == 2")
+        assert result is True
+        assert error is None
+
+    def test_json_parse_function(self):
+        """Test json_parse returns parsed dict."""
+        results = {"step1": self.create_results(response='{"name": "test"}')}
+        evaluator = ConditionEvaluator(results)
+
+        result, error = evaluator.evaluate('json_parse({{step1.response}}).get("name") == "test"')
+        assert result is True
+        assert error is None
+
+    def test_json_type_string(self):
+        """Test json_type returns correct type for string."""
+        results = {"step1": self.create_results(response='{"value": "hello"}')}
+        evaluator = ConditionEvaluator(results)
+
+        result, error = evaluator.evaluate('json_type({{step1.response}}, "value") == "string"')
+        assert result is True
+        assert error is None
+
+    def test_json_type_number(self):
+        """Test json_type returns correct type for number."""
+        results = {"step1": self.create_results(response='{"count": 42}')}
+        evaluator = ConditionEvaluator(results)
+
+        result, error = evaluator.evaluate('json_type({{step1.response}}, "count") == "number"')
+        assert result is True
+        assert error is None
+
+    def test_json_type_array(self):
+        """Test json_type returns correct type for array."""
+        results = {"step1": self.create_results(response='{"items": [1, 2, 3]}')}
+        evaluator = ConditionEvaluator(results)
+
+        result, error = evaluator.evaluate('json_type({{step1.response}}, "items") == "array"')
+        assert result is True
+        assert error is None
+
+    def test_json_type_boolean(self):
+        """Test json_type returns correct type for boolean."""
+        results = {"step1": self.create_results(response='{"active": true}')}
+        evaluator = ConditionEvaluator(results)
+
+        result, error = evaluator.evaluate('json_type({{step1.response}}, "active") == "boolean"')
+        assert result is True
+        assert error is None
+
+    def test_json_invalid_returns_none(self):
+        """Test that invalid JSON returns None/default gracefully."""
+        results = {"step1": self.create_results(response="not valid json")}
+        evaluator = ConditionEvaluator(results)
+
+        result, error = evaluator.evaluate('json_get({{step1.response}}, "key") == None')
+        assert result is True
+        assert error is None
+
+    # ========================================
+    # New Function Tests
+    # ========================================
+
+    def test_split_function(self):
+        """Test split() function."""
+        results = {"step1": self.create_results(response="a,b,c")}
+        evaluator = ConditionEvaluator(results)
+
+        result, error = evaluator.evaluate('len(split({{step1.response}}, ",")) == 3')
+        assert result is True
+        assert error is None
+
+    def test_replace_function(self):
+        """Test replace() function."""
+        results = {"step1": self.create_results(response="hello world")}
+        evaluator = ConditionEvaluator(results)
+
+        result, error = evaluator.evaluate(
+            'replace({{step1.response}}, "world", "there") == "hello there"'
+        )
+        assert result is True
+        assert error is None
+
+    def test_count_function(self):
+        """Test count() function."""
+        results = {"step1": self.create_results(response="error error error")}
+        evaluator = ConditionEvaluator(results)
+
+        result, error = evaluator.evaluate('count({{step1.response}}, "error") == 3')
+        assert result is True
+        assert error is None
+
+    def test_slice_function(self):
+        """Test slice() function."""
+        results = {"step1": self.create_results(response="hello world")}
+        evaluator = ConditionEvaluator(results)
+
+        result, error = evaluator.evaluate('slice({{step1.response}}, 0, 5) == "hello"')
+        assert result is True
+        assert error is None
+
+    def test_abs_function(self):
+        """Test abs() function."""
+        results = {"step1": self.create_results(response="-42")}
+        evaluator = ConditionEvaluator(results)
+
+        result, error = evaluator.evaluate("abs(int({{step1.response}})) == 42")
+        assert result is True
+        assert error is None
+
+    def test_min_function(self):
+        """Test min() function."""
+        results = {"step1": self.create_results(response="5")}
+        evaluator = ConditionEvaluator(results)
+
+        result, error = evaluator.evaluate("min(int({{step1.response}}), 10) == 5")
+        assert result is True
+        assert error is None
+
+    def test_max_function(self):
+        """Test max() function."""
+        results = {"step1": self.create_results(response="15")}
+        evaluator = ConditionEvaluator(results)
+
+        result, error = evaluator.evaluate("max(int({{step1.response}}), 10) == 15")
+        assert result is True
+        assert error is None
+
+    def test_round_function(self):
+        """Test round() function."""
+        results = {"step1": self.create_results(response="3.14159")}
+        evaluator = ConditionEvaluator(results)
+
+        result, error = evaluator.evaluate("round(float({{step1.response}}), 2) == 3.14")
+        assert result is True
+        assert error is None
+
+    def test_is_null_function(self):
+        """Test is_null() function with json_get returning None."""
+        results = {"step1": self.create_results(response='{"key": "value"}')}
+        evaluator = ConditionEvaluator(results)
+
+        result, error = evaluator.evaluate(
+            'is_null(json_get({{step1.response}}, "missing")) == True'
+        )
+        assert result is True
+        assert error is None
+
+    def test_is_null_function_false(self):
+        """Test is_null() returns False for non-null values."""
+        results = {"step1": self.create_results(response="content")}
+        evaluator = ConditionEvaluator(results)
+
+        result, error = evaluator.evaluate("is_null({{step1.response}}) == False")
+        assert result is True
+        assert error is None
+
+    def test_is_empty_function_string(self):
+        """Test is_empty() with empty string."""
+        results = {"step1": self.create_results(response="")}
+        evaluator = ConditionEvaluator(results)
+
+        result, error = evaluator.evaluate("is_empty({{step1.response}}) == True")
+        assert result is True
+        assert error is None
+
+    def test_is_empty_function_whitespace(self):
+        """Test is_empty() with whitespace-only string."""
+        results = {"step1": self.create_results(response="   ")}
+        evaluator = ConditionEvaluator(results)
+
+        result, error = evaluator.evaluate("is_empty({{step1.response}}) == True")
+        assert result is True
+        assert error is None
+
+    def test_is_empty_function_with_content(self):
+        """Test is_empty() returns False for string with content."""
+        results = {"step1": self.create_results(response="content")}
+        evaluator = ConditionEvaluator(results)
+
+        result, error = evaluator.evaluate("is_empty({{step1.response}}) == False")
+        assert result is True
+        assert error is None
+
+    def test_bool_function(self):
+        """Test bool() function."""
+        results = {"step1": self.create_results(response="yes")}
+        evaluator = ConditionEvaluator(results)
+
+        result, error = evaluator.evaluate("bool({{step1.response}}) == True")
+        assert result is True
+        assert error is None
+
+    # ========================================
+    # List/Dict Membership Tests
+    # ========================================
+
+    def test_in_list_membership(self):
+        """Test 'in' operator with list from json_keys."""
+        results = {"step1": self.create_results(response='{"id": 1, "name": "test"}')}
+        evaluator = ConditionEvaluator(results)
+
+        result, error = evaluator.evaluate('"id" in json_keys({{step1.response}})')
+        assert result is True
+        assert error is None
+
+    def test_not_in_list_membership(self):
+        """Test 'not in' operator with list from json_keys."""
+        results = {"step1": self.create_results(response='{"id": 1, "name": "test"}')}
+        evaluator = ConditionEvaluator(results)
+
+        result, error = evaluator.evaluate('"missing" not in json_keys({{step1.response}})')
+        assert result is True
+        assert error is None
+
+    def test_dict_get_method(self):
+        """Test dict.get() method via json_parse."""
+        results = {"step1": self.create_results(response='{"count": 5}')}
+        evaluator = ConditionEvaluator(results)
+
+        result, error = evaluator.evaluate('json_parse({{step1.response}}).get("count") == 5')
+        assert result is True
+        assert error is None
+
+    def test_dict_get_method_default(self):
+        """Test dict.get() method with default value."""
+        results = {"step1": self.create_results(response='{"status": "ok"}')}
+        evaluator = ConditionEvaluator(results)
+
+        result, error = evaluator.evaluate('json_parse({{step1.response}}).get("missing", 0) == 0')
+        assert result is True
+        assert error is None
+
+    def test_list_count_method(self):
+        """Test list.count() method."""
+        results = {"step1": self.create_results(response='{"items": ["a", "a", "b"]}')}
+        evaluator = ConditionEvaluator(results)
+
+        result, error = evaluator.evaluate('json_get({{step1.response}}, "items").count("a") == 2')
+        assert result is True
+        assert error is None
+
+    # ========================================
+    # Complex Integration Tests
+    # ========================================
+
+    def test_json_with_string_method_chain(self):
+        """Test JSON extraction followed by string method."""
+        results = {"step1": self.create_results(response='{"status": "SUCCESS_OK"}')}
+        evaluator = ConditionEvaluator(results)
+
+        result, error = evaluator.evaluate(
+            'json_get({{step1.response}}, "status").lower().startswith("success")'
+        )
+        assert result is True
+        assert error is None
+
+    def test_complex_condition_with_json(self):
+        """Test complex condition combining JSON and boolean logic."""
+        results = {
+            "fetch": self.create_results(response='{"data": {"items": [1, 2, 3]}}'),
+            "analyze": self.create_results(status="success"),
+        }
+        evaluator = ConditionEvaluator(results)
+
+        result, error = evaluator.evaluate(
+            '{{analyze.status}} == "success" and json_has({{fetch.response}}, "data.items")'
+        )
+        assert result is True
+        assert error is None
+
+    def test_json_numeric_comparison(self):
+        """Test JSON value extraction with numeric comparison."""
+        results = {"step1": self.create_results(response='{"score": 0.85}')}
+        evaluator = ConditionEvaluator(results)
+
+        result, error = evaluator.evaluate('json_get({{step1.response}}, "score") > 0.8')
+        assert result is True
+        assert error is None
+
+    def test_ternary_with_json(self):
+        """Test ternary expression with JSON extraction."""
+        results = {"step1": self.create_results(response='{"value": 10}')}
+        evaluator = ConditionEvaluator(results)
+
+        result, error = evaluator.evaluate(
+            '"high" if json_get({{step1.response}}, "value") > 5 else "low" == "high"'
+        )
+        assert result is True
+        assert error is None
+
+    def test_error_recovery_with_json(self):
+        """Test error recovery pattern with JSON response checking."""
+        results = {
+            "api_call": self.create_results(response='{"error": "rate limited"}'),
+        }
+        evaluator = ConditionEvaluator(results)
+
+        result, error = evaluator.evaluate('json_has({{api_call.response}}, "error")')
+        assert result is True
+        assert error is None
+
+    def test_json_with_markdown_code_block(self):
+        """Test JSON extraction from markdown code blocks."""
+        results = {
+            "step1": self.create_results(response='```json\n{"status": "ok", "count": 5}\n```')
+        }
+        evaluator = ConditionEvaluator(results)
+
+        result, error = evaluator.evaluate('json_get({{step1.response}}, "status") == "ok"')
+        assert result is True
+        assert error is None
+
+    def test_json_keys_with_markdown(self):
+        """Test json_keys with markdown-wrapped JSON."""
+        results = {"step1": self.create_results(response='```json\n{"a": 1, "b": 2}\n```')}
+        evaluator = ConditionEvaluator(results)
+
+        result, error = evaluator.evaluate('"a" in json_keys({{step1.response}})')
+        assert result is True
+        assert error is None
+
+    def test_json_parse_with_markdown(self):
+        """Test json_parse with markdown-wrapped JSON."""
+        results = {"step1": self.create_results(response='```json\n{"value": 42}\n```')}
+        evaluator = ConditionEvaluator(results)
+
+        result, error = evaluator.evaluate('json_parse({{step1.response}}).get("value") == 42')
+        assert result is True
+        assert error is None
+
+    # ========================================
+    # json-repair Edge Case Tests
+    # ========================================
+
+    def test_json_with_trailing_comma(self):
+        """Test JSON with trailing comma (common LLM output)."""
+        results = {"step1": self.create_results(response='{"status": "ok", "count": 42,}')}
+        evaluator = ConditionEvaluator(results)
+
+        result, error = evaluator.evaluate('json_get({{step1.response}}, "count") == 42')
+        assert result is True
+        assert error is None
+
+    def test_json_with_unquoted_keys(self):
+        """Test JSON with unquoted keys (common LLM output)."""
+        results = {"step1": self.create_results(response='{status: "ok", count: 42}')}
+        evaluator = ConditionEvaluator(results)
+
+        result, error = evaluator.evaluate('json_get({{step1.response}}, "status") == "ok"')
+        assert result is True
+        assert error is None
+
+    def test_json_with_single_quotes(self):
+        """Test JSON with single quotes (common LLM output)."""
+        results = {"step1": self.create_results(response="{'status': 'ok', 'count': 42}")}
+        evaluator = ConditionEvaluator(results)
+
+        result, error = evaluator.evaluate('json_get({{step1.response}}, "count") == 42')
+        assert result is True
+        assert error is None
+
+    def test_json_keys_with_trailing_comma(self):
+        """Test json_keys with trailing comma."""
+        results = {"step1": self.create_results(response='{"a": 1, "b": 2,}')}
+        evaluator = ConditionEvaluator(results)
+
+        result, error = evaluator.evaluate('"a" in json_keys({{step1.response}})')
+        assert result is True
+        assert error is None
+
+    def test_json_nested_with_trailing_comma(self):
+        """Test nested JSON access with trailing comma."""
+        results = {"step1": self.create_results(response='{"data": {"items": [1, 2, 3],}}')}
+        evaluator = ConditionEvaluator(results)
+
+        result, error = evaluator.evaluate('json_get({{step1.response}}, "data.items[0]") == 1')
+        assert result is True
+        assert error is None

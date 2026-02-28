@@ -105,10 +105,46 @@ Reference previous prompt results using double-brace notation:
 
 | Function | Description | Example |
 |----------|-------------|---------|
-| `len()` | String length | `len({{step1.response}}) > 50` |
+| `len()` | String/list length | `len({{step1.response}}) > 50` |
 | `lower()` | Convert to lowercase | `lower({{step1.response}}) == "yes"` |
 | `upper()` | Convert to uppercase | `upper({{step1.response}}) == "YES"` |
-| `trim()` | Remove whitespace | `trim({{step1.response}}) != ""` |
+| `trim()` / `strip()` | Remove whitespace | `trim({{step1.response}}) != ""` |
+| `replace(s, old, new)` | Replace substring | `replace({{step1.response}}, "old", "new")` |
+| `split(s, sep)` | Split into list | `len(split({{step1.response}}, ",")) > 3` |
+| `int()` | Convert to integer | `int({{step1.response}}) > 0` |
+| `float()` | Convert to float | `float({{step1.response}}) >= 0.5` |
+| `abs()` | Absolute value | `abs({{delta.response}}) < 10` |
+| `min()` / `max()` | Min/max values | `min({{a}}, {{b}}) > 0` |
+| `round()` | Round to precision | `round({{x}}, 2) == 1.5` |
+| `is_null()` | Check for null | `is_null({{optional.response}})` |
+| `is_empty()` | Check for empty/null | `is_empty({{text.response}})` |
+| `json_parse()` | Parse JSON string | `json_parse({{api.response}})` |
+| `json_get(s, path)` | Get value at path | `json_get({{api.response}}, "status")` |
+| `json_get_default(s, path, d)` | Get with default | `json_get_default({{api.response}}, "x", 0)` |
+| `json_has(s, path)` | Check path exists | `json_has({{api.response}}, "data")` |
+| `json_keys()` / `json_values()` | Get keys/values | `len(json_keys({{api.response}})) > 0` |
+| `json_type(s, path)` | Get type at path | `json_type({{api.response}}, "x") == "number"` |
+
+#### String Methods
+
+Methods can be called directly on variable references:
+
+```
+{{step1.response}}.startswith("prefix")
+{{step1.response}}.endswith(".json")
+{{step1.response}}.strip().lower() == "yes"
+```
+
+**Available methods:** `startswith`, `endswith`, `strip`, `lower`, `upper`, `replace`, `split`, `count`, `find`, `isalpha`, `isdigit`, `isalnum`, and more.
+
+#### Subscript Access
+
+Access list elements or dictionary values:
+
+```
+{{step1.response}}.split(",")[0]
+{{step1.response}}["key"]
+```
 
 ### 3. Condition Examples
 
@@ -793,3 +829,11 @@ Add to features list:
 - [x] Write integration tests for execution flow
 - [x] Create test workbook generator
 - [x] Update documentation
+- [x] Add string method support (startswith, endswith, strip, lower, upper, etc.)
+- [x] Add JSON functions (json_get, json_has, json_keys, json_type, etc.)
+- [x] Add math functions (abs, min, max, round)
+- [x] Add type checking functions (is_null, is_empty, bool)
+- [x] Add method chaining support
+- [x] Add subscript access (list/dict indexing)
+- [x] Create sample workbook for new condition features (v001)
+- [x] Write tests for string methods and JSON functions

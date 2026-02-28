@@ -74,7 +74,7 @@ def _create_single_workbook(name: str) -> tuple[str, bool, str]:
     script_map = {
         "basic": "scripts/create_sample_workbook.py",
         "multiclient": "scripts/create_sample_workbook_multiclient.py",
-        "conditional": "scripts/create_sample_workbook_conditional.py",
+        "conditional": "scripts/sample_workbook_conditional_create_v001.py",
         "documents": "scripts/create_sample_workbook_documents.py",
         "batch": "scripts/create_sample_workbook_batch.py",
         "max": "scripts/create_sample_workbook_max.py",

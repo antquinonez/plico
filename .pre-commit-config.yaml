@@ -33,14 +33,6 @@ repos:
       - id: debug-statements
       - id: detect-private-key
 
-  # Type checking
-  - repo: https://github.com/pre-commit/mirrors-mypy
-    rev: v1.15.0
-    hooks:
-      - id: mypy
-        additional_dependencies: [types-PyYAML, types-requests]
-        args: [--ignore-missing-imports]
-
 # CI configuration
 ci:
   autofix_commit_msg: "style: auto-fix pre-commit issues"

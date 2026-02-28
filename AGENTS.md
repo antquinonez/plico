@@ -175,6 +175,58 @@ select = ["E", "W", "F", "I", "B", "C4", "UP", "ARG", "SIM"]
 - Excel workbooks use openpyxl
 - Access configuration via `get_config()` from `src.config`
 
+## Workbook Scripts Naming Convention
+
+Scripts that create or validate sample workbooks follow this naming pattern:
+
+```
+sample_workbook_<type>_<action>_v<NNN>.py
+```
+
+Where:
+- `<type>`: Workbook type (`conditional`, `documents`, `multiclient`, `batch`, `max`)
+- `<action>`: `create` or `validate`
+- `<NNN>`: Three-digit version number (`001`, `002`, etc.)
+
+### Examples
+
+| Type | Create Script | Validate Script |
+|------|---------------|-----------------|
+| Conditional | `sample_workbook_conditional_create_v001.py` | `sample_workbook_conditional_validate_v001.py` |
+| Documents | `sample_workbook_documents_create_v001.py` | `sample_workbook_documents_validate_v001.py` |
+
+### Versioning Guidelines
+
+1. **Creating a new version**: Increment the version number (e.g., `v001` → `v002`)
+2. **Major changes**: When significantly changing workbook structure, conditions, or test coverage
+3. **Bug fixes**: Minor fixes may not require version increment
+4. **Pairing**: Create and validate scripts with the same version number are designed to work together
+
+### Creating New Workbook Types
+
+When creating a new workbook type:
+
+1. Create both create and validate scripts starting with `v001`
+2. Follow the pattern: `sample_workbook_<new_type>_<action>_v001.py`
+3. Update this AGENTS.md with the new type in the examples table
+4. Include the version number in the script docstring
+
+### Workflow
+
+```bash
+# Create a workbook
+python scripts/sample_workbook_conditional_create_v001.py ./test.xlsx
+
+# Run the orchestrator
+python scripts/run_orchestrator.py ./test.xlsx -c 3
+
+# Validate the results
+python scripts/sample_workbook_conditional_validate_v001.py ./test.xlsx
+
+# Or validate with JSON output for CI/CD
+python scripts/sample_workbook_conditional_validate_v001.py ./test.xlsx --json
+```
+
 ## Environment
 
 - Virtual environment: `.venv313/` (Python 3.13)

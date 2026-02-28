@@ -55,7 +55,7 @@ create:
 	$(run-in-venv) python $(SCRIPTS_DIR)/create_sample_workbook_multiclient.py
 	$(run-in-venv) python $(SCRIPTS_DIR)/create_sample_workbook_max.py
 	$(run-in-venv) python $(SCRIPTS_DIR)/create_sample_workbook_documents.py
-	$(run-in-venv) python $(SCRIPTS_DIR)/create_sample_workbook_conditional.py
+	$(run-in-venv) python $(SCRIPTS_DIR)/sample_workbook_conditional_create_v001.py
 	$(run-in-venv) python $(SCRIPTS_DIR)/create_sample_workbook_batch.py
 	@echo "All workbooks created."
 

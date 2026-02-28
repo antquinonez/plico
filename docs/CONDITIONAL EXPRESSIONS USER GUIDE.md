@@ -138,18 +138,132 @@ The pattern (right operand) is a Python regular expression matched against the t
 
 | Function | Signature | Purpose | Example |
 |----------|-----------|---------|---------|
-| `len` | `len(value)` | Returns length of string | `len({{fetch.response}}) > 500` |
+| `len` | `len(value)` | Returns length of string/list | `len({{fetch.response}}) > 500` |
 | `lower` | `lower(value)` | Converts to lowercase | `lower({{classify.response}}) == "positive"` |
-| `upper` | `upper(value)` | Converts to uppercase | `upper({{status.response}}) contains "ERROR"` |
-| `trim` | `trim(value)` | Removes leading/trailing whitespace | `trim({{input.response}}) != ""` |
+| `upper` | `upper(value)` | Converts to uppercase | `upper({{status.response}}) == "ERROR"` |
+| `trim` / `strip` | `trim(value)` | Removes leading/trailing whitespace | `trim({{input.response}}) != ""` |
+| `lstrip` | `lstrip(value)` | Removes leading whitespace | `lstrip({{input.response}}) != ""` |
+| `rstrip` | `rstrip(value)` | Removes trailing whitespace | `rstrip({{input.response}}) != ""` |
 | `int` | `int(value)` | Converts to integer | `int({{count.response}}) > 10` |
 | `float` | `float(value)` | Converts to float | `float({{score.response}}) >= 0.5` |
-| `str` | `str(value)` | Converts to string | `str({{num.attempts}}) contains "1"` |
+| `str` | `str(value)` | Converts to string | `str({{num.attempts}}) == "1"` |
+| `bool` | `bool(value)` | Converts to boolean | `bool({{flag.response}})` |
+| `replace` | `replace(value, old, new)` | Replace substring | `replace({{text.response}}, "old", "new")` |
+| `split` | `split(value, sep)` | Split into list | `len(split({{csv.response}}, ",")) > 3` |
+| `count` | `count(value, sub)` | Count occurrences | `count({{text.response}}, "error") > 0` |
+| `find` | `find(value, sub)` | Find substring position | `find({{text.response}}, "key") >= 0` |
+| `abs` | `abs(value)` | Absolute value | `abs({{delta.response}}) < 10` |
+| `min` | `min(a, b, ...)` | Minimum value | `min({{a.response}}, {{b.response}}) > 0` |
+| `max` | `max(a, b, ...)` | Maximum value | `max({{a.response}}, {{b.response}}) < 100` |
+| `round` | `round(value, digits)` | Round to precision | `round({{score.response}}, 2) == 0.75` |
+| `is_null` | `is_null(value)` | Check if null/None | `is_null({{optional.response}})` |
+| `is_empty` | `is_empty(value)` | Check if empty/null/whitespace | `is_empty({{text.response}})` |
+| `json_parse` | `json_parse(string)` | Parse JSON string | `json_parse({{api.response}})` |
+| `json_get` | `json_get(string, path)` | Get value at path | `json_get({{api.response}}, "data.status")` |
+| `json_get_default` | `json_get_default(string, path, default)` | Get with fallback | `json_get_default({{api.response}}, "count", 0)` |
+| `json_has` | `json_has(string, path)` | Check path exists | `json_has({{api.response}}, "data.items")` |
+| `json_keys` | `json_keys(string)` | Get object keys | `len(json_keys({{api.response}})) > 0` |
+| `json_values` | `json_values(string)` | Get object values | `len(json_values({{api.response}})) > 0` |
+| `json_type` | `json_type(string, path)` | Get type at path | `json_type({{api.response}}, "data") == "object"` |
 
 All functions handle `null` values gracefully:
 - `lower(null)` returns `""`
 - `int(null)` returns `0`
 - `float(null)` returns `0.0`
+- `split(null)` returns `[]`
+- `json_parse(null)` returns `{}`
+
+### String Methods
+
+Call methods directly on variable references using dot notation:
+
+```
+{{prompt_name.response}}.startswith("prefix")
+{{prompt_name.response}}.endswith(".json")
+{{prompt_name.response}}.lower() == "yes"
+{{prompt_name.response}}.strip() != ""
+```
+
+**Available String Methods:**
+
+| Method | Returns | Example |
+|--------|---------|---------|
+| `startswith(prefix)` | bool | `{{text.response}}.startswith("SUCCESS")` |
+| `endswith(suffix)` | bool | `{{file.response}}.endswith(".json")` |
+| `lower()` | string | `{{status.response}}.lower() == "ok"` |
+| `upper()` | string | `{{status.response}}.upper() == "OK"` |
+| `strip()` | string | `{{input.response}}.strip() != ""` |
+| `lstrip()` | string | `{{input.response}}.lstrip() != ""` |
+| `rstrip()` | string | `{{input.response}}.rstrip() != ""` |
+| `replace(old, new)` | string | `{{text.response}}.replace("old", "new")` |
+| `split(sep)` | list | `{{csv.response}}.split(",")[0]` |
+| `count(sub)` | int | `{{text.response}}.count("error") > 0` |
+| `find(sub)` | int | `{{text.response}}.find("key") >= 0` |
+| `isalpha()` | bool | `{{text.response}}.isalpha()` |
+| `isdigit()` | bool | `{{text.response}}.isdigit()` |
+| `isalnum()` | bool | `{{text.response}}.isalnum()` |
+| `isspace()` | bool | `{{text.response}}.isspace()` |
+| `islower()` | bool | `{{text.response}}.islower()` |
+| `isupper()` | bool | `{{text.response}}.isupper()` |
+| `title()` | string | `{{name.response}}.title()` |
+| `capitalize()` | string | `{{sentence.response}}.capitalize()` |
+
+**Method Chaining:**
+
+Chain multiple methods together:
+
+```
+{{text.response}}.strip().lower() == "yes"
+{{file.response}}.lower().endswith(".json")
+```
+
+### JSON Functions
+
+Parse and navigate JSON responses from AI outputs:
+
+```
+json_get({{api.response}}, "data.status") == "success"
+json_has({{api.response}}, "data.items[0]")
+json_type({{api.response}}, "data.count") == "number"
+```
+
+**Path Syntax:**
+
+- Simple key: `"status"`
+- Nested: `"data.items"`
+- Array index: `"items[0]"`
+- Combined: `"data.users[0].name"`
+
+**JSON Function Examples:**
+
+```
+# Check nested value
+json_get({{api.response}}, "result.status") == "ok"
+
+# Get array element
+json_get({{api.response}}, "items[0]") == "first item"
+
+# Check if path exists
+json_has({{api.response}}, "error.message")
+
+# Get with default value
+json_get_default({{api.response}}, "count", 0) > 10
+
+# Check type at path
+json_type({{api.response}}, "data") == "object"
+
+# Count object keys
+len(json_keys({{api.response}})) > 0
+```
+
+**JSON Robustness:**
+
+The JSON functions handle common LLM output issues:
+- Markdown code blocks (` ```json...``` `)
+- Trailing commas
+- Unquoted keys
+- Single quotes instead of double quotes
+- Comments in JSON
 
 ### Ternary Expressions
 
@@ -337,6 +451,57 @@ Combine functions for robust conditions.
 
 ---
 
+### Level 10: String Methods
+
+Use string methods directly on variable references.
+
+**Use Case:** Check response prefix/suffix or test character classes.
+
+| sequence | prompt_name | prompt | condition |
+|----------|-------------|--------|-----------|
+| 1 | status | Report status: SUCCESS or FAILURE | |
+| 2 | celebrate | Generate celebration message | `{{status.response}}.startswith("SUCCESS")` |
+| 3 | filename | Provide a filename for the output | |
+| 4 | validate | Check file type | `{{filename.response}}.strip().lower().endswith(".json")` |
+
+**What happens:**
+- `celebrate` runs only if status starts with "SUCCESS"
+- `validate` chains methods: strip whitespace, lowercase, then check suffix
+
+---
+
+### Level 11: JSON Functions
+
+Parse and navigate JSON responses from AI.
+
+**Use Case:** Process structured AI outputs.
+
+| sequence | prompt_name | prompt | condition |
+|----------|-------------|--------|-----------|
+| 1 | api | Return JSON with status and count fields | |
+| 2 | process | Process the data | `json_get({{api.response}}, "status") == "ok"` |
+| 3 | check_count | Verify count threshold | `json_get_default({{api.response}}, "count", 0) > 5` |
+| 4 | has_items | Check for items array | `json_has({{api.response}}, "items")` |
+| 5 | validate_type | Ensure data is object | `json_type({{api.response}}, "data") == "object"` |
+
+**What happens:**
+- `process` extracts the "status" field from JSON
+- `check_count` gets count with a default of 0 if missing
+- `has_items` checks if "items" path exists
+- `validate_type` verifies the data type at a path
+
+**JSON Path Examples:**
+
+| Path | Description |
+|------|-------------|
+| `"status"` | Top-level key |
+| `"data.status"` | Nested key |
+| `"items[0]"` | First array element |
+| `"users[0].name"` | Nested with array |
+| `"data.items[2].id"` | Deep nesting |
+
+---
+
 ## Technical Reference: Security Model
 
 ### Why AST-Based Evaluation?
@@ -388,6 +553,8 @@ Condition String
 | UnaryOp | `ast.UnaryOp` | Unary operations (`not`) |
 | BinOp | `ast.BinOp` | Binary operations (`+`, `-`, `*`, `/`, `%`) |
 | Call | `ast.Call` | Function calls (whitelisted functions only) |
+| Attribute | `ast.Attribute` | Method access (whitelisted methods only) |
+| Subscript | `ast.Subscript` | List/dict indexing |
 | IfExp | `ast.IfExp` | Ternary expressions (`x if cond else y`) |
 
 ### Blocked Operations
@@ -396,8 +563,8 @@ Condition String
 |----------|---------|-----|
 | Code Execution | `eval`, `exec`, `compile` | Arbitrary code execution |
 | Imports | `import`, `__import__` | Module access |
-| Attribute Access | `obj.attr` (beyond `{{name.prop}}`) | Accessing internal objects |
-| Subscript Access | `obj[key]` | Dictionary/list access |
+| Private Methods | Methods starting with `_` | Accessing internal objects |
+| Dunder Methods | `__class__`, `__dict__`, etc. | Type introspection |
 | Comprehensions | `[x for x in y]` | Complex expressions |
 | Lambdas | `lambda x: x` | Anonymous functions |
 | Assignments | `x = 1` | Modifying state |
@@ -409,9 +576,15 @@ Condition String
 | `{{a.status}} == "success"` | ✅ | Simple comparison |
 | `len({{a.response}}) > 100` | ✅ | Whitelisted function |
 | `{{a.response}} % "^\d+$"` | ✅ | Regex via % operator |
+| `{{a.response}}.upper()` | ✅ | Whitelisted string method |
+| `{{a.response}}.startswith("OK")` | ✅ | Whitelisted string method |
+| `json_get({{a.response}}, "key")` | ✅ | Whitelisted JSON function |
+| `{{a.response}}.strip().lower()` | ✅ | Method chaining |
+| `{{a.response}}[0]` | ✅ | Subscript access |
 | `__import__("os").system("ls")` | ❌ | Module import blocked |
 | `eval("print('hi')")` | ❌ | `eval` not in whitelist |
-| `{{a.response}}.upper()` | ❌ | Attribute access blocked |
+| `{{a.response}}.__class__` | ❌ | Private method blocked |
+| `{{a.response}}._private()` | ❌ | Private method blocked |
 | `[x for x in {{a.response}}]` | ❌ | Comprehension blocked |
 
 ### Security Guarantees
@@ -419,8 +592,10 @@ Condition String
 1. **No Arbitrary Code Execution** - Only whitelisted operations can run
 2. **No Module Access** - Cannot import or access Python modules
 3. **No State Modification** - Cannot assign variables or modify data
-4. **Sandboxed Functions** - Only 7 safe functions available (`len`, `lower`, `upper`, `trim`, `int`, `float`, `str`)
-5. **Controlled Property Access** - Can only access the 5 defined properties (`status`, `response`, `attempts`, `error`, `has_response`)
+4. **Sandboxed Functions** - 35+ safe functions available (string, math, JSON, type checking)
+5. **Sandboxed Methods** - Only 30+ whitelisted string/list/dict methods allowed
+6. **No Private Access** - Methods starting with `_` are blocked
+7. **Controlled Property Access** - Can only access the 5 defined properties (`status`, `response`, `attempts`, `error`, `has_response`)
 
 ---
 
@@ -543,13 +718,52 @@ Validating workbook...
 
 | Function | Input | Output | Null Handling |
 |----------|-------|--------|---------------|
-| `len(x)` | String | Integer | `len(null)` → 0 |
+| `len(x)` | String/List | Integer | `len(null)` → 0 |
 | `lower(x)` | String | String | `lower(null)` → "" |
 | `upper(x)` | String | String | `upper(null)` → "" |
-| `trim(x)` | String | String | `trim(null)` → "" |
+| `trim(x)` / `strip(x)` | String | String | `trim(null)` → "" |
+| `lstrip(x)` | String | String | `lstrip(null)` → "" |
+| `rstrip(x)` | String | String | `rstrip(null)` → "" |
 | `int(x)` | Any | Integer | `int(null)` → 0 |
 | `float(x)` | Any | Float | `float(null)` → 0.0 |
 | `str(x)` | Any | String | `str(null)` → "" |
+| `bool(x)` | Any | Boolean | `bool(null)` → False |
+| `replace(x, old, new)` | String | String | `replace(null, ...)` → "" |
+| `split(x, sep)` | String | List | `split(null, ...)` → [] |
+| `count(x, sub)` | String | Integer | `count(null, ...)` → 0 |
+| `find(x, sub)` | String | Integer | `find(null, ...)` → -1 |
+| `abs(x)` | Number | Number | - |
+| `min(a, b, ...)` | Numbers | Number | - |
+| `max(a, b, ...)` | Numbers | Number | - |
+| `round(x, digits)` | Number | Number | - |
+| `is_null(x)` | Any | Boolean | - |
+| `is_empty(x)` | Any | Boolean | - |
+| `json_parse(x)` | String | Dict/List | `json_parse(null)` → {} |
+| `json_get(x, path)` | String | Any | `json_get(null, ...)` → None |
+| `json_get_default(x, path, d)` | String | Any | Returns `d` if not found |
+| `json_has(x, path)` | String | Boolean | `json_has(null, ...)` → False |
+| `json_keys(x)` | String | List | `json_keys(null)` → [] |
+| `json_values(x)` | String | List | `json_values(null)` → [] |
+| `json_type(x, path)` | String | String | Returns "null", "object", etc. |
+
+### String Method Quick Reference
+
+| Method | Example | Result |
+|--------|---------|--------|
+| `startswith(p)` | `{{x}}.startswith("OK")` | Boolean |
+| `endswith(s)` | `{{x}}.endswith(".json")` | Boolean |
+| `lower()` | `{{x}}.lower()` | Lowercase string |
+| `upper()` | `{{x}}.upper()` | Uppercase string |
+| `strip()` | `{{x}}.strip()` | Trimmed string |
+| `replace(old, new)` | `{{x}}.replace("a", "b")` | String with replacements |
+| `split(sep)` | `{{x}}.split(",")` | List of strings |
+| `count(sub)` | `{{x}}.count("e")` | Integer count |
+| `find(sub)` | `{{x}}.find("key")` | Index or -1 |
+| `isalpha()` | `{{x}}.isalpha()` | Boolean |
+| `isdigit()` | `{{x}}.isdigit()` | Boolean |
+| `isalnum()` | `{{x}}.isalnum()` | Boolean |
+| `islower()` | `{{x}}.islower()` | Boolean |
+| `isupper()` | `{{x}}.isupper()` | Boolean |
 
 ---
 
