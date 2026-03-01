@@ -4,7 +4,9 @@
 
 """Integration tests for FFMistralSmall client with real API.
 
-These tests require MISTRALSMALL_KEY environment variable.
+These tests require a valid MISTRALSMALL_KEY environment variable.
+The key is validated before running tests - invalid keys will cause tests to skip.
+
 Run with: pytest tests/integration/test_ffmistralsmall_integration.py -v
 """
 
@@ -15,13 +17,51 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+_cached_key_valid = None
+
+
+def _validate_api_key(api_key: str) -> bool:
+    """Validate API key by making a test connection.
+
+    Returns True if key is valid, False otherwise.
+    Caches result to avoid repeated validation calls.
+    """
+    global _cached_key_valid
+
+    if _cached_key_valid is not None:
+        return _cached_key_valid
+
+    if not api_key:
+        _cached_key_valid = False
+        return False
+
+    try:
+        from src.Clients.FFMistralSmall import FFMistralSmall
+
+        client = FFMistralSmall(
+            api_key=api_key,
+            model="mistral-small-latest",
+            temperature=0.1,
+            max_tokens=10,
+        )
+        result = client.test_connection()
+        _cached_key_valid = result
+        return result
+    except Exception:
+        _cached_key_valid = False
+        return False
+
 
 @pytest.fixture
 def real_mistralsmall_client():
-    """Create a real FFMistralSmall client with API key from environment."""
+    """Create a real FFMistralSmall client with validated API key."""
     api_key = os.getenv("MISTRALSMALL_KEY")
+
     if not api_key:
         pytest.skip("MISTRALSMALL_KEY not set in environment")
+
+    if not _validate_api_key(api_key):
+        pytest.skip("MISTRALSMALL_KEY is invalid or expired")
 
     from src.Clients.FFMistralSmall import FFMistralSmall
 
@@ -39,8 +79,12 @@ def real_mistralsmall_client():
 def real_mistralsmall_2503():
     """Create a real FFMistralSmall client with specific model version."""
     api_key = os.getenv("MISTRALSMALL_KEY")
+
     if not api_key:
         pytest.skip("MISTRALSMALL_KEY not set in environment")
+
+    if not _validate_api_key(api_key):
+        pytest.skip("MISTRALSMALL_KEY is invalid or expired")
 
     from src.Clients.FFMistralSmall import FFMistralSmall
 
