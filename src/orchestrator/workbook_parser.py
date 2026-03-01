@@ -551,7 +551,10 @@ class WorkbookParser:
             ws.cell(row=row_idx, column=8, value=result.get("condition"))
             ws.cell(row=row_idx, column=9, value=result.get("condition_result"))
             ws.cell(row=row_idx, column=10, value=result.get("condition_error"))
-            ws.cell(row=row_idx, column=11, value=result.get("response"))
+            response = result.get("response")
+            if isinstance(response, list | dict):
+                response = json.dumps(response)
+            ws.cell(row=row_idx, column=11, value=response)
             ws.cell(row=row_idx, column=12, value=result.get("status"))
             ws.cell(row=row_idx, column=13, value=result.get("attempts"))
             ws.cell(row=row_idx, column=14, value=result.get("error"))
@@ -632,7 +635,10 @@ class WorkbookParser:
             ws.cell(row=row_idx, column=8, value=result.get("condition"))
             ws.cell(row=row_idx, column=9, value=result.get("condition_result"))
             ws.cell(row=row_idx, column=10, value=result.get("condition_error"))
-            ws.cell(row=row_idx, column=11, value=result.get("response"))
+            response = result.get("response")
+            if isinstance(response, list | dict):
+                response = json.dumps(response)
+            ws.cell(row=row_idx, column=11, value=response)
             ws.cell(row=row_idx, column=12, value=result.get("status"))
             ws.cell(row=row_idx, column=13, value=result.get("attempts"))
             ws.cell(row=row_idx, column=14, value=result.get("error"))
