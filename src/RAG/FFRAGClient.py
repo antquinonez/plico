@@ -10,13 +10,14 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from typing import Any
 
 from ..config import get_config
 from .FFEmbeddings import FFEmbeddings
 from .FFVectorStore import FFVectorStore
 from .indexing import BM25Index, HierarchicalIndex
-from .search import HybridSearch, get_reranker
+from .search import HybridSearch, QueryExpander, fuse_search_results, get_reranker
 from .text_splitters import (
     ChunkerBase,
     HierarchicalTextChunk,
@@ -96,6 +97,33 @@ class FFRAGClient:
         self.rerank_enabled = search_cfg.rerank if search_cfg else False
         self.rerank_model = search_cfg.rerank_model if search_cfg else ""
 
+        self.use_contextual_headers = (
+            chunking_cfg.contextual_headers
+            if chunking_cfg and hasattr(chunking_cfg, "contextual_headers")
+            else True
+        )
+
+        self.query_expansion_enabled = (
+            search_cfg.query_expansion
+            if search_cfg and hasattr(search_cfg, "query_expansion")
+            else False
+        )
+        self.query_expansion_variations = (
+            search_cfg.query_expansion_variations
+            if search_cfg and hasattr(search_cfg, "query_expansion_variations")
+            else 3
+        )
+
+        self.generate_summaries = (
+            rag_config.generate_summaries
+            if rag_config and hasattr(rag_config, "generate_summaries")
+            else False
+        )
+        self.summary_boost = (
+            search_cfg.summary_boost if search_cfg and hasattr(search_cfg, "summary_boost") else 1.5
+        )
+        self._llm_generate_fn: Callable[[str], str] | None = None
+
         if config:
             self.collection_name = config.get("collection_name", self.collection_name)
             self.persist_dir = config.get("persist_dir", self.persist_dir)
@@ -132,6 +160,13 @@ class FFRAGClient:
 
         if self.rerank_enabled:
             self._reranker = get_reranker("cross_encoder", model_name=self.rerank_model)
+
+        self._query_expander: QueryExpander | None = None
+        if self.query_expansion_enabled:
+            self._query_expander = QueryExpander(
+                n_variations=self.query_expansion_variations,
+                include_original=True,
+            )
 
         self._chunker = self._create_chunker()
 
@@ -307,8 +342,89 @@ class FFRAGClient:
             chunking_strategy=strategy,
         )
 
+        if self.generate_summaries and self._llm_generate_fn and chunks_added > 0:
+            self._generate_and_store_summary(content, reference_name, common_name, checksum)
+
         logger.info(f"Indexed {chunks_added} chunks for {reference_name}")
         return chunks_added
+
+    SUMMARY_PROMPT = """Summarize the following document in 2-3 sentences.
+Focus on the main topic, key concepts, and purpose.
+
+Document:
+{content}
+
+Summary:"""
+
+    def set_llm_generate_fn(self, fn: Callable[[str], str]) -> None:
+        """Set the LLM generate function for query expansion and summaries.
+
+        Args:
+            fn: Function that takes a prompt and returns LLM response.
+
+        """
+        self._llm_generate_fn = fn
+        if self._query_expander:
+            self._query_expander.set_llm_function(fn)
+        logger.info("LLM generate function configured for RAG client")
+
+    def _generate_and_store_summary(
+        self,
+        content: str,
+        reference_name: str,
+        common_name: str | None = None,
+        checksum: str | None = None,
+    ) -> bool:
+        """Generate and store a document summary as a special chunk.
+
+        Args:
+            content: Full document content.
+            reference_name: Document reference name.
+            common_name: Human-readable name.
+            checksum: Document checksum.
+
+        Returns:
+            True if summary was generated and stored.
+
+        """
+        if not self._llm_generate_fn:
+            return False
+
+        try:
+            content_for_summary = content[:3000] if len(content) > 3000 else content
+            prompt = self.SUMMARY_PROMPT.format(content=content_for_summary)
+            summary = self._llm_generate_fn(prompt)
+
+            if not summary or not summary.strip():
+                logger.warning(f"Empty summary generated for {reference_name}")
+                return False
+
+            from .text_splitter import TextChunk
+
+            summary_chunk = TextChunk(
+                content=f"[DOCUMENT SUMMARY]\n{summary.strip()}",
+                chunk_index=-1,
+                start_char=0,
+                end_char=len(content),
+                metadata={
+                    "reference_name": reference_name,
+                    "common_name": common_name or reference_name,
+                    "chunk_type": "summary",
+                },
+            )
+
+            self._vector_store.add_chunks(
+                [summary_chunk],
+                chunking_strategy=f"{self.chunking_strategy}_summary",
+                document_checksum=checksum or "",
+            )
+
+            logger.info(f"Generated summary for {reference_name}")
+            return True
+
+        except Exception as e:
+            logger.warning(f"Failed to generate summary for {reference_name}: {e}")
+            return False
 
     def _add_regular_chunks(
         self,
@@ -318,10 +434,23 @@ class FFRAGClient:
         chunking_strategy: str | None = None,
     ) -> int:
         """Add regular (non-hierarchical) chunks."""
+        texts_for_embedding = None
+
+        if self.use_contextual_headers:
+            from .indexing.contextual_embeddings import ContextualEmbeddings
+
+            contextual = ContextualEmbeddings()
+            chunks_for_context = [{"content": c.content, "metadata": c.metadata} for c in chunks]
+            texts_for_embedding = contextual.prepare_chunks_batch(
+                chunks_for_context,
+                document_title=reference_name,
+            )
+
         count = self._vector_store.add_chunks(
             chunks,
             chunking_strategy=chunking_strategy or self.chunking_strategy,
             document_checksum=checksum or "",
+            texts_for_embedding=texts_for_embedding,
         )
 
         if self._bm25_index:
@@ -414,6 +543,8 @@ class FFRAGClient:
         query: str,
         n_results: int | None = None,
         where: dict | None = None,
+        query_expansion: bool | None = None,
+        rerank: bool | None = None,
     ) -> list[dict[str, Any]]:
         """Search for relevant documents.
 
@@ -421,6 +552,8 @@ class FFRAGClient:
             query: Query text.
             n_results: Number of results (defaults to n_results_default).
             where: Optional metadata filter.
+            query_expansion: Override instance query_expansion setting.
+            rerank: Override instance rerank_enabled setting.
 
         Returns:
             List of results with content, metadata, and score.
@@ -428,10 +561,49 @@ class FFRAGClient:
         """
         n = n_results or self.n_results_default
 
+        use_expansion = (
+            query_expansion if query_expansion is not None else self.query_expansion_enabled
+        )
+        use_rerank = rerank if rerank is not None else self.rerank_enabled
+
+        if use_expansion:
+            self._ensure_query_expander()
+            if self._query_expander and self._query_expander.llm_generate_fn:
+                return self._search_with_expansion(query, n, where, use_rerank)
+
+        return self._search_single(query, n, where, use_rerank)
+
+    def _ensure_query_expander(self) -> None:
+        """Lazily initialize query expander if needed."""
+        if self._query_expander is None:
+            self._query_expander = QueryExpander(
+                n_variations=self.query_expansion_variations,
+                include_original=True,
+            )
+            if self._llm_generate_fn:
+                self._query_expander.set_llm_function(self._llm_generate_fn)
+            logger.info("Query expander lazily initialized for per-prompt override")
+
+    def _ensure_reranker(self) -> None:
+        """Lazily initialize reranker if needed."""
+        if self._reranker is None:
+            self._reranker = get_reranker("cross_encoder", model_name=self.rerank_model)
+            logger.info("Reranker lazily initialized for per-prompt override")
+
+    def _search_single(
+        self,
+        query: str,
+        n_results: int,
+        where: dict | None = None,
+        rerank: bool = True,
+    ) -> list[dict[str, Any]]:
+        """Perform a single search without query expansion."""
+        fetch_count = n_results * 2 if self.generate_summaries else n_results
+
         if self._hybrid_search and self.search_mode == "hybrid":
-            results = self._hybrid_search.search(query, n_results=n, mode="hybrid")
+            results = self._hybrid_search.search(query, n_results=fetch_count, mode="hybrid")
         else:
-            results = self._vector_store.search(query, n_results=n, where=where)
+            results = self._vector_store.search(query, n_results=fetch_count, where=where)
 
         for result in results:
             if result.get("distance") is not None:
@@ -441,13 +613,73 @@ class FFRAGClient:
             elif result.get("score") is None:
                 result["score"] = 0.0
 
+        if self.generate_summaries:
+            for result in results:
+                if result.get("metadata", {}).get("chunk_type") == "summary":
+                    result["score"] = result.get("score", 1.0) * self.summary_boost
+                    result["is_summary"] = True
+            results.sort(key=lambda x: x.get("score", 0.0), reverse=True)
+
         if self._hierarchical_index and self.parent_context:
             results = self._hierarchical_index.enhance_results_with_context(results)
 
-        if self._reranker and results:
-            results = self._reranker.rerank(query, results, n_results=n)
+        if rerank:
+            self._ensure_reranker()
+            if self._reranker and results:
+                results = self._reranker.rerank(query, results, n_results=n_results)
+                logger.info("Search results reranked")
+                return results
 
-        return results
+        return results[:n_results]
+
+    def _search_with_expansion(
+        self,
+        query: str,
+        n_results: int,
+        where: dict | None = None,
+        rerank: bool = True,
+    ) -> list[dict[str, Any]]:
+        """Perform multi-query search with expansion."""
+        queries = self._query_expander.expand(query)
+        logger.info(f"Query expansion: {len(queries)} variations generated")
+
+        all_result_lists = []
+        for q in queries:
+            results = self._vector_store.search(q, n_results=n_results * 2, where=where)
+            all_result_lists.append(results)
+
+        fused = fuse_search_results(all_result_lists, n_results=n_results * 2)
+
+        for result in fused:
+            if result.get("distance") is not None:
+                result["score"] = 1.0 - result["distance"]
+            elif result.get("score") is None:
+                result["score"] = 0.0
+
+        if self._hierarchical_index and self.parent_context:
+            fused = self._hierarchical_index.enhance_results_with_context(fused)
+
+        if rerank:
+            self._ensure_reranker()
+            if self._reranker and fused:
+                fused = self._reranker.rerank(query, fused, n_results=n_results)
+                logger.info("Query expansion search results reranked")
+                return fused[:n_results]
+
+        return fused[:n_results]
+
+    def set_query_expansion_llm(self, llm_generate_fn: Callable[[str], str]) -> None:
+        """Set the LLM function for query expansion.
+
+        Args:
+            llm_generate_fn: Function that takes a prompt and returns LLM response.
+
+        """
+        if self._query_expander:
+            self._query_expander.set_llm_function(llm_generate_fn)
+            logger.info("Query expansion LLM function configured")
+        else:
+            logger.warning("Query expansion is not enabled")
 
     def format_results_for_prompt(
         self,

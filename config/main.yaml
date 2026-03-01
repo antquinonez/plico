@@ -67,14 +67,17 @@ rag:
   persist_dir: "./chroma_db"
   collection_name: "ffclients_kb"
   embedding_model: "mistral/mistral-embed"
-  chunk_size: 1000
-  chunk_overlap: 200
-  n_results_default: 5
+  local_embeddings: false
+  embedding_cache_size: 256
+  generate_summaries: false
 
   chunking:
     strategy: "recursive"
     chunk_size: 1000
     chunk_overlap: 200
+    contextual_headers: true
+    dedup_enabled: false
+    dedup_mode: "exact"
     markdown:
       split_headers: ["h1", "h2", "h3"]
       preserve_structure: true
@@ -89,6 +92,9 @@ rag:
     hybrid_alpha: 0.6
     rerank: false
     rerank_model: "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    query_expansion: false
+    query_expansion_variations: 3
+    summary_boost: 1.5
 
   hierarchical:
     enabled: false

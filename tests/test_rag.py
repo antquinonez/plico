@@ -635,7 +635,9 @@ class TestRAGIntegration:
 
             results = registry.semantic_search("authentication", n_results=5)
 
-            mock_rag.search.assert_called_once_with("authentication", n_results=5)
+            mock_rag.search.assert_called_once_with(
+                "authentication", n_results=5, where=None, query_expansion=None, rerank=None
+            )
             assert len(results) == 1
 
     def test_document_registry_format_semantic_results(self):

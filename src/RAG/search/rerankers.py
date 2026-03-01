@@ -94,6 +94,7 @@ class CrossEncoderReranker(RerankerBase):
         if not results:
             return []
 
+        logger.info(f"Cross-encoder reranking {len(results)} results for query: {query[:50]}...")
         model = self._load_model()
 
         pairs = [(query, r.get("content", "")) for r in results]

@@ -47,6 +47,14 @@ PROMPT_TYPES = {
         "range": (8, 20),
         "description": "Prompts using RAG semantic search via semantic_query column",
     },
+    "Filtered RAG Search": {
+        "range": (21, 21),
+        "description": "Prompts using semantic_query with semantic_filter for targeted search",
+    },
+    "Enhanced RAG Search": {
+        "range": (22, 23),
+        "description": "Prompts using query_expansion or rerank per-prompt overrides",
+    },
 }
 
 

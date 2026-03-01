@@ -98,6 +98,9 @@ class FFVectorStore:
         ids: list[str] | None = None,
         chunking_strategy: str = "default",
         document_checksum: str = "",
+        texts_for_embedding: list[str] | None = None,
+        dedup: bool = False,
+        dedup_mode: str = "exact",
     ) -> int:
         """Add text chunks to the vector store.
 
@@ -107,6 +110,10 @@ class FFVectorStore:
                  If not provided, IDs are generated.
             chunking_strategy: The chunking strategy used (for clean index management).
             document_checksum: Checksum of the source document.
+            texts_for_embedding: Optional list of texts to use for embedding instead
+                                 of chunk.content (for contextual headers).
+            dedup: Whether to deduplicate chunks (default: False).
+            dedup_mode: Deduplication mode ("exact" or "similarity").
 
         Returns:
             Number of chunks added.
@@ -119,7 +126,23 @@ class FFVectorStore:
 
         texts = [chunk.content for chunk in chunks]
 
-        embeddings = self._embeddings.embed(texts)
+        if texts_for_embedding is not None and len(texts_for_embedding) == len(chunks):
+            embedding_texts = texts_for_embedding
+        else:
+            embedding_texts = texts
+
+        embeddings = self._embeddings.embed(embedding_texts)
+
+        if dedup:
+            from .indexing.deduplication import ChunkDeduplicator
+
+            deduplicator = ChunkDeduplicator(mode=dedup_mode)
+            chunks, embeddings = deduplicator.filter_duplicates(chunks, embeddings)
+            if not chunks:
+                return 0
+            texts = [c.content for c in chunks]
+            if texts_for_embedding and len(texts_for_embedding) == len(chunks):
+                pass
 
         indexed_at = datetime.now().isoformat()
 

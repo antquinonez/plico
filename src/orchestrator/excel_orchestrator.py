@@ -228,6 +228,8 @@ class ExcelOrchestrator:
 
                     if CHROMADB_AVAILABLE:
                         rag_client = FFRAGClient()
+                        if hasattr(self.client, "generate_response"):
+                            rag_client.set_llm_generate_fn(self.client.generate_response)
                         logger.info("RAG client initialized for semantic search")
                     else:
                         logger.info(
@@ -263,7 +265,8 @@ class ExcelOrchestrator:
         """Inject document references or semantic search results into a prompt.
 
         Args:
-            prompt: Prompt dictionary with optional 'references' and/or 'semantic_query' fields
+            prompt: Prompt dictionary with optional 'references', 'semantic_query',
+                    'semantic_filter', 'query_expansion', and/or 'rerank' fields
 
         Returns:
             Prompt text with references injected, or original prompt if no references
@@ -282,7 +285,23 @@ class ExcelOrchestrator:
             and self.document_registry.rag_client
         ):
             try:
-                return self.document_registry.inject_semantic_query(prompt_text, semantic_query)
+                semantic_filter = None
+                semantic_filter_str = prompt.get("semantic_filter")
+                if semantic_filter_str:
+                    import json
+
+                    semantic_filter = json.loads(semantic_filter_str)
+
+                query_expansion = self._parse_bool_override(prompt.get("query_expansion"))
+                rerank = self._parse_bool_override(prompt.get("rerank"))
+
+                return self.document_registry.inject_semantic_query(
+                    prompt_text,
+                    semantic_query,
+                    semantic_filter=semantic_filter,
+                    query_expansion=query_expansion,
+                    rerank=rerank,
+                )
             except Exception as e:
                 logger.warning(f"Semantic search failed: {e}, falling back to references")
 
@@ -305,6 +324,28 @@ class ExcelOrchestrator:
 
         return self.document_registry.inject_references_into_prompt(prompt_text, ref_names)
 
+    def _parse_bool_override(self, value: Any) -> bool | None:
+        """Parse a boolean override value from string.
+
+        Args:
+            value: Value from prompt (string, bool, or None).
+
+        Returns:
+            True, False, or None if not specified.
+
+        """
+        if value is None:
+            return None
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, str):
+            v = value.strip().lower()
+            if v in ("true", "yes", "1"):
+                return True
+            if v in ("false", "no", "0"):
+                return False
+        return None
+
     def _create_result_dict(self, prompt: dict[str, Any]) -> dict[str, Any]:
         """Create a result dictionary for a prompt."""
         return {
@@ -322,6 +363,9 @@ class ExcelOrchestrator:
             "error": None,
             "references": prompt.get("references"),
             "semantic_query": prompt.get("semantic_query"),
+            "semantic_filter": prompt.get("semantic_filter"),
+            "query_expansion": prompt.get("query_expansion"),
+            "rerank": prompt.get("rerank"),
         }
 
     def _validate_dependencies(self) -> None:
@@ -646,6 +690,9 @@ class ExcelOrchestrator:
             "error": None,
             "references": prompt.get("references"),
             "semantic_query": prompt.get("semantic_query"),
+            "semantic_filter": prompt.get("semantic_filter"),
+            "query_expansion": prompt.get("query_expansion"),
+            "rerank": prompt.get("rerank"),
         }
 
         results_by_name = results_by_name or {}
@@ -826,6 +873,9 @@ class ExcelOrchestrator:
                                     "error": str(e),
                                     "references": nodes[seq].prompt.get("references"),
                                     "semantic_query": nodes[seq].prompt.get("semantic_query"),
+                                    "semantic_filter": nodes[seq].prompt.get("semantic_filter"),
+                                    "query_expansion": nodes[seq].prompt.get("query_expansion"),
+                                    "rerank": nodes[seq].prompt.get("rerank"),
                                 }
                             )
                     finally:
@@ -920,6 +970,9 @@ class ExcelOrchestrator:
                     "error": None,
                     "references": resolved_prompt.get("references"),
                     "semantic_query": resolved_prompt.get("semantic_query"),
+                    "semantic_filter": resolved_prompt.get("semantic_filter"),
+                    "query_expansion": resolved_prompt.get("query_expansion"),
+                    "rerank": resolved_prompt.get("rerank"),
                 }
 
                 evaluator = ConditionEvaluator(batch_results_by_name)

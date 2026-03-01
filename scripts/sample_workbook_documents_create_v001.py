@@ -176,6 +176,9 @@ def create_sample_workbook(output_path: str):
         "condition",
         "references",
         "semantic_query",
+        "semantic_filter",
+        "query_expansion",
+        "rerank",
     ]
     for col_idx, header in enumerate(prompt_headers, start=1):
         ws_prompts.cell(row=1, column=col_idx, value=header)
@@ -190,6 +193,9 @@ def create_sample_workbook(output_path: str):
             None,
             '["product_spec"]',
             None,
+            None,
+            None,
+            None,
         ),
         (
             2,
@@ -199,6 +205,9 @@ def create_sample_workbook(output_path: str):
             None,
             None,
             '["api_ref"]',
+            None,
+            None,
+            None,
             None,
         ),
         (
@@ -210,6 +219,9 @@ def create_sample_workbook(output_path: str):
             None,
             '["config"]',
             None,
+            None,
+            None,
+            None,
         ),
         (
             4,
@@ -219,6 +231,9 @@ def create_sample_workbook(output_path: str):
             None,
             None,
             '["product_spec", "api_ref"]',
+            None,
+            None,
+            None,
             None,
         ),
         (
@@ -230,6 +245,9 @@ def create_sample_workbook(output_path: str):
             None,
             '["troubleshoot"]',
             None,
+            None,
+            None,
+            None,
         ),
         (
             6,
@@ -239,6 +257,9 @@ def create_sample_workbook(output_path: str):
             None,
             None,
             '["product_spec", "api_ref", "config", "troubleshoot"]',
+            None,
+            None,
+            None,
             None,
         ),
         (
@@ -250,6 +271,9 @@ def create_sample_workbook(output_path: str):
             None,
             "",
             None,
+            None,
+            None,
+            None,
         ),
         (
             8,
@@ -260,6 +284,9 @@ def create_sample_workbook(output_path: str):
             None,
             None,
             "authentication API key token",
+            None,
+            None,
+            None,
         ),
         (
             9,
@@ -270,6 +297,9 @@ def create_sample_workbook(output_path: str):
             None,
             None,
             "troubleshooting error import dependency",
+            None,
+            None,
+            None,
         ),
         (
             10,
@@ -280,6 +310,9 @@ def create_sample_workbook(output_path: str):
             None,
             None,
             "performance batch concurrency tokens",
+            None,
+            None,
+            None,
         ),
         (
             11,
@@ -290,6 +323,9 @@ def create_sample_workbook(output_path: str):
             None,
             None,
             "chunking strategy recursive markdown hierarchical",
+            None,
+            None,
+            None,
         ),
         (
             12,
@@ -300,6 +336,9 @@ def create_sample_workbook(output_path: str):
             None,
             None,
             "hybrid search BM25 vector fusion",
+            None,
+            None,
+            None,
         ),
         (
             13,
@@ -310,6 +349,9 @@ def create_sample_workbook(output_path: str):
             None,
             None,
             "indexing BM25 hierarchical contextual embeddings",
+            None,
+            None,
+            None,
         ),
         (
             14,
@@ -320,6 +362,9 @@ def create_sample_workbook(output_path: str):
             None,
             None,
             "orchestrator workbook prompts sheet execution",
+            None,
+            None,
+            None,
         ),
         (
             15,
@@ -330,6 +375,9 @@ def create_sample_workbook(output_path: str):
             None,
             None,
             "conditional expression if equals contains",
+            None,
+            None,
+            None,
         ),
         (
             16,
@@ -340,6 +388,9 @@ def create_sample_workbook(output_path: str):
             None,
             None,
             "client mistral anthropic openai azure",
+            None,
+            None,
+            None,
         ),
         (
             17,
@@ -350,6 +401,9 @@ def create_sample_workbook(output_path: str):
             None,
             None,
             "configuration yaml pydantic settings",
+            None,
+            None,
+            None,
         ),
         (
             18,
@@ -360,6 +414,9 @@ def create_sample_workbook(output_path: str):
             None,
             None,
             "history conversation shared previous response",
+            None,
+            None,
+            None,
         ),
         (
             19,
@@ -370,6 +427,9 @@ def create_sample_workbook(output_path: str):
             None,
             None,
             "document reference injection full text",
+            None,
+            None,
+            None,
         ),
         (
             20,
@@ -380,12 +440,64 @@ def create_sample_workbook(output_path: str):
             None,
             None,
             "rerank cross-encoder diversity re-ranking",
+            None,
+            None,
+            None,
+        ),
+        (
+            21,
+            "rag_filtered_auth",
+            "Find authentication information ONLY in the API reference document.",
+            None,
+            None,
+            None,
+            None,
+            "authentication API key",
+            '{"reference_name": "api_ref"}',
+            None,
+            None,
+        ),
+        (
+            22,
+            "rag_expanded_search",
+            "Find comprehensive information about error handling and troubleshooting.",
+            None,
+            None,
+            None,
+            None,
+            "error handling exception troubleshooting",
+            None,
+            "true",
+            None,
+        ),
+        (
+            23,
+            "rag_reranked_search",
+            "What are the best practices for document chunking strategies?",
+            None,
+            None,
+            None,
+            None,
+            "chunking strategy best practices",
+            None,
+            None,
+            "true",
         ),
     ]
 
-    for row_idx, (seq, name, prompt, history, client, condition, refs, semantic) in enumerate(
-        prompts, start=2
-    ):
+    for row_idx, (
+        seq,
+        name,
+        prompt,
+        history,
+        client,
+        condition,
+        refs,
+        semantic,
+        sem_filter,
+        query_exp,
+        rerank,
+    ) in enumerate(prompts, start=2):
         ws_prompts.cell(row=row_idx, column=1, value=seq)
         ws_prompts.cell(row=row_idx, column=2, value=name)
         ws_prompts.cell(row=row_idx, column=3, value=prompt)
@@ -394,6 +506,9 @@ def create_sample_workbook(output_path: str):
         ws_prompts.cell(row=row_idx, column=6, value=condition if condition else "")
         ws_prompts.cell(row=row_idx, column=7, value=refs if refs else "")
         ws_prompts.cell(row=row_idx, column=8, value=semantic if semantic else "")
+        ws_prompts.cell(row=row_idx, column=9, value=sem_filter if sem_filter else "")
+        ws_prompts.cell(row=row_idx, column=10, value=query_exp if query_exp else "")
+        ws_prompts.cell(row=row_idx, column=11, value=rerank if rerank else "")
 
     ws_prompts.column_dimensions["A"].width = 10
     ws_prompts.column_dimensions["B"].width = 20
@@ -403,6 +518,9 @@ def create_sample_workbook(output_path: str):
     ws_prompts.column_dimensions["F"].width = 15
     ws_prompts.column_dimensions["G"].width = 35
     ws_prompts.column_dimensions["H"].width = 30
+    ws_prompts.column_dimensions["I"].width = 40
+    ws_prompts.column_dimensions["J"].width = 15
+    ws_prompts.column_dimensions["K"].width = 10
 
     wb.save(output_path)
 
@@ -416,10 +534,16 @@ def create_sample_workbook(output_path: str):
     print(f"\nPrompts defined: {len(prompts)}")
     print("  - 6 prompts with document references (full injection)")
     print("  - 13 prompts with semantic_query (RAG search)")
+    print("  - 2 prompts with semantic_filter (filtered RAG search)")
+    print("  - 1 prompt with query_expansion enabled")
+    print("  - 1 prompt with rerank enabled")
     print("  - 1 prompt without references or semantic search")
     print("\nColumns:")
     print("  - references: Full document injection (existing behavior)")
     print("  - semantic_query: RAG semantic search (new RAG feature)")
+    print("  - semantic_filter: JSON metadata filter for RAG search (new feature)")
+    print("  - query_expansion: Per-prompt override for multi-query retrieval (new feature)")
+    print("  - rerank: Per-prompt override for result reranking (new feature)")
     print(f"\n{'=' * 60}")
     print(f"Run with: python scripts/run_orchestrator.py {output_path}")
     print(f"{'=' * 60}\n")

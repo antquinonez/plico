@@ -212,6 +212,9 @@ class RAGChunkingConfig(BaseSettings):
     strategy: str = "recursive"
     chunk_size: int = 1000
     chunk_overlap: int = 200
+    contextual_headers: bool = True
+    dedup_enabled: bool = False
+    dedup_mode: str = "exact"
     markdown: RAGChunkingMarkdownConfig = Field(default_factory=RAGChunkingMarkdownConfig)
     code: RAGChunkingCodeConfig = Field(default_factory=RAGChunkingCodeConfig)
 
@@ -224,6 +227,9 @@ class RAGSearchConfig(BaseSettings):
     hybrid_alpha: float = 0.6
     rerank: bool = False
     rerank_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    query_expansion: bool = False
+    query_expansion_variations: int = 3
+    summary_boost: float = 1.5
 
 
 class RAGHierarchicalConfig(BaseSettings):
@@ -242,6 +248,9 @@ class RAGConfig(BaseSettings):
     persist_dir: str = "./chroma_db"
     collection_name: str = "ffclients_kb"
     embedding_model: str = "mistral/mistral-embed"
+    local_embeddings: bool = False
+    embedding_cache_size: int = 256
+    generate_summaries: bool = False
     chunk_size: int = 1000
     chunk_overlap: int = 200
     n_results_default: int = 5

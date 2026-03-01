@@ -8,6 +8,7 @@
 """Search package for RAG retrieval strategies."""
 
 from .hybrid_search import HybridSearch, reciprocal_rank_fusion
+from .query_expansion import QueryExpander, fuse_search_results
 from .rerankers import (
     CrossEncoderReranker,
     DiversityReranker,
@@ -19,6 +20,8 @@ from .rerankers import (
 __all__ = [
     "HybridSearch",
     "reciprocal_rank_fusion",
+    "QueryExpander",
+    "fuse_search_results",
     "RerankerBase",
     "CrossEncoderReranker",
     "DiversityReranker",

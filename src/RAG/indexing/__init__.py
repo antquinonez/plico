@@ -9,6 +9,7 @@
 
 from .bm25_index import BM25Index
 from .contextual_embeddings import ContextualEmbeddings, LateChunkingEmbeddings
+from .deduplication import ChunkDeduplicator
 from .hierarchical_index import HierarchicalIndex
 
 __all__ = [
@@ -16,4 +17,5 @@ __all__ = [
     "HierarchicalIndex",
     "ContextualEmbeddings",
     "LateChunkingEmbeddings",
+    "ChunkDeduplicator",
 ]

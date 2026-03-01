@@ -82,10 +82,12 @@ The RAG subsystem provides semantic search capabilities over document collection
 src/RAG/
 ├── __init__.py                  # Exports all RAG components
 ├── text_splitter.py             # DEPRECATED - backward compatibility wrapper
-├── FFEmbeddings.py              # LiteLLM embedding wrapper
+├── FFEmbeddings.py              # LiteLLM embedding wrapper with caching
 │                               # - embed(texts) -> list[list[float]]
 │                               # - embed_single(text) -> list[float]
 │                               # - Supports: mistral, openai, azure, anthropic
+│                               # - Local models: local/all-MiniLM-L6-v2
+│                               # - LRU cache for repeated queries
 ├── FFVectorStore.py             # ChromaDB operations
 │                               # - add_chunks(chunks) -> int
 │                               # - add_documents(documents) -> int
@@ -101,6 +103,7 @@ src/RAG/
 │                               # - search_and_format(query, n_results, max_chars)
 │                               # - delete_by_reference(reference_name)
 │                               # - get_stats() -> dict
+│                               # - Per-prompt overrides (query_expansion, rerank, semantic_filter)
 ├── mcp_tools.py                 # MCP tool definitions
 │                               # - rag_search(query, n_results)
 │                               # - rag_add_document(content, reference_name)
@@ -120,11 +123,13 @@ src/RAG/
 │   ├── __init__.py              # Exports all index types
 │   ├── bm25_index.py            # BM25Index - sparse keyword index
 │   ├── hierarchical_index.py    # HierarchicalIndex - parent-child storage
-│   └── contextual_embeddings.py # ContextualEmbeddings - context-aware embedding
+│   ├── contextual_embeddings.py # ContextualEmbeddings - context-aware embedding
+│   └── deduplication.py         # ChunkDeduplicator - exact & similarity dedup
 └── search/                      # Search strategies
     ├── __init__.py              # Exports all search components
     ├── hybrid_search.py         # HybridSearch, reciprocal_rank_fusion
-    └── rerankers.py             # CrossEncoderReranker, DiversityReranker
+    ├── rerankers.py             # CrossEncoderReranker, DiversityReranker
+    └── query_expansion.py       # QueryExpander, fuse_search_results
 ```
 
 ## Configuration
@@ -139,9 +144,37 @@ class RAGConfig(BaseModel):
     persist_dir: str = "./chroma_db"
     collection_name: str = "ffclients_documents"
     embedding_model: str = "mistral/mistral-embed"
+    local_embeddings: bool = False
+    embedding_cache_size: int = 256
+    generate_summaries: bool = False
     chunk_size: int = 1000
     chunk_overlap: int = 200
     n_results_default: int = 5
+```
+
+### RAGChunkingConfig
+
+```python
+class RAGChunkingConfig(BaseModel):
+    strategy: str = "recursive"
+    chunk_size: int = 1000
+    chunk_overlap: int = 200
+    contextual_headers: bool = True
+    dedup_enabled: bool = False
+    dedup_mode: str = "exact"  # or "similarity"
+```
+
+### RAGSearchConfig
+
+```python
+class RAGSearchConfig(BaseModel):
+    mode: str = "vector"
+    hybrid_alpha: float = 0.6
+    rerank: bool = False
+    rerank_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    query_expansion: bool = False
+    query_expansion_variations: int = 3
+    summary_boost: float = 1.5
 ```
 
 ### config/main.yaml
@@ -150,11 +183,28 @@ class RAGConfig(BaseModel):
 rag:
   enabled: true
   persist_dir: "./chroma_db"
-  collection_name: "ffclients_documents"
+  collection_name: "ffclients_kb"
   embedding_model: "mistral/mistral-embed"
-  chunk_size: 1000
-  chunk_overlap: 200
-  n_results_default: 5
+  local_embeddings: false
+  embedding_cache_size: 256
+  generate_summaries: false
+
+  chunking:
+    strategy: "recursive"
+    chunk_size: 1000
+    chunk_overlap: 200
+    contextual_headers: true
+    dedup_enabled: false
+    dedup_mode: "exact"
+
+  search:
+    mode: "vector"
+    hybrid_alpha: 0.6
+    rerank: false
+    rerank_model: "cross-encoder/ms-marco-MiniLM-L-6-v2"
+    query_expansion: false
+    query_expansion_variations: 3
+    summary_boost: 1.5
 ```
 
 ## Data Flow
@@ -546,6 +596,19 @@ definitions = mcp_tools.get_tool_definitions()
 | OpenAI | `openai/text-embedding-3-large` | 3072 |
 | Azure | `azure/{deployment-name}` | varies |
 
+### Local Models (sentence-transformers)
+
+| Model | Dimension | Speed | Quality |
+|-------|-----------|-------|---------|
+| `local/all-MiniLM-L6-v2` | 384 | Fast | Good |
+| `local/all-mpnet-base-v2` | 768 | Medium | Better |
+| `local/multi-qa-MiniLM-L6-cos-v1` | 384 | Fast | QA-optimized |
+
+```python
+# Zero API cost with local models
+embeddings = FFEmbeddings(model="local/all-MiniLM-L6-v2")
+```
+
 ### API Key Configuration
 
 ```bash
@@ -636,6 +699,7 @@ chunks = split_text(
 | FFRAGClient | 9 | High-level operations |
 | RAGMCPTools | 7 | Tool execution |
 | Integration | 3 | DocumentRegistry integration |
+| RAG Enhancements | 27 | Query expansion, deduplication, per-prompt overrides |
 
 ### Running Tests
 
@@ -645,6 +709,9 @@ source .venv313/bin/activate
 
 # Run RAG tests
 pytest tests/test_rag.py -v
+
+# Run RAG enhancement tests
+pytest tests/test_rag_enhancements.py -v
 
 # Run with coverage
 pytest tests/test_rag.py --cov=src/RAG --cov-report=term-missing
@@ -786,5 +853,173 @@ enhanced = index.enhance_results_with_context(search_results)
 
 1. **Multi-collection** - Separate collections by topic/domain
 2. **Streaming** - Stream search results for large datasets
-3. **Caching** - Cache embeddings for repeated queries
-4. **Metadata Filtering** - Enhanced search within document subsets
+
+## RAG Enhancements (v2)
+
+### 5. Embedding Cache (Implemented)
+
+LRU cache for repeated embedding queries to reduce API costs and latency.
+
+```yaml
+rag:
+  embedding_cache_size: 256  # Maximum cached embeddings
+```
+
+```python
+from src.RAG import FFEmbeddings
+
+embeddings = FFEmbeddings(
+    model="mistral/mistral-embed",
+    cache_enabled=True,
+    cache_size=256
+)
+
+# First call hits API, second call returns cached result
+vec1 = embeddings.embed_single("hello world")
+vec2 = embeddings.embed_single("hello world")  # Cached
+```
+
+### 6. Local Embeddings (Implemented)
+
+Use sentence-transformers for zero API cost embeddings.
+
+```yaml
+rag:
+  embedding_model: "local/all-MiniLM-L6-v2"
+  local_embeddings: true
+```
+
+```python
+from src.RAG import FFEmbeddings
+
+# Local model (no API key required)
+local = FFEmbeddings(
+    model="local/all-MiniLM-L6-v2",
+    device="cpu"  # or "cuda" for GPU
+)
+vectors = local.embed(["Hello world"])
+```
+
+Supported local models:
+- `local/all-MiniLM-L6-v2` - Fast, 384 dimensions
+- `local/all-mpnet-base-v2` - Better quality, 768 dimensions
+- `local/multi-qa-MiniLM-L6-cos-v1` - Optimized for QA
+
+### 7. Query Expansion (Implemented)
+
+Multi-query retrieval via LLM-generated variations for improved recall.
+
+```yaml
+rag:
+  search:
+    query_expansion: true
+    query_expansion_variations: 3
+```
+
+```python
+from src.RAG.search import QueryExpander, fuse_search_results
+
+expander = QueryExpander(
+    llm_generate_fn=my_llm.generate,
+    n_variations=3,
+    include_original=True
+)
+
+# "authentication methods" -> ["authentication methods", "How to authenticate?", "What are auth options?"]
+queries = expander.expand("authentication methods")
+
+# Search with all variations
+all_results = [rag_client.search(q) for q in queries]
+fused = fuse_search_results(all_results, n_results=10)
+```
+
+### 8. Chunk Deduplication (Implemented)
+
+Detect and filter duplicate/near-duplicate chunks during indexing.
+
+```yaml
+rag:
+  chunking:
+    dedup_enabled: true
+    dedup_mode: "exact"  # or "similarity"
+```
+
+```python
+from src.RAG.indexing import ChunkDeduplicator
+
+# Exact deduplication (hash-based)
+dedup = ChunkDeduplicator(mode="exact")
+
+# Similarity-based deduplication
+dedup_sim = ChunkDeduplicator(mode="similarity", similarity_threshold=0.95)
+
+# Filter duplicates
+filtered_chunks, filtered_embeddings = dedup.filter_duplicates(chunks, embeddings)
+```
+
+### 9. Document Summaries (Implemented)
+
+Auto-generated summary chunks for better document discovery.
+
+```yaml
+rag:
+  generate_summaries: true
+  search:
+    summary_boost: 1.5  # Boost score for summary matches
+```
+
+When enabled, a summary chunk is generated for each document, allowing high-level searches to find relevant documents before drilling into specific chunks.
+
+### 10. Contextual Headers (Implemented)
+
+Prepend document context to chunks for better retrieval context.
+
+```yaml
+rag:
+  chunking:
+    contextual_headers: true
+```
+
+Transforms:
+```
+Original chunk: "The API supports OAuth 2.0 authentication..."
+
+With contextual header:
+"[Document: api_guide.md | Section: Authentication | Chunk 5/12]
+The API supports OAuth 2.0 authentication..."
+```
+
+### 11. Per-Prompt RAG Overrides (Implemented)
+
+Override RAG settings per prompt via workbook columns.
+
+| Column | Values | Description |
+|--------|--------|-------------|
+| `semantic_filter` | JSON object | Metadata filter for targeted search |
+| `query_expansion` | `true`, `false` | Enable/disable multi-query retrieval |
+| `rerank` | `true`, `false` | Enable/disable cross-encoder reranking |
+
+**Example prompts sheet:**
+
+| sequence | prompt_name | prompt | semantic_query | semantic_filter | query_expansion | rerank |
+|----------|-------------|--------|----------------|-----------------|-----------------|--------|
+| 1 | search | Find API docs | authentication | `{"doc_type": "api"}` | true | true |
+| 2 | quick | Quick lookup | pricing | | false | false |
+
+**Semantic filter syntax:**
+
+```json
+{"reference_name": "product_spec"}
+{"doc_type": "api", "version": "v2"}
+```
+
+```python
+# Programmatic usage
+results = rag_client.search(
+    query="authentication",
+    n_results=5,
+    semantic_filter={"doc_type": "api"},
+    query_expansion=True,
+    rerank=True
+)
+```

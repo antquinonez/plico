@@ -64,7 +64,7 @@ Configuration for the orchestration run.
 
 ### prompts Sheet
 
-Prompt definitions with optional dependencies, client selection, and document references.
+Prompt definitions with optional dependencies, client selection, document references, and RAG overrides.
 
 | Column | Description | Required |
 |--------|-------------|----------|
@@ -75,6 +75,10 @@ Prompt definitions with optional dependencies, client selection, and document re
 | `client` | Named client from `clients` sheet | No |
 | `references` | JSON array of document reference names | No |
 | `condition` | Conditional expression for execution | No |
+| `semantic_query` | RAG search query for relevant chunks | No |
+| `semantic_filter` | JSON metadata filter for RAG search | No |
+| `query_expansion` | Enable multi-query retrieval (`true`/`false`) | No |
+| `rerank` | Enable cross-encoder reranking (`true`/`false`) | No |
 
 **Example:**
 
@@ -413,6 +417,77 @@ export LLAMACLOUD_TOKEN="your-token-here"
 
 ---
 
+## RAG Semantic Search
+
+### Overview
+
+RAG (Retrieval-Augmented Generation) semantic search allows prompts to retrieve relevant document chunks rather than injecting entire documents. This improves response quality and reduces token usage for large document libraries.
+
+### How It Works
+
+1. Documents are chunked and embedded into a vector store
+2. Add a `semantic_query` column to your prompts sheet
+3. The orchestrator searches for relevant chunks and injects them as context
+
+### Example
+
+**prompts sheet:**
+
+| sequence | prompt_name | prompt | semantic_query |
+|----------|-------------|--------|----------------|
+| 1 | search | What authentication methods are available? | authentication security |
+
+### Context Injection Format
+
+When `semantic_query` is present:
+
+```xml
+<RELEVANT_CONTEXT>
+[1] (source: api_guide) Score: 0.85
+The API supports OAuth 2.0 authentication with refresh tokens...
+
+[2] (source: product_spec) Score: 0.78
+Authentication endpoints require Bearer token...
+</RELEVANT_CONTEXT>
+
+===
+[original prompt]
+```
+
+### Per-Prompt RAG Overrides
+
+Override RAG settings for specific prompts:
+
+| Column | Values | Description |
+|--------|--------|-------------|
+| `semantic_filter` | JSON object | Filter by metadata (e.g., `{"doc_type": "api"}`) |
+| `query_expansion` | `true`, `false` | Generate multiple query variations |
+| `rerank` | `true`, `false` | Re-score results with cross-encoder |
+
+**Example with overrides:**
+
+| sequence | prompt_name | prompt | semantic_query | semantic_filter | query_expansion | rerank |
+|----------|-------------|--------|----------------|-----------------|-----------------|--------|
+| 1 | api_search | Find auth endpoints | authentication | `{"doc_type": "api"}` | true | true |
+| 2 | quick | Quick lookup | pricing | | false | |
+
+### Semantic Filter Syntax
+
+```json
+{"reference_name": "product_spec"}
+{"doc_type": "api", "version": "v2"}
+```
+
+### Combining References and Semantic Search
+
+Both `references` (full document) and `semantic_query` (relevant chunks) can be used together:
+
+| sequence | prompt_name | prompt | references | semantic_query |
+|----------|-------------|--------|------------|----------------|
+| 1 | combined | Summarize the spec and find related API info | `["product_spec"]` | pricing features |
+
+---
+
 ## Execution
 
 ### Run Command
@@ -534,6 +609,10 @@ After execution, a new sheet is added to the workbook with a timestamped name (e
 | `attempts` | Number of retry attempts |
 | `error` | Error message (if failed) |
 | `references` | Document references (JSON array) |
+| `semantic_query` | RAG search query used |
+| `semantic_filter` | RAG metadata filter (JSON) |
+| `query_expansion` | Whether query expansion was enabled |
+| `rerank` | Whether reranking was enabled |
 
 ---
 

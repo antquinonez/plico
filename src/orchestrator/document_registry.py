@@ -250,12 +250,18 @@ class DocumentRegistry:
         self,
         query: str,
         n_results: int = 5,
+        where: dict[str, Any] | None = None,
+        query_expansion: bool | None = None,
+        rerank: bool | None = None,
     ) -> list[dict[str, Any]]:
         """Perform semantic search across indexed documents.
 
         Args:
             query: Search query text.
             n_results: Maximum number of results to return.
+            where: Optional metadata filter (e.g., {"reference_name": "doc1"}).
+            query_expansion: Override global query expansion setting.
+            rerank: Override global rerank setting.
 
         Returns:
             List of search results with content, metadata, and score.
@@ -268,7 +274,13 @@ class DocumentRegistry:
             raise RuntimeError("RAG client not configured for semantic search")
 
         logger.debug(f"Semantic search: {query[:50]}...")
-        return self.rag_client.search(query, n_results=n_results)
+        return self.rag_client.search(
+            query,
+            n_results=n_results,
+            where=where,
+            query_expansion=query_expansion,
+            rerank=rerank,
+        )
 
     def format_semantic_results(
         self,
@@ -310,8 +322,11 @@ class DocumentRegistry:
         self,
         prompt: str,
         semantic_query: str,
+        semantic_filter: dict[str, Any] | None = None,
         n_results: int = 5,
         max_chars: int | None = None,
+        query_expansion: bool | None = None,
+        rerank: bool | None = None,
     ) -> str:
         """Inject semantic search results into a prompt.
 
@@ -320,8 +335,11 @@ class DocumentRegistry:
         Args:
             prompt: Original prompt text.
             semantic_query: Query for semantic search.
+            semantic_filter: Optional metadata filter for search.
             n_results: Number of results to retrieve.
             max_chars: Maximum characters in injected content.
+            query_expansion: Override global query expansion setting.
+            rerank: Override global rerank setting.
 
         Returns:
             Prompt with injected semantic search results.
@@ -333,8 +351,19 @@ class DocumentRegistry:
         if not semantic_query:
             return prompt
 
-        logger.info(f"Performing semantic search for query: {semantic_query}")
-        results = self.semantic_search(semantic_query, n_results=n_results)
+        filter_str = f" with filter: {semantic_filter}" if semantic_filter else ""
+        expansion_str = f" (expansion={query_expansion})" if query_expansion else ""
+        rerank_str = f" (rerank={rerank})" if rerank else ""
+        logger.info(
+            f"Performing semantic search for query: {semantic_query}{filter_str}{expansion_str}{rerank_str}"
+        )
+        results = self.semantic_search(
+            semantic_query,
+            n_results=n_results,
+            where=semantic_filter,
+            query_expansion=query_expansion,
+            rerank=rerank,
+        )
 
         if not results:
             logger.warning(f"No semantic results for query: {semantic_query}")

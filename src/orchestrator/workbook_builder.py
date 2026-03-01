@@ -92,6 +92,9 @@ class WorkbookBuilder:
         "condition",
         "references",
         "semantic_query",
+        "semantic_filter",
+        "query_expansion",
+        "rerank",
     ]
     REQUIRED_PROMPTS_HEADERS = ["sequence", "prompt_name", "prompt", "history"]
     DOCUMENTS_HEADERS = [
@@ -126,6 +129,9 @@ class WorkbookBuilder:
         "error",
         "references",
         "semantic_query",
+        "semantic_filter",
+        "query_expansion",
+        "rerank",
     ]
 
     def has_data_sheet(self) -> bool:
@@ -334,6 +340,15 @@ class WorkbookBuilder:
                 else None,
                 "semantic_query": str(row_dict.get("semantic_query", "")).strip()
                 if row_dict.get("semantic_query")
+                else None,
+                "semantic_filter": str(row_dict.get("semantic_filter", "")).strip()
+                if row_dict.get("semantic_filter")
+                else None,
+                "query_expansion": str(row_dict.get("query_expansion", "")).strip().lower()
+                if row_dict.get("query_expansion")
+                else None,
+                "rerank": str(row_dict.get("rerank", "")).strip().lower()
+                if row_dict.get("rerank")
                 else None,
             }
 
@@ -549,6 +564,15 @@ class WorkbookBuilder:
             semantic_query = result.get("semantic_query")
             ws.cell(row=row_idx, column=16, value=semantic_query if semantic_query else "")
 
+            semantic_filter = result.get("semantic_filter")
+            ws.cell(row=row_idx, column=17, value=semantic_filter if semantic_filter else "")
+
+            query_expansion = result.get("query_expansion")
+            ws.cell(row=row_idx, column=18, value=query_expansion if query_expansion else "")
+
+            rerank = result.get("rerank")
+            ws.cell(row=row_idx, column=19, value=rerank if rerank else "")
+
         ws.column_dimensions["A"].width = 10
         ws.column_dimensions["B"].width = 25
         ws.column_dimensions["C"].width = 10
@@ -565,6 +589,9 @@ class WorkbookBuilder:
         ws.column_dimensions["N"].width = 40
         ws.column_dimensions["O"].width = 30
         ws.column_dimensions["P"].width = 30
+        ws.column_dimensions["Q"].width = 15
+        ws.column_dimensions["R"].width = 18
+        ws.column_dimensions["S"].width = 10
 
         wb.save(self.workbook_path)
         logger.info(f"Results written to sheet: {sheet_name}")
@@ -618,6 +645,15 @@ class WorkbookBuilder:
             semantic_query = result.get("semantic_query")
             ws.cell(row=row_idx, column=16, value=semantic_query if semantic_query else "")
 
+            semantic_filter = result.get("semantic_filter")
+            ws.cell(row=row_idx, column=17, value=semantic_filter if semantic_filter else "")
+
+            query_expansion = result.get("query_expansion")
+            ws.cell(row=row_idx, column=18, value=query_expansion if query_expansion else "")
+
+            rerank = result.get("rerank")
+            ws.cell(row=row_idx, column=19, value=rerank if rerank else "")
+
         ws.column_dimensions["A"].width = 10
         ws.column_dimensions["B"].width = 25
         ws.column_dimensions["C"].width = 10
@@ -634,6 +670,9 @@ class WorkbookBuilder:
         ws.column_dimensions["N"].width = 40
         ws.column_dimensions["O"].width = 30
         ws.column_dimensions["P"].width = 30
+        ws.column_dimensions["Q"].width = 15
+        ws.column_dimensions["R"].width = 18
+        ws.column_dimensions["S"].width = 10
 
         wb.save(self.workbook_path)
         logger.info(f"Batch results written to sheet: {sheet_name}")
