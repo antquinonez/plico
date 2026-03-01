@@ -21,250 +21,153 @@ Version: 001
 
 import os
 import sys
-from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from openpyxl import Workbook
+from sample_workbooks import PromptSpec, WorkbookBuilder
+
 from src.config import get_config
 
 
-def create_multiclient_sample_workbook(output_path: str):
-    config = get_config()
-    test_config = config.sample
-
-    wb = Workbook()
-
-    # ==========================================
-    # CONFIG SHEET
-    # ==========================================
-    ws_config = wb.active
-    ws_config.title = "config"
-    ws_config["A1"] = "field"
-    ws_config["B1"] = "value"
-
-    config_data = [
-        ("model", test_config.default_model),
-        ("max_retries", str(test_config.default_retries)),
-        ("temperature", str(test_config.default_temperature)),
-        ("max_tokens", str(test_config.default_max_tokens)),
-        (
-            "system_instructions",
-            "You are a helpful assistant. Give brief, concise answers.",
-        ),
-        ("created_at", datetime.now().isoformat()),
-    ]
-
-    for idx, (field, value) in enumerate(config_data, start=2):
-        ws_config[f"A{idx}"] = field
-        ws_config[f"B{idx}"] = value
-
-    ws_config.column_dimensions["A"].width = 20
-    ws_config.column_dimensions["B"].width = 70
-
-    # ==========================================
-    # CLIENTS SHEET
-    # ==========================================
-    ws_clients = wb.create_sheet(title="clients")
-
-    clients_headers = [
-        "name",
-        "client_type",
-        "api_key_env",
-        "model",
-        "temperature",
-        "max_tokens",
-    ]
-    for col_idx, header in enumerate(clients_headers, start=1):
-        ws_clients.cell(row=1, column=col_idx, value=header)
-
-    # Define multiple clients from config
-    test_clients = test_config.sample_clients
-    clients_data = []
-    for name in ["default", "fast", "creative"]:
-        if name in test_clients:
-            cfg = test_clients[name]
-            clients_data.append(
-                (
-                    name,
-                    cfg.client_type,
-                    cfg.api_key_env,
-                    cfg.model,
-                    cfg.temperature,
-                    cfg.max_tokens,
-                )
-            )
-
-    for row_idx, client_row in enumerate(clients_data, start=2):
-        for col_idx, value in enumerate(client_row, start=1):
-            ws_clients.cell(row=row_idx, column=col_idx, value=value)
-
-    ws_clients.column_dimensions["A"].width = 15
-    ws_clients.column_dimensions["B"].width = 18
-    ws_clients.column_dimensions["C"].width = 20
-    ws_clients.column_dimensions["D"].width = 22
-    ws_clients.column_dimensions["E"].width = 14
-    ws_clients.column_dimensions["F"].width = 12
-
-    # ==========================================
-    # PROMPTS SHEET (with client column)
-    # ==========================================
-    ws_prompts = wb.create_sheet(title="prompts")
-    headers = [
-        "sequence",
-        "prompt_name",
-        "prompt",
-        "history",
-        "client",
-        "condition",
-        "references",
-    ]
-    for col_idx, header in enumerate(headers, start=1):
-        ws_prompts.cell(row=1, column=col_idx, value=header)
-
+def get_prompts() -> list[PromptSpec]:
+    """Return all prompts for the multiclient workbook."""
     prompts = []
 
     # Level 0: Independent prompts using different clients
     prompts.append(
-        (
+        PromptSpec(
             1,
             "classify",
             "Classify this sentiment: 'I love this product!'. Answer: positive, negative, or neutral.",
-            None,
-            "fast",
+            client="fast",
         )
     )
     prompts.append(
-        (
+        PromptSpec(
             2,
             "analyze",
             "Analyze the sentence 'The weather is nice today' for linguistic features.",
-            None,
-            None,
         )
     )
-    prompts.append((3, "creative", "Write a one-line poem about clouds.", None, "creative"))
     prompts.append(
-        (
+        PromptSpec(3, "creative", "Write a one-line poem about clouds.", client="creative")
+    )
+    prompts.append(
+        PromptSpec(
             4,
             "summarize",
             "Summarize: 'AI is transforming many industries including healthcare and finance.'",
-            None,
-            "fast",
+            client="fast",
         )
     )
-    prompts.append((5, "expand", "Expand on this topic: 'Machine learning basics'", None, None))
+    prompts.append(PromptSpec(5, "expand", "Expand on this topic: 'Machine learning basics'"))
 
     # Level 1: Prompts with dependencies
     prompts.append(
-        (
+        PromptSpec(
             6,
             "classify_context",
             "Based on the classification, explain why it was classified that way.",
-            '["classify"]',
-            None,
+            history='["classify"]',
         )
     )
     prompts.append(
-        (
+        PromptSpec(
             7,
             "analyze_deep",
             "Provide a deeper linguistic analysis based on the initial analysis.",
-            '["analyze"]',
-            "creative",
+            history='["analyze"]',
+            client="creative",
         )
     )
-    prompts.append((8, "poem_explain", "Explain the imagery in the poem.", '["creative"]', None))
     prompts.append(
-        (
+        PromptSpec(
+            8,
+            "poem_explain",
+            "Explain the imagery in the poem.",
+            history='["creative"]',
+        )
+    )
+    prompts.append(
+        PromptSpec(
             9,
             "summary_validate",
             "Is this summary accurate and complete? Answer yes or no with reason.",
-            '["summarize"]',
-            "fast",
+            history='["summarize"]',
+            client="fast",
         )
     )
     prompts.append(
-        (
+        PromptSpec(
             10,
             "expand_outline",
             "Create an outline based on the expansion.",
-            '["expand"]',
-            None,
+            history='["expand"]',
         )
     )
 
     # Level 2: Synthesis prompts
     prompts.append(
-        (
+        PromptSpec(
             11,
             "compare",
             "Compare the classification and analysis approaches used.",
-            '["classify", "analyze"]',
-            None,
+            history='["classify", "analyze"]',
         )
     )
     prompts.append(
-        (
+        PromptSpec(
             12,
             "creative_summary",
             "Summarize both the poem and its explanation creatively.",
-            '["creative", "poem_explain"]',
-            "creative",
+            history='["creative", "poem_explain"]',
+            client="creative",
         )
     )
     prompts.append(
-        (
+        PromptSpec(
             13,
             "final_report",
             "Create a brief report summarizing all findings.",
-            '["classify_context", "analyze_deep", "summary_validate"]',
-            None,
+            history='["classify_context", "analyze_deep", "summary_validate"]',
         )
     )
 
-    # Write all prompts to sheet
-    for row_idx, (seq, name, prompt, history, client) in enumerate(prompts, start=2):
-        ws_prompts.cell(row=row_idx, column=1, value=seq)
-        ws_prompts.cell(row=row_idx, column=2, value=name)
-        ws_prompts.cell(row=row_idx, column=3, value=prompt)
-        ws_prompts.cell(row=row_idx, column=4, value=history if history else "")
-        ws_prompts.cell(row=row_idx, column=5, value=client if client else "")
-        ws_prompts.cell(row=row_idx, column=6, value="")
-        ws_prompts.cell(row=row_idx, column=7, value="")
+    return prompts
 
-    ws_prompts.column_dimensions["A"].width = 10
-    ws_prompts.column_dimensions["B"].width = 20
-    ws_prompts.column_dimensions["C"].width = 70
-    ws_prompts.column_dimensions["D"].width = 40
-    ws_prompts.column_dimensions["E"].width = 12
-    ws_prompts.column_dimensions["F"].width = 15
-    ws_prompts.column_dimensions["G"].width = 15
 
-    wb.save(output_path)
+def create_multiclient_sample_workbook(output_path: str):
+    """Create the multiclient sample workbook."""
+    prompts = get_prompts()
 
-    print(f"\n{'=' * 70}")
-    print(f"Created MULTI-CLIENT sample workbook: {output_path}")
-    print(f"{'=' * 70}")
-    print("\nUsing: FFLiteLLMClient with LiteLLM routing")
-    print("\nClients defined:")
-    for name, client_type, _, model, temp, tokens in clients_data:
-        print(f"  - {name}: {client_type} (model={model}, temp={temp}, tokens={tokens})")
+    builder = WorkbookBuilder(output_path)
+    builder.add_config_sheet(
+        overrides={
+            "system_instructions": "You are a helpful assistant. Give brief, concise answers.",
+        }
+    )
+    builder.add_clients_sheet()
+    builder.add_prompts_sheet(prompts, include_extra_columns=False)
+    builder.save()
 
-    print(f"\nTotal prompts: {len(prompts)}")
-    print("\nPrompt client assignments:")
-    for seq, name, _, _, client in prompts:
-        client_str = client if client else "(default)"
-        print(f"  Seq {seq:2d} ({name:18s}): {client_str}")
+    client_assignments = {}
+    for p in prompts:
+        c = p.client or "(default)"
+        client_assignments[f"Seq {p.sequence:2d} ({p.name})"] = c
 
-    print("\nPrompt Structure:")
-    print("  Level 0: 5 independent prompts (sequences 1-5)")
-    print("  Level 1: 5 prompts with 1 dependency (sequences 6-10)")
-    print("  Level 2: 3 synthesis prompts (sequences 11-13)")
-
-    print(f"\n{'=' * 70}")
-    print(f"Run with: python scripts/run_orchestrator.py {output_path} -c 2")
-    print(f"{'=' * 70}\n")
+    builder.print_summary(
+        "MULTI-CLIENT",
+        {
+            "Total prompts": len(prompts),
+            "Prompt client assignments": client_assignments,
+            "Prompt Structure": {
+                "Level 0": "5 independent prompts (sequences 1-5)",
+                "Level 1": "5 prompts with 1 dependency (sequences 6-10)",
+                "Level 2": "3 synthesis prompts (sequences 11-13)",
+            },
+        },
+        run_command=f"python scripts/run_orchestrator.py {output_path} -c 2",
+    )
 
 
 if __name__ == "__main__":

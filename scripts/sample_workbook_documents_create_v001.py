@@ -28,525 +28,329 @@ Version: 001
 
 import os
 import sys
-from datetime import datetime
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from openpyxl import Workbook
+from sample_workbooks import PromptSpec, WorkbookBuilder
 
 from src.config import get_config
 
 
-def create_sample_workbook(output_path: str):
+def get_documents() -> list[dict]:
+    """Return document references for the documents sheet."""
     config = get_config()
-    sample_config = config.sample
+    library = config.paths.library
 
-    wb = Workbook()
-
-    ws_config = wb.active
-    ws_config.title = "config"
-    ws_config["A1"] = "field"
-    ws_config["B1"] = "value"
-
-    config_data = [
-        ("model", sample_config.default_model),
-        ("max_retries", str(sample_config.default_retries)),
-        ("temperature", str(sample_config.default_temperature)),
-        ("max_tokens", "1000"),
-        (
-            "system_instructions",
-            "You are a helpful assistant. Analyze documents and answer questions based on their content. Be concise and accurate.",
-        ),
-        ("created_at", datetime.now().isoformat()),
+    return [
+        {
+            "reference_name": "product_spec",
+            "common_name": "Product Specification",
+            "file_path": f"{library}/product_spec.md",
+            "notes": "Main product documentation",
+        },
+        {
+            "reference_name": "api_ref",
+            "common_name": "API Reference",
+            "file_path": f"{library}/api_reference.txt",
+            "notes": "API documentation",
+        },
+        {
+            "reference_name": "config",
+            "common_name": "Configuration File",
+            "file_path": f"{library}/config.json",
+            "notes": "App configuration",
+        },
+        {
+            "reference_name": "troubleshoot",
+            "common_name": "Troubleshooting Guide",
+            "file_path": f"{library}/troubleshooting.txt",
+            "notes": "Common issues and solutions",
+        },
+        {
+            "reference_name": "architecture",
+            "common_name": "System Architecture",
+            "file_path": f"{library}/ARCHITECTURE.md",
+            "notes": "Overall system architecture documentation",
+        },
+        {
+            "reference_name": "client_api_guide",
+            "common_name": "Client API User Guide",
+            "file_path": f"{library}/CLIENT API USER GUIDE.md",
+            "notes": "User guide for client API usage",
+        },
+        {
+            "reference_name": "clients_arch",
+            "common_name": "Clients Architecture",
+            "file_path": f"{library}/CLIENTS_ARCHITECTURE.md",
+            "notes": "Architecture for AI client implementations",
+        },
+        {
+            "reference_name": "conditional_guide",
+            "common_name": "Conditional Expressions Guide",
+            "file_path": f"{library}/CONDITIONAL EXPRESSIONS USER GUIDE.md",
+            "notes": "Guide for conditional expressions in prompts",
+        },
+        {
+            "reference_name": "configuration_doc",
+            "common_name": "Configuration Documentation",
+            "file_path": f"{library}/CONFIGURATION.md",
+            "notes": "Configuration management documentation",
+        },
+        {
+            "reference_name": "orchestrator_arch",
+            "common_name": "Orchestrator Architecture",
+            "file_path": f"{library}/ORCHESTRATOR_ARCHITECTURE.md",
+            "notes": "Excel orchestrator architecture documentation",
+        },
+        {
+            "reference_name": "orchestrator_readme",
+            "common_name": "Orchestrator README",
+            "file_path": f"{library}/ORCHESTRATOR README.md",
+            "notes": "Orchestrator usage and examples",
+        },
+        {
+            "reference_name": "rag_architecture",
+            "common_name": "RAG Architecture",
+            "file_path": f"{library}/RAG_ARCHITECTURE.md",
+            "notes": "Retrieval-Augmented Generation architecture",
+        },
+        {
+            "reference_name": "shared_history",
+            "common_name": "Shared History Design",
+            "file_path": f"{library}/SHARED_HISTORY_DESIGN.md",
+            "notes": "Conversation history sharing design",
+        },
     ]
 
-    for idx, (field, value) in enumerate(config_data, start=2):
-        ws_config[f"A{idx}"] = field
-        ws_config[f"B{idx}"] = value
 
-    ws_config.column_dimensions["A"].width = 20
-    ws_config.column_dimensions["B"].width = 70
+def get_prompts() -> list[PromptSpec]:
+    """Return all prompts for the documents workbook."""
+    prompts = []
 
-    ws_documents = wb.create_sheet(title="documents")
-    doc_headers = ["reference_name", "common_name", "file_path", "notes"]
-    for col_idx, header in enumerate(doc_headers, start=1):
-        ws_documents.cell(row=1, column=col_idx, value=header)
-
-    app_config = get_config()
-
-    documents = [
-        (
-            "product_spec",
-            "Product Specification",
-            f"{app_config.paths.library}/product_spec.md",
-            "Main product documentation",
-        ),
-        (
-            "api_ref",
-            "API Reference",
-            f"{app_config.paths.library}/api_reference.txt",
-            "API documentation",
-        ),
-        (
-            "config",
-            "Configuration File",
-            f"{app_config.paths.library}/config.json",
-            "App configuration",
-        ),
-        (
-            "troubleshoot",
-            "Troubleshooting Guide",
-            f"{app_config.paths.library}/troubleshooting.txt",
-            "Common issues and solutions",
-        ),
-        (
-            "architecture",
-            "System Architecture",
-            f"{app_config.paths.library}/ARCHITECTURE.md",
-            "Overall system architecture documentation",
-        ),
-        (
-            "client_api_guide",
-            "Client API User Guide",
-            f"{app_config.paths.library}/CLIENT API USER GUIDE.md",
-            "User guide for client API usage",
-        ),
-        (
-            "clients_arch",
-            "Clients Architecture",
-            f"{app_config.paths.library}/CLIENTS_ARCHITECTURE.md",
-            "Architecture for AI client implementations",
-        ),
-        (
-            "conditional_guide",
-            "Conditional Expressions Guide",
-            f"{app_config.paths.library}/CONDITIONAL EXPRESSIONS USER GUIDE.md",
-            "Guide for conditional expressions in prompts",
-        ),
-        (
-            "configuration_doc",
-            "Configuration Documentation",
-            f"{app_config.paths.library}/CONFIGURATION.md",
-            "Configuration management documentation",
-        ),
-        (
-            "orchestrator_arch",
-            "Orchestrator Architecture",
-            f"{app_config.paths.library}/ORCHESTRATOR_ARCHITECTURE.md",
-            "Excel orchestrator architecture documentation",
-        ),
-        (
-            "orchestrator_readme",
-            "Orchestrator README",
-            f"{app_config.paths.library}/ORCHESTRATOR README.md",
-            "Orchestrator usage and examples",
-        ),
-        (
-            "rag_architecture",
-            "RAG Architecture",
-            f"{app_config.paths.library}/RAG_ARCHITECTURE.md",
-            "Retrieval-Augmented Generation architecture",
-        ),
-        (
-            "shared_history",
-            "Shared History Design",
-            f"{app_config.paths.library}/SHARED_HISTORY_DESIGN.md",
-            "Conversation history sharing design",
-        ),
-    ]
-
-    for row_idx, (ref_name, common_name, file_path, notes) in enumerate(documents, start=2):
-        ws_documents.cell(row=row_idx, column=1, value=ref_name)
-        ws_documents.cell(row=row_idx, column=2, value=common_name)
-        ws_documents.cell(row=row_idx, column=3, value=file_path)
-        ws_documents.cell(row=row_idx, column=4, value=notes)
-
-    ws_documents.column_dimensions["A"].width = 18
-    ws_documents.column_dimensions["B"].width = 25
-    ws_documents.column_dimensions["C"].width = 50
-    ws_documents.column_dimensions["D"].width = 30
-
-    ws_prompts = wb.create_sheet(title="prompts")
-    prompt_headers = [
-        "sequence",
-        "prompt_name",
-        "prompt",
-        "history",
-        "client",
-        "condition",
-        "references",
-        "semantic_query",
-        "semantic_filter",
-        "query_expansion",
-        "rerank",
-    ]
-    for col_idx, header in enumerate(prompt_headers, start=1):
-        ws_prompts.cell(row=1, column=col_idx, value=header)
-
-    prompts = [
-        (
+    # Full document references (1-6)
+    prompts.append(
+        PromptSpec(
             1,
             "spec_summary",
             "Summarize the key features of the product specification.",
-            None,
-            None,
-            None,
-            '["product_spec"]',
-            None,
-            None,
-            None,
-            None,
-        ),
-        (
+            references='["product_spec"]',
+        )
+    )
+    prompts.append(
+        PromptSpec(
             2,
             "api_overview",
             "List the available client types and their purposes.",
-            None,
-            None,
-            None,
-            '["api_ref"]',
-            None,
-            None,
-            None,
-            None,
-        ),
-        (
+            references='["api_ref"]',
+        )
+    )
+    prompts.append(
+        PromptSpec(
             3,
             "config_analysis",
             "What features are enabled in the configuration?",
-            None,
-            None,
-            None,
-            '["config"]',
-            None,
-            None,
-            None,
-            None,
-        ),
-        (
+            references='["config"]',
+        )
+    )
+    prompts.append(
+        PromptSpec(
             4,
             "combined_analysis",
             "Based on the product spec and API reference, describe the system architecture.",
-            None,
-            None,
-            None,
-            '["product_spec", "api_ref"]',
-            None,
-            None,
-            None,
-            None,
-        ),
-        (
+            references='["product_spec", "api_ref"]',
+        )
+    )
+    prompts.append(
+        PromptSpec(
             5,
             "troubleshoot_summary",
             "Summarize the common issues and their solutions.",
-            None,
-            None,
-            None,
-            '["troubleshoot"]',
-            None,
-            None,
-            None,
-            None,
-        ),
-        (
+            references='["troubleshoot"]',
+        )
+    )
+    prompts.append(
+        PromptSpec(
             6,
             "full_context",
             "Using all documents, provide a comprehensive overview of the FFClients system.",
-            None,
-            None,
-            None,
-            '["product_spec", "api_ref", "config", "troubleshoot"]',
-            None,
-            None,
-            None,
-            None,
-        ),
-        (
-            7,
-            "no_ref_prompt",
-            "What is 2 + 2? Just give the number.",
-            None,
-            None,
-            None,
-            "",
-            None,
-            None,
-            None,
-            None,
-        ),
-        (
+            references='["product_spec", "api_ref", "config", "troubleshoot"]',
+        )
+    )
+
+    # No reference control (7)
+    prompts.append(PromptSpec(7, "no_ref_prompt", "What is 2 + 2? Just give the number."))
+
+    # RAG semantic search (8-20)
+    prompts.append(
+        PromptSpec(
             8,
             "rag_authentication",
             "How do I authenticate with the API?",
-            None,
-            None,
-            None,
-            None,
-            "authentication API key token",
-            None,
-            None,
-            None,
-        ),
-        (
+            semantic_query="authentication API key token",
+        )
+    )
+    prompts.append(
+        PromptSpec(
             9,
             "rag_errors",
             "What are common errors and how do I fix them?",
-            None,
-            None,
-            None,
-            None,
-            "troubleshooting error import dependency",
-            None,
-            None,
-            None,
-        ),
-        (
+            semantic_query="troubleshooting error import dependency",
+        )
+    )
+    prompts.append(
+        PromptSpec(
             10,
             "rag_performance",
             "What are the performance tips for this system?",
-            None,
-            None,
-            None,
-            None,
-            "performance batch concurrency tokens",
-            None,
-            None,
-            None,
-        ),
-        (
+            semantic_query="performance batch concurrency tokens",
+        )
+    )
+    prompts.append(
+        PromptSpec(
             11,
             "rag_chunking",
             "What chunking strategies are available for document processing?",
-            None,
-            None,
-            None,
-            None,
-            "chunking strategy recursive markdown hierarchical",
-            None,
-            None,
-            None,
-        ),
-        (
+            semantic_query="chunking strategy recursive markdown hierarchical",
+        )
+    )
+    prompts.append(
+        PromptSpec(
             12,
             "rag_hybrid_search",
             "How does hybrid search work in the RAG system?",
-            None,
-            None,
-            None,
-            None,
-            "hybrid search BM25 vector fusion",
-            None,
-            None,
-            None,
-        ),
-        (
+            semantic_query="hybrid search BM25 vector fusion",
+        )
+    )
+    prompts.append(
+        PromptSpec(
             13,
             "rag_indexing",
             "What indexing strategies does the RAG module support?",
-            None,
-            None,
-            None,
-            None,
-            "indexing BM25 hierarchical contextual embeddings",
-            None,
-            None,
-            None,
-        ),
-        (
+            semantic_query="indexing BM25 hierarchical contextual embeddings",
+        )
+    )
+    prompts.append(
+        PromptSpec(
             14,
             "orchestrator_usage",
             "How do I use the Excel orchestrator to run prompts?",
-            None,
-            None,
-            None,
-            None,
-            "orchestrator workbook prompts sheet execution",
-            None,
-            None,
-            None,
-        ),
-        (
+            semantic_query="orchestrator workbook prompts sheet execution",
+        )
+    )
+    prompts.append(
+        PromptSpec(
             15,
             "conditional_prompts",
             "How can I use conditional expressions in prompts?",
-            None,
-            None,
-            None,
-            None,
-            "conditional expression if equals contains",
-            None,
-            None,
-            None,
-        ),
-        (
+            semantic_query="conditional expression if equals contains",
+        )
+    )
+    prompts.append(
+        PromptSpec(
             16,
             "client_types",
             "What AI client types are supported and how do they differ?",
-            None,
-            None,
-            None,
-            None,
-            "client mistral anthropic openai azure",
-            None,
-            None,
-            None,
-        ),
-        (
+            semantic_query="client mistral anthropic openai azure",
+        )
+    )
+    prompts.append(
+        PromptSpec(
             17,
             "configuration_yaml",
             "How is configuration managed in FFClients?",
-            None,
-            None,
-            None,
-            None,
-            "configuration yaml pydantic settings",
-            None,
-            None,
-            None,
-        ),
-        (
+            semantic_query="configuration yaml pydantic settings",
+        )
+    )
+    prompts.append(
+        PromptSpec(
             18,
             "shared_history",
             "How does conversation history sharing work between prompts?",
-            None,
-            None,
-            None,
-            None,
-            "history conversation shared previous response",
-            None,
-            None,
-            None,
-        ),
-        (
+            semantic_query="history conversation shared previous response",
+        )
+    )
+    prompts.append(
+        PromptSpec(
             19,
             "document_references",
             "How do document references work in the orchestrator?",
-            None,
-            None,
-            None,
-            None,
-            "document reference injection full text",
-            None,
-            None,
-            None,
-        ),
-        (
+            semantic_query="document reference injection full text",
+        )
+    )
+    prompts.append(
+        PromptSpec(
             20,
             "reranking_strategies",
             "What reranking strategies are available for search results?",
-            None,
-            None,
-            None,
-            None,
-            "rerank cross-encoder diversity re-ranking",
-            None,
-            None,
-            None,
-        ),
-        (
+            semantic_query="rerank cross-encoder diversity re-ranking",
+        )
+    )
+
+    # Filtered RAG search (21)
+    prompts.append(
+        PromptSpec(
             21,
             "rag_filtered_auth",
             "Find authentication information ONLY in the API reference document.",
-            None,
-            None,
-            None,
-            None,
-            "authentication API key",
-            '{"reference_name": "api_ref"}',
-            None,
-            None,
-        ),
-        (
+            semantic_query="authentication API key",
+            semantic_filter='{"reference_name": "api_ref"}',
+        )
+    )
+
+    # Enhanced RAG search (22-23)
+    prompts.append(
+        PromptSpec(
             22,
             "rag_expanded_search",
             "Find comprehensive information about error handling and troubleshooting.",
-            None,
-            None,
-            None,
-            None,
-            "error handling exception troubleshooting",
-            None,
-            "true",
-            None,
-        ),
-        (
+            semantic_query="error handling exception troubleshooting",
+            query_expansion="true",
+        )
+    )
+    prompts.append(
+        PromptSpec(
             23,
             "rag_reranked_search",
             "What are the best practices for document chunking strategies?",
-            None,
-            None,
-            None,
-            None,
-            "chunking strategy best practices",
-            None,
-            None,
-            "true",
-        ),
-    ]
+            semantic_query="chunking strategy best practices",
+            rerank="true",
+        )
+    )
 
-    for row_idx, (
-        seq,
-        name,
-        prompt,
-        history,
-        client,
-        condition,
-        refs,
-        semantic,
-        sem_filter,
-        query_exp,
-        rerank,
-    ) in enumerate(prompts, start=2):
-        ws_prompts.cell(row=row_idx, column=1, value=seq)
-        ws_prompts.cell(row=row_idx, column=2, value=name)
-        ws_prompts.cell(row=row_idx, column=3, value=prompt)
-        ws_prompts.cell(row=row_idx, column=4, value=history if history else "")
-        ws_prompts.cell(row=row_idx, column=5, value=client if client else "")
-        ws_prompts.cell(row=row_idx, column=6, value=condition if condition else "")
-        ws_prompts.cell(row=row_idx, column=7, value=refs if refs else "")
-        ws_prompts.cell(row=row_idx, column=8, value=semantic if semantic else "")
-        ws_prompts.cell(row=row_idx, column=9, value=sem_filter if sem_filter else "")
-        ws_prompts.cell(row=row_idx, column=10, value=query_exp if query_exp else "")
-        ws_prompts.cell(row=row_idx, column=11, value=rerank if rerank else "")
+    return prompts
 
-    ws_prompts.column_dimensions["A"].width = 10
-    ws_prompts.column_dimensions["B"].width = 20
-    ws_prompts.column_dimensions["C"].width = 60
-    ws_prompts.column_dimensions["D"].width = 15
-    ws_prompts.column_dimensions["E"].width = 12
-    ws_prompts.column_dimensions["F"].width = 15
-    ws_prompts.column_dimensions["G"].width = 35
-    ws_prompts.column_dimensions["H"].width = 30
-    ws_prompts.column_dimensions["I"].width = 40
-    ws_prompts.column_dimensions["J"].width = 15
-    ws_prompts.column_dimensions["K"].width = 10
 
-    wb.save(output_path)
+def create_sample_workbook(output_path: str):
+    """Create the documents sample workbook."""
+    prompts = get_prompts()
+    documents = get_documents()
 
-    print(f"\n{'=' * 60}")
-    print(f"Created document reference sample workbook: {output_path}")
-    print(f"{'=' * 60}")
-    print("\nUsing: FFLiteLLMClient with LiteLLM routing")
-    print(f"\nDocuments defined: {len(documents)}")
-    for ref_name, common_name, _, _ in documents:
-        print(f"  - {ref_name}: {common_name}")
-    print(f"\nPrompts defined: {len(prompts)}")
-    print("  - 6 prompts with document references (full injection)")
-    print("  - 13 prompts with semantic_query (RAG search)")
-    print("  - 2 prompts with semantic_filter (filtered RAG search)")
-    print("  - 1 prompt with query_expansion enabled")
-    print("  - 1 prompt with rerank enabled")
-    print("  - 1 prompt without references or semantic search")
-    print("\nColumns:")
-    print("  - references: Full document injection (existing behavior)")
-    print("  - semantic_query: RAG semantic search (new RAG feature)")
-    print("  - semantic_filter: JSON metadata filter for RAG search (new feature)")
-    print("  - query_expansion: Per-prompt override for multi-query retrieval (new feature)")
-    print("  - rerank: Per-prompt override for result reranking (new feature)")
-    print(f"\n{'=' * 60}")
-    print(f"Run with: python scripts/run_orchestrator.py {output_path}")
-    print(f"{'=' * 60}\n")
+    builder = WorkbookBuilder(output_path)
+    builder.add_config_sheet(
+        overrides={
+            "max_tokens": "1000",
+            "system_instructions": "You are a helpful assistant. Analyze documents and answer questions based on their content. Be concise and accurate.",
+        }
+    )
+    builder.add_documents_sheet(documents)
+    builder.add_prompts_sheet(prompts, include_extra_columns=True)
+    builder.save()
+
+    builder.print_summary(
+        "document reference",
+        {
+            "Documents defined": len(documents),
+            "Prompts defined": len(prompts),
+            "Prompt types": [
+                "6 prompts with document references (full injection)",
+                "13 prompts with semantic_query (RAG search)",
+                "2 prompts with semantic_filter (filtered RAG search)",
+                "1 prompt with query_expansion enabled",
+                "1 prompt with rerank enabled",
+                "1 prompt without references or semantic search",
+            ],
+        },
+    )
 
 
 if __name__ == "__main__":
