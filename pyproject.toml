@@ -52,6 +52,7 @@ python_functions = ["test_*"]
 addopts = "-v --tb=short"
 markers = [
     "llamaparse: tests requiring LlamaParse API access",
+    "integration: tests requiring real API keys",
 ]
 
 [tool.coverage.run]
