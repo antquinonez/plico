@@ -377,6 +377,7 @@ class Config(BaseSettings):
     model_config = SettingsConfigDict(
         extra="ignore",
         validate_default=True,
+        env_nested_delimiter="__",
     )
 
     logging: LoggingConfig = Field(default_factory=LoggingConfig)
@@ -400,7 +401,7 @@ class Config(BaseSettings):
     ) -> tuple[PydanticBaseSettingsSource, ...]:
         yaml_data = _load_all_configs()
         yaml_source = YamlConfigSource(settings_cls, yaml_data)
-        return (init_settings, yaml_source, env_settings)
+        return (init_settings, env_settings, yaml_source)
 
     def get_client_config(self, name: str) -> ClientConfig | None:
         """Get a client configuration by name (legacy support)."""

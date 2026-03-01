@@ -363,9 +363,9 @@ def _load_all_configs() -> dict[str, Any]:
 Configuration values are resolved in this order (highest priority first):
 
 1. **Init arguments** - Values passed directly to `Config()`
-2. **YAML files** - Values from `config/*.yaml`
-3. **Environment variables** - `SECTION__KEY` format
-4. **Defaults** - Pydantic model defaults
+2. **Environment variables** - `SECTION__KEY` format (12-factor app methodology)
+3. **YAML files** - Values from `config/*.yaml` (committed defaults)
+4. **Pydantic defaults** - Fallback values in model classes
 
 ## Example: Custom Configuration
 
