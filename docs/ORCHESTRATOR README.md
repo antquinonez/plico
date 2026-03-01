@@ -14,6 +14,7 @@ The Excel Orchestrator enables non-programmers to define and execute AI prompt w
 - **Per-prompt client configuration**
 - **Document reference injection**
 - **Conditional execution**
+- **Manifest-based orchestration with parquet output**
 
 ## Quick Start
 
@@ -530,6 +531,186 @@ python scripts/run_orchestrator.py batch_analysis.xlsx -c 3
 
 ---
 
+## Manifest-Based Orchestration
+
+### Overview
+
+Manifest-based orchestration decouples workbook parsing from execution, enabling:
+- **Version control** of prompt configurations via YAML files
+- **Separation of concerns** - prepare manifests independently from execution
+- **Parquet output** for efficient storage and analysis of results
+- **Reproducibility** - manifests can be archived and re-run
+
+### Workflow
+
+```
+Workbook → export_manifest.py → Manifest Folder → run_manifest.py → Parquet
+```
+
+### Quick Start
+
+```bash
+# Step 1: Export workbook to manifest
+python scripts/export_manifest.py ./workbooks/my_prompts.xlsx
+# Creates: ./manifests/manifest_my_prompts/
+
+# Step 2: Run orchestration from manifest
+python scripts/run_manifest.py ./manifests/manifest_my_prompts/ -c 3
+# Creates: ./outputs/YYYYMMDDHHMMSS_my_prompts.parquet
+
+# Step 3: Inspect results
+python scripts/inspect_parquet.py ./outputs/20260228103000_my_prompts.parquet
+```
+
+### Export Command
+
+```bash
+python scripts/export_manifest.py <workbook_path> [options]
+```
+
+| Option | Description |
+|--------|-------------|
+| `--output`, `-o` | Output directory for manifest (default: `./manifests/`) |
+
+### Manifest Folder Structure
+
+```
+manifest_<workbook_name>/
+├── manifest.yaml      # Metadata (source, timestamp, version)
+├── config.yaml        # Configuration settings
+├── prompts.yaml       # All prompt definitions
+├── data.yaml          # Batch data (if present)
+├── clients.yaml       # Client configurations (if present)
+└── documents.yaml     # Document references (if present)
+```
+
+### Run Manifest Command
+
+```bash
+python scripts/run_manifest.py <manifest_dir> [options]
+```
+
+| Option | Short | Description |
+|--------|-------|-------------|
+| `--client <type>` | | AI client to use |
+| `--concurrency <n>` | `-c` | Maximum concurrent API calls |
+| `--dry-run` | | Validate manifest without executing |
+| `--quiet` | `-q` | Suppress console output |
+| `--verbose` | | Enable debug logging |
+
+### Output Format
+
+Results are written to parquet files with timestamped names:
+
+```
+./outputs/YYYYMMDDHHMMSS_<workbook_basename>.parquet
+```
+
+**Example:** `./outputs/20260228153045_my_prompts.parquet`
+
+### Parquet Schema
+
+| Column | Type | Description |
+|--------|------|-------------|
+| `batch_id` | Int64 | Batch number (if batch mode) |
+| `batch_name` | String | Batch name (if batch mode) |
+| `sequence` | Int64 | Execution order |
+| `prompt_name` | String | Prompt identifier |
+| `prompt` | String | Prompt text (resolved if batch) |
+| `history` | String | Dependencies (JSON) |
+| `client` | String | Client name used |
+| `condition` | String | Condition expression |
+| `condition_result` | Boolean | Condition evaluation result |
+| `condition_error` | String | Error if condition failed |
+| `response` | String | AI response |
+| `status` | String | `success`, `failed`, or `skipped` |
+| `attempts` | Int64 | Retry attempts |
+| `error` | String | Error message (if failed) |
+| `references` | String | Document references (JSON) |
+| `semantic_query` | String | RAG search query |
+| `semantic_filter` | String | RAG metadata filter |
+| `query_expansion` | String | Query expansion enabled |
+| `rerank` | String | Reranking enabled |
+
+### Inspect Parquet Command
+
+```bash
+python scripts/inspect_parquet.py <parquet_file> [options]
+```
+
+| Option | Short | Description |
+|--------|-------|-------------|
+| `--summary` | `-s` | Show only summary statistics |
+| `--extended` | `-e` | Show extended view with response column |
+| `--full` | | Show all columns in table |
+| `--all` | `-a` | Show all rows |
+| `--status <status>` | | Filter by status (success/failed/skipped) |
+| `--failed` | `-f` | Show only failed executions |
+| `--export <format>` | | Export to `csv` or `json` |
+| `--output <path>` | `-o` | Output file path for export |
+
+### Inspect Examples
+
+```bash
+# Basic view (first/last 10 rows)
+python scripts/inspect_parquet.py ./outputs/results.parquet
+
+# Extended view with responses
+python scripts/inspect_parquet.py ./outputs/results.parquet --extended
+
+# Full view with all columns
+python scripts/inspect_parquet.py ./outputs/results.parquet --full
+
+# Summary only
+python scripts/inspect_parquet.py ./outputs/results.parquet --summary
+
+# Show only failed
+python scripts/inspect_parquet.py ./outputs/results.parquet --failed
+
+# Export to CSV
+python scripts/inspect_parquet.py ./outputs/results.parquet --export csv
+```
+
+### Programmatic Usage
+
+```python
+from src.orchestrator import WorkbookManifestExporter, ManifestOrchestrator
+from src.Clients.FFMistralSmall import FFMistralSmall
+
+# Export workbook to manifest
+exporter = WorkbookManifestExporter("my_prompts.xlsx")
+manifest_path = exporter.export()
+print(f"Manifest created: {manifest_path}")
+
+# Run orchestration from manifest
+client = FFMistralSmall(api_key="your-api-key")
+orchestrator = ManifestOrchestrator(
+    manifest_dir=manifest_path,
+    client=client,
+    concurrency=3,
+)
+parquet_path = orchestrator.run()
+print(f"Results saved to: {parquet_path}")
+
+# Get summary
+summary = orchestrator.get_summary()
+print(f"Successful: {summary['successful']}")
+print(f"Failed: {summary['failed']}")
+```
+
+### When to Use Manifest vs Direct Workbook
+
+| Use Case | Recommended Approach |
+|----------|---------------------|
+| Quick iteration, testing | Direct workbook (`run_orchestrator.py`) |
+| Production workflows | Manifest (`run_manifest.py`) |
+| Version controlling prompts | Manifest (YAML is git-friendly) |
+| Archiving results | Manifest + parquet |
+| CI/CD integration | Manifest + parquet |
+| Analyzing results in Pandas/Polars | Parquet output |
+
+---
+
 ## Logging
 
 ### Log File Location
@@ -937,6 +1118,8 @@ Check that the prompt_name exists and is defined before it's referenced.
 
 ## Architecture
 
+### Direct Workbook Execution
+
 ```
 ┌─────────────────────────────────────────┐
 │           run_orchestrator.py           │
@@ -951,6 +1134,7 @@ Check that the prompt_name exists and is defined before it's referenced.
 │  - Batch execution with templating      │
 │  - Per-prompt client selection          │
 │  - Document reference injection         │
+│  - Write results to Excel sheet         │
 └─────────────────────────────────────────┘
       │           │           │           │
       ▼           ▼           ▼           ▼
@@ -964,6 +1148,62 @@ Check that the prompt_name exists and is defined before it's referenced.
                     │Document      │
                     │Processor     │
                     └──────────────┘
+```
+
+### Manifest-Based Execution
+
+```
+┌─────────────────────────────────────────┐
+│          export_manifest.py             │
+└─────────────────────────────────────────┘
+                    │
+                    ▼
+┌─────────────────────────────────────────┐
+│    WorkbookManifestExporter             │
+│  - Parse workbook                       │
+│  - Export to YAML files                 │
+└─────────────────────────────────────────┘
+                    │
+                    ▼
+┌─────────────────────────────────────────┐
+│         manifest_<workbook>/            │
+│  ├── manifest.yaml                      │
+│  ├── config.yaml                        │
+│  ├── prompts.yaml                       │
+│  ├── data.yaml                          │
+│  ├── clients.yaml                       │
+│  └── documents.yaml                     │
+└─────────────────────────────────────────┘
+                    │
+                    ▼
+┌─────────────────────────────────────────┐
+│          run_manifest.py                │
+└─────────────────────────────────────────┘
+                    │
+                    ▼
+┌─────────────────────────────────────────┐
+│         ManifestOrchestrator            │
+│  - Load manifest from YAML              │
+│  - Build dependency graph               │
+│  - Execute prompts (parallel/sequential)│
+│  - Batch execution with templating      │
+│  - Per-prompt client selection          │
+│  - Document reference injection         │
+│  - Write results to Parquet             │
+└─────────────────────────────────────────┘
+                    │
+                    ▼
+┌─────────────────────────────────────────┐
+│  ./outputs/YYYYMMDDHHMMSS_<name>.parquet│
+└─────────────────────────────────────────┘
+                    │
+                    ▼
+┌─────────────────────────────────────────┐
+│          inspect_parquet.py             │
+│  - Summary statistics                   │
+│  - Data preview                         │
+│  - Export to CSV/JSON                   │
+└─────────────────────────────────────────┘
 ```
 
 ---

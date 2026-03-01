@@ -105,6 +105,8 @@ class PathsConfig(BaseSettings):
     ffai_data: str = "./ffai_data"
     doc_cache: str = "doc_cache"
     library: str = "library"
+    output_dir: str = "./outputs"
+    manifest_dir: str = "./manifests"
 
 
 class WorkbookSheetNamesConfig(BaseSettings):

@@ -106,7 +106,17 @@ paths:
   ffai_data: "./ffai_data"
   doc_cache: "doc_cache"
   library: "library"
+  output_dir: "./outputs"
+  manifest_dir: "./manifests"
 ```
+
+| Path | Description |
+|------|-------------|
+| `ffai_data` | FFAI persistence data storage |
+| `doc_cache` | Document processing cache (parquet files) |
+| `library` | Document library for references |
+| `output_dir` | Parquet output directory for manifest orchestration |
+| `manifest_dir` | Manifest folder storage for workbook exports |
 
 ### Logging Configuration (`logging.yaml`)
 

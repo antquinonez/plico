@@ -7,3 +7,5 @@ paths:
   ffai_data: "./ffai_data"
   doc_cache: "doc_cache"
   library: "library"
+  output_dir: "./outputs"
+  manifest_dir: "./manifests"
