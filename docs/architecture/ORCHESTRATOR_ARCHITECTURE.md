@@ -755,7 +755,7 @@ Where:
 
 ### Test Workbook Paths
 
-Sample workbook paths are configured in `config/test.yaml`:
+Sample workbook paths are configured in `config/sample_workbook.yaml`:
 
 ```yaml
 sample:
@@ -891,3 +891,13 @@ inv test            # Run unit tests
 - Task dependencies
 - Better error handling
 - Parallel execution support
+
+## Manifest Workflow Alternative
+
+For version control, CI/CD integration, and parquet output, consider the **Manifest Workflow** as an alternative to direct Excel orchestration:
+
+- **Export**: Convert Excel workbooks to YAML manifest folders
+- **Execute**: Run from manifests with parquet output
+- **Version Control**: Track prompt changes in git
+
+**See:** [MANIFEST_ARCHITECTURE.md](./MANIFEST_ARCHITECTURE.md) for full details.

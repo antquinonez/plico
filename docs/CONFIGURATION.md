@@ -253,7 +253,7 @@ sample_workbooks:
     documents: "./sample_workbook_documents.xlsx"
     batch: "./sample_workbook_batch.xlsx"
     max: "./sample_workbook_max.xlsx"
-  test_clients:
+  sample_clients:
     default:
       client_type: "litellm-mistral"
       api_key_env: "MISTRAL_API_KEY"
@@ -280,7 +280,7 @@ sample_workbooks:
       max_tokens: 400
 ```
 
-**Test client types:**
+**Sample client types:**
 
 | Client | Temperature | Max Tokens | Purpose |
 |--------|-------------|------------|---------|

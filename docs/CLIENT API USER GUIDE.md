@@ -11,7 +11,11 @@ The FFClients library provides a declarative context handling API wrapper for AI
 ## Installation
 
 ```bash
-pip install -e . --break-system-packages
+# Using uv (recommended)
+uv pip install -e ".[dev]"
+
+# Using pip with virtual environment
+pip install -e ".[dev]"
 ```
 
 ## Quick Start
@@ -257,6 +261,49 @@ isolated.generate_response("Hi")  # Independent conversation
 - Parallel prompt execution
 - Isolated conversation contexts
 - Thread-safe client instances
+
+### Shared History for Parallel Execution
+
+When using FFAI in parallel execution contexts (like the Excel Orchestrator), you can share prompt history across multiple FFAI instances:
+
+```python
+import threading
+from src.FFAI import FFAI
+from src.Clients import FFMistralSmall
+
+# Shared history and lock for thread safety
+shared_history = []
+history_lock = threading.Lock()
+
+client = FFMistralSmall(api_key="...")
+
+# Create FFAI instances with shared history
+ffai1 = FFAI(
+    client.clone(),
+    shared_prompt_attr_history=shared_history,
+    history_lock=history_lock,
+)
+
+ffai2 = FFAI(
+    client.clone(),
+    shared_prompt_attr_history=shared_history,
+    history_lock=history_lock,
+)
+
+# Both instances can reference each other's prompts
+ffai1.generate_response("What is 2+2?", prompt_name="math")
+ffai2.generate_response(
+    "What was the math question?",
+    history=["math"],  # Finds the prompt from ffai1
+)
+```
+
+**Parameters:**
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `shared_prompt_attr_history` | `list` | Shared list for storing prompt interactions |
+| `history_lock` | `threading.Lock` | Lock for thread-safe write access |
 
 ### Connection Testing
 

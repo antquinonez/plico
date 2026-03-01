@@ -9,3 +9,5 @@ logs/
 src/ideas/*
 chroma_db/*
 library/*
+manifests/*
+docs/readmes/*

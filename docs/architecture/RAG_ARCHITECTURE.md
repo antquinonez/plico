@@ -123,12 +123,12 @@ src/RAG/
 │   ├── __init__.py              # Exports all index types
 │   ├── bm25_index.py            # BM25Index - sparse keyword index
 │   ├── hierarchical_index.py    # HierarchicalIndex - parent-child storage
-│   ├── contextual_embeddings.py # ContextualEmbeddings - context-aware embedding
+│   ├── contextual_embeddings.py # ContextualEmbeddings, LateChunkingEmbeddings
 │   └── deduplication.py         # ChunkDeduplicator - exact & similarity dedup
 └── search/                      # Search strategies
     ├── __init__.py              # Exports all search components
     ├── hybrid_search.py         # HybridSearch, reciprocal_rank_fusion
-    ├── rerankers.py             # CrossEncoderReranker, DiversityReranker
+    ├── rerankers.py             # CrossEncoderReranker, DiversityReranker, NoopReranker
     └── query_expansion.py       # QueryExpander, fuse_search_results
 ```
 
@@ -745,11 +745,10 @@ dependencies = [
 
 | Version | ChromaDB | Status |
 |---------|----------|--------|
-| 3.14+ | Incompatible (pydantic v1) | Use .venv313 |
-| 3.13 | Compatible | Recommended |
 | 3.12 | Compatible | Supported |
+| 3.13 | Compatible | Recommended |
 
-The main virtual environment (`.venv/`) uses Python 3.14. For RAG functionality, use `.venv313/`:
+The main virtual environment (`.venv/`) uses Python 3.13. For RAG functionality with ChromaDB:
 
 ```bash
 # Create Python 3.13 environment

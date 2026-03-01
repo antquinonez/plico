@@ -1,7 +1,7 @@
 # FFClients Sample Workbook Configuration
 # ========================================
 # Default settings for sample workbook generation scripts.
-# Used by scripts/create_sample_workbook*.py
+# Used by scripts/sample_workbook_*_create_v001.py
 
 sample_workbooks:
   default_model: "mistral-small-latest"

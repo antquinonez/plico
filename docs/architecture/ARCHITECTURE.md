@@ -162,8 +162,25 @@ FFClients is a declarative context handling API wrapper for AI models with Excel
 
 **See:** [RAG_ARCHITECTURE.md](./RAG_ARCHITECTURE.md)
 
+### Subsystem 5: Manifest Workflow
+**Purpose:** Enable version control of prompt configurations and CI/CD integration by separating workbook parsing from execution.
+
+**Key Components:**
+- `WorkbookManifestExporter` - Convert Excel workbook to YAML manifest folder
+- `ManifestOrchestrator` - Execute prompts from manifest and output to parquet
+
+**Features:**
+- YAML-based prompt version control
+- Parquet output for analytics
+- CI/CD-friendly command-line tools
+- Same execution features as Excel Orchestrator (batch, multi-client, RAG, conditions)
+- Reproducible execution with captured configuration
+
+**See:** [MANIFEST_ARCHITECTURE.md](./MANIFEST_ARCHITECTURE.md)
+
 ## Subsystem Interaction
 
+### Excel Orchestrator Flow
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                   Excel Orchestrator                         │
@@ -201,6 +218,22 @@ FFClients is a declarative context handling API wrapper for AI models with Excel
 │                                                              │
 └─────────────────────────────────────────────────────────────┘
 ```
+
+### Manifest Workflow Flow
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    Manifest Workflow                         │
+│                                                              │
+│   1. Export workbook to YAML manifest (WorkbookManifestExporter)│
+│   2. Version control manifest folder                         │
+│   3. Run from manifest (ManifestOrchestrator)               │
+│   4. Same execution flow as Excel Orchestrator              │
+│   5. Write results to parquet file                           │
+│                                                              │
+└─────────────────────────────────────────────────────────────┘
+```
+
+**See:** [MANIFEST_ARCHITECTURE.md](./MANIFEST_ARCHITECTURE.md) for details.
 
 ### Client Resolution Flow
 ```
@@ -296,12 +329,11 @@ FFClients/
 │
 ├── scripts/
 │   ├── run_orchestrator.py            # CLI entry point for orchestrator
-│   ├── create_sample_workbook.py        # Generate test workbooks
-│   ├── create_sample_workbook_multiclient.py  # Multi-client test workbooks
-│   ├── create_sample_workbook_batch.py  # Batch execution test workbooks
-│   ├── create_sample_workbook_conditional.py  # Conditional execution test workbooks
-│   ├── create_sample_workbook_documents.py    # Document reference test workbooks
-│   ├── create_sample_workbook_max.py    # Stress test workbooks (100 executions)
+│   ├── export_manifest.py             # Export workbook to YAML manifest
+│   ├── run_manifest.py                # Run from manifest folder
+│   ├── inspect_parquet.py             # Inspect parquet results
+│   ├── sample_workbook_*_create_v001.py    # Workbook creation scripts
+│   ├── sample_workbook_*_validate_v001.py  # Workbook validation scripts
 │   ├── try_ai_mistralsmall_script.py  # Example usage script
 │   └── validation/                   # Validation scripts
 │       ├── __init__.py
@@ -317,7 +349,7 @@ FFClients/
 │   ├── paths.yaml                     # File system paths
 │   ├── clients.yaml                   # AI client configurations
 │   ├── model_defaults.yaml            # Per-model defaults
-│   └── test.yaml                      # Sample workbook settings
+│   └── sample_workbook.yaml           # Sample workbook settings
 │
 ├── logs/                              # Execution logs (git-ignored)
 │   └── orchestrator.log               # Current log (rotates daily)
@@ -357,8 +389,6 @@ FFClients/
 │   ├── test_rag_search.py              # Hybrid search, reranker tests
 │   └── test_litellm_orchestrator_integration.py
 │
-│   ├── .venv313/                       # Python 3.13 venv (for RAG/ChromaDB)
-│
 │   ├── chroma_db/                      # RAG vector database (git-ignored)
 │
 ├── docs/
@@ -366,10 +396,15 @@ FFClients/
 │   │   ├── ARCHITECTURE.md            # This file
 │   │   ├── CLIENTS_ARCHITECTURE.md
 │   │   ├── ORCHESTRATOR_ARCHITECTURE.md
-│   │   └── RAG_ARCHITECTURE.md        # RAG subsystem architecture
+│   │   ├── MANIFEST_ARCHITECTURE.md   # Manifest workflow architecture
+│   │   ├── RAG_ARCHITECTURE.md        # RAG subsystem architecture
+│   │   └── SHARED_HISTORY_DESIGN.md   # Shared history design doc
 │   ├── designs/
 │   ├── plans/
+│   ├── readmes/
 │   ├── CLIENT API USER GUIDE.md
+│   ├── CONDITIONAL EXPRESSIONS USER GUIDE.md
+│   ├── CONFIGURATION.md
 │   └── ORCHESTRATOR README.md
 │
 ├── pyproject.toml
