@@ -748,10 +748,10 @@ Where:
 |------|---------------|-----------------|---------|-------------|
 | basic | `sample_workbook_basic_create_v001.py` | `sample_workbook_basic_validate_v001.py` | 31 | Parallel execution with 4 dependency levels |
 | conditional | `sample_workbook_conditional_create_v001.py` | `sample_workbook_conditional_validate_v001.py` | 50 | Conditional expression testing |
-| documents | `sample_workbook_documents_create_v001.py` | `sample_workbook_documents_validate_v001.py` | 20 | Document reference and RAG testing |
+| documents | `sample_workbook_documents_create_v001.py` | `sample_workbook_documents_validate_v001.py` | 23 | Document reference and RAG testing |
 | multiclient | `sample_workbook_multiclient_create_v001.py` | `sample_workbook_multiclient_validate_v001.py` | 13 | Multi-client execution |
 | batch | `sample_workbook_batch_create_v001.py` | `sample_workbook_batch_validate_v001.py` | 35 × 5 | Batch execution with variables |
-| max | `sample_workbook_max_create_v001.py` | `sample_workbook_max_validate_v001.py` | 20 | Combined features |
+| max | `sample_workbook_max_create_v001.py` | `sample_workbook_max_validate_v001.py` | 27 | Combined features (batch + conditional + multi-client + RAG) |
 
 ### Test Workbook Paths
 

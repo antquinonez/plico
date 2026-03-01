@@ -702,10 +702,10 @@ sample_workbook_<type>_<action>_v<NNN>.py
 |------|---------|-------------|
 | **basic** | 31 | Parallel execution with 4 dependency levels |
 | **conditional** | 50 | Conditional expression testing (string, JSON, math, type checking) |
-| **documents** | 20 | Document reference injection and RAG semantic search |
+| **documents** | 23 | Document reference injection and RAG semantic search |
 | **multiclient** | 13 | Multi-client execution with named configurations |
 | **batch** | 35 | Batch execution with variable templating (35 × 5 = 175 executions) |
-| **max** | 20 | Combined features: batch + conditional + multi-client |
+| **max** | 27 | Combined features: batch + conditional + multi-client + RAG |
 
 ### Using Invoke Tasks (Recommended)
 
@@ -814,7 +814,7 @@ Each workbook type has a dedicated validation script:
 | `sample_workbook_conditional_validate_v001.py` | Validates conditional workbook (50 prompts, condition evaluation) |
 | `sample_workbook_documents_validate_v001.py` | Validates documents workbook (references vs semantic_query) |
 | `sample_workbook_batch_validate_v001.py` | Validates batch workbook (35 prompts × 5 batches) |
-| `sample_workbook_max_validate_v001.py` | Validates max workbook (batch + conditional + multi-client) |
+| `sample_workbook_max_validate_v001.py` | Validates max workbook (batch + conditional + multi-client + RAG) |
 
 Validation scripts check:
 - Execution status (success/failed/skipped)
@@ -850,7 +850,7 @@ python scripts/sample_workbook_documents_create_v001.py [output_path]
 python scripts/sample_workbook_documents_validate_v001.py [workbook_path]
 ```
 
-20 prompts demonstrating document reference injection and RAG semantic search.
+23 prompts demonstrating document reference injection and RAG semantic search.
 
 #### Multi-Client Sample Workbook
 
@@ -877,7 +877,7 @@ python scripts/sample_workbook_max_create_v001.py [output_path]
 python scripts/sample_workbook_max_validate_v001.py [workbook_path]
 ```
 
-20 prompts combining batch execution, conditional branching, and multi-client configuration.
+27 prompts combining batch execution, conditional branching, multi-client configuration, and RAG semantic search with 13 documents.
 
 ---
 
