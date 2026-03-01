@@ -175,3 +175,204 @@ class TestFFGeminiTokenRefresh:
                 client.refresh_token_if_needed()
 
                 mock_creds.refresh.assert_called_once()
+
+
+class TestFFGeminiInitExtended:
+    """Extended tests for FFGemini initialization."""
+
+    def test_init_with_custom_params(self):
+        """Test initialization with custom parameters."""
+        with patch("src.Clients.FFGemini.google.auth") as mock_auth:
+            mock_creds = MagicMock()
+            mock_creds.valid = True
+            mock_creds.token = "test-token"
+            mock_auth.default.return_value = (mock_creds, "test-project")
+
+            with patch("src.Clients.FFGemini.AsyncOpenAI"):
+                with patch("src.Clients.FFGemini.subprocess.run") as mock_run:
+                    mock_result = MagicMock()
+                    mock_result.stdout = "us-central1\n"
+                    mock_run.return_value = mock_result
+
+                    from src.Clients.FFGemini import FFGemini
+
+                    client = FFGemini(
+                        model="gemini-1.5-flash",
+                        temperature=0.5,
+                        max_tokens=4000,
+                        system_instructions="Be concise",
+                    )
+
+                    assert client.model == "gemini-1.5-flash"
+                    assert client.temperature == 0.5
+                    assert client.max_tokens == 4000
+                    assert client.system_instructions == "Be concise"
+
+    def test_init_with_config_dict(self):
+        """Test initialization with config dictionary."""
+        with patch("src.Clients.FFGemini.google.auth") as mock_auth:
+            mock_creds = MagicMock()
+            mock_creds.valid = True
+            mock_creds.token = "test-token"
+            mock_auth.default.return_value = (mock_creds, "test-project")
+
+            with patch("src.Clients.FFGemini.AsyncOpenAI"):
+                with patch("src.Clients.FFGemini.subprocess.run") as mock_run:
+                    mock_result = MagicMock()
+                    mock_result.stdout = "us-central1\n"
+                    mock_run.return_value = mock_result
+
+                    from src.Clients.FFGemini import FFGemini
+
+                    client = FFGemini(
+                        config={
+                            "model": "gemini-1.5-flash",
+                            "temperature": 0.3,
+                            "max_tokens": 1000,
+                        }
+                    )
+
+                    assert client.model == "gemini-1.5-flash"
+                    assert client.temperature == 0.3
+                    assert client.max_tokens == 1000
+
+    def test_init_from_env(self, monkeypatch):
+        """Test initialization from environment variables."""
+        monkeypatch.setenv("GEMINI_MODEL_NAME", "gemini-1.5-flash")
+        monkeypatch.setenv("GEMINI_TEMPERATURE", "0.8")
+        monkeypatch.setenv("GEMINI_MAX_TOKENS", "3000")
+        monkeypatch.setenv("GEMINI_SYSTEM_INSTRUCTIONS", "Custom instructions")
+
+        with patch("src.Clients.FFGemini.google.auth") as mock_auth:
+            mock_creds = MagicMock()
+            mock_creds.valid = True
+            mock_creds.token = "test-token"
+            mock_auth.default.return_value = (mock_creds, "test-project")
+
+            with patch("src.Clients.FFGemini.AsyncOpenAI"):
+                with patch("src.Clients.FFGemini.subprocess.run") as mock_run:
+                    mock_result = MagicMock()
+                    mock_result.stdout = "us-central1\n"
+                    mock_run.return_value = mock_result
+
+                    from src.Clients.FFGemini import FFGemini
+
+                    client = FFGemini()
+
+                    assert client.model == "gemini-1.5-flash"
+                    assert client.temperature == 0.8
+                    assert client.max_tokens == 3000
+                    assert client.system_instructions == "Custom instructions"
+
+
+class TestFFGeminiTokenRefreshExtended:
+    """Extended tests for token refresh functionality."""
+
+    def test_refresh_token_if_needed_invalid_raises(self):
+        """Test that invalid token without refresh raises."""
+        with patch("src.Clients.FFGemini.google.auth") as mock_auth:
+            mock_creds = MagicMock()
+            mock_creds.valid = False
+            mock_creds.expired = True
+            mock_creds.refresh_token = None
+            mock_auth.default.return_value = (mock_creds, "test-project")
+
+            from src.Clients.FFGemini import FFGemini
+
+            client = FFGemini.__new__(FFGemini)
+            client.creds = mock_creds
+
+            with pytest.raises(ValueError, match="Invalid token"):
+                client.refresh_token_if_needed()
+
+
+class TestFFGeminiGetRegion:
+    """Tests for _get_region method."""
+
+    def test_get_region_success(self):
+        """Test successful region retrieval."""
+        with patch("src.Clients.FFGemini.google.auth") as mock_auth:
+            mock_creds = MagicMock()
+            mock_creds.valid = True
+            mock_creds.token = "test-token"
+            mock_auth.default.return_value = (mock_creds, "test-project")
+
+            with patch("src.Clients.FFGemini.AsyncOpenAI"):
+                with patch("src.Clients.FFGemini.subprocess.run") as mock_run:
+                    mock_result = MagicMock()
+                    mock_result.stdout = "us-west1\n"
+                    mock_run.return_value = mock_result
+
+                    from src.Clients.FFGemini import FFGemini
+
+                    client = FFGemini.__new__(FFGemini)
+                    region = client._get_region()
+
+                    assert region == "us-west1"
+
+    def test_get_region_empty_raises(self):
+        """Test that empty region raises ValueError."""
+        with patch("src.Clients.FFGemini.google.auth") as mock_auth:
+            mock_creds = MagicMock()
+            mock_creds.valid = True
+            mock_creds.token = "test-token"
+            mock_auth.default.return_value = (mock_creds, "test-project")
+
+            with patch("src.Clients.FFGemini.AsyncOpenAI"):
+                with patch("src.Clients.FFGemini.subprocess.run") as mock_run:
+                    mock_result = MagicMock()
+                    mock_result.stdout = "\n"
+                    mock_run.return_value = mock_result
+
+                    from src.Clients.FFGemini import FFGemini
+
+                    client = FFGemini.__new__(FFGemini)
+
+                    with pytest.raises(ValueError, match="did not return a region"):
+                        client._get_region()
+
+    def test_get_region_subprocess_error_raises(self):
+        """Test that subprocess error raises ValueError."""
+        with patch("src.Clients.FFGemini.google.auth") as mock_auth:
+            mock_creds = MagicMock()
+            mock_creds.valid = True
+            mock_creds.token = "test-token"
+            mock_auth.default.return_value = (mock_creds, "test-project")
+
+            with patch("src.Clients.FFGemini.AsyncOpenAI"):
+                with patch("src.Clients.FFGemini.subprocess.run") as mock_run:
+                    import subprocess
+
+                    mock_run.side_effect = subprocess.CalledProcessError(1, "gcloud")
+
+                    from src.Clients.FFGemini import FFGemini
+
+                    client = FFGemini.__new__(FFGemini)
+
+                    with pytest.raises(ValueError, match="Error determining Google Cloud region"):
+                        client._get_region()
+
+
+class TestFFGeminiInitializeClient:
+    """Tests for _initialize_client method."""
+
+    def test_initialize_client(self):
+        """Test client initialization."""
+        with patch("src.Clients.FFGemini.google.auth") as mock_auth:
+            mock_creds = MagicMock()
+            mock_creds.valid = True
+            mock_creds.token = "test-token"
+            mock_auth.default.return_value = (mock_creds, "test-project")
+
+            mock_openai = MagicMock()
+            with patch("src.Clients.FFGemini.AsyncOpenAI", return_value=mock_openai):
+                from src.Clients.FFGemini import FFGemini
+
+                client = FFGemini.__new__(FFGemini)
+                client.creds = mock_creds
+                client.project = "test-project"
+                client._get_region = lambda: "us-central1"
+
+                result = client._initialize_client()
+
+                assert result == mock_openai

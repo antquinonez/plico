@@ -3,7 +3,7 @@
 # Contact: antquinonez@farfiner.com
 
 import os
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -245,3 +245,264 @@ class TestFFAzureClientErrorHandling:
 
             with pytest.raises(RuntimeError, match="Error generating response"):
                 client.generate_response("Hello!")
+
+
+class TestFFAzureDeepSeekExtended:
+    """Extended tests for FFAzureDeepSeek."""
+
+    def test_init_with_custom_params(self, mock_azure_client):
+        """Test initialization with custom parameters."""
+        with patch("src.Clients.FFAzureDeepSeek.ChatCompletionsClient") as MockClient:
+            MockClient.return_value = mock_azure_client
+            from src.Clients.FFAzureDeepSeek import FFAzureDeepSeek
+
+            client = FFAzureDeepSeek(
+                api_key="test-key",
+                endpoint="https://test.endpoint.com",
+                model="DeepSeek-V3",
+                temperature=0.3,
+                max_tokens=8000,
+                system_instructions="Be concise",
+            )
+
+            assert client.model == "DeepSeek-V3"
+            assert client.temperature == 0.3
+            assert client.max_tokens == 8000
+            assert client.system_instructions == "Be concise"
+
+    def test_init_from_env(self, mock_azure_client, monkeypatch):
+        """Test initialization from environment variables."""
+        monkeypatch.setenv("AZURE_DEEPSEEK_KEY", "env-key")
+        monkeypatch.setenv("AZURE_DEEPSEEK_ENDPOINT", "https://env.endpoint.com")
+        monkeypatch.setenv("AZURE_DEEPSEEK_MODEL", "DeepSeek-R1")
+        monkeypatch.setenv("AZURE_DEEPSEEK_TEMPERATURE", "0.6")
+        monkeypatch.setenv("AZURE_DEEPSEEK_MAX_TOKENS", "6000")
+
+        with patch("src.Clients.FFAzureDeepSeek.ChatCompletionsClient") as MockClient:
+            MockClient.return_value = mock_azure_client
+            from src.Clients.FFAzureDeepSeek import FFAzureDeepSeek
+
+            client = FFAzureDeepSeek()
+
+            assert client.api_key == "env-key"
+            assert client.endpoint == "https://env.endpoint.com"
+            assert client.model == "DeepSeek-R1"
+            assert client.temperature == 0.6
+            assert client.max_tokens == 6000
+
+    def test_missing_endpoint_raises(self):
+        """Test that missing endpoint raises ValueError."""
+        with patch.dict(os.environ, {"AZURE_DEEPSEEK_KEY": "test-key"}, clear=True):
+            with patch("src.Clients.FFAzureDeepSeek.ChatCompletionsClient"):
+                from src.Clients.FFAzureDeepSeek import FFAzureDeepSeek
+
+                with pytest.raises(ValueError, match="Endpoint URL not found"):
+                    FFAzureDeepSeek()
+
+    def test_generate_response_basic(self, mock_azure_client, mock_azure_response):
+        """Test basic response generation."""
+        with patch("src.Clients.FFAzureDeepSeek.ChatCompletionsClient") as MockClient:
+            MockClient.return_value = mock_azure_client
+            from src.Clients.FFAzureDeepSeek import FFAzureDeepSeek
+
+            client = FFAzureDeepSeek(api_key="test-key", endpoint="https://test.endpoint.com")
+            response = client.generate_response("Hello!")
+
+            assert response == "This is a test response."
+
+    def test_generate_response_empty_prompt_raises(self, mock_azure_client):
+        """Test that empty prompt raises ValueError."""
+        with patch("src.Clients.FFAzureDeepSeek.ChatCompletionsClient") as MockClient:
+            MockClient.return_value = mock_azure_client
+            from src.Clients.FFAzureDeepSeek import FFAzureDeepSeek
+
+            client = FFAzureDeepSeek(api_key="test-key", endpoint="https://test.endpoint.com")
+
+            with pytest.raises(ValueError, match="Empty prompt"):
+                client.generate_response("")
+
+    def test_conversation_history(self, mock_azure_client):
+        """Test conversation history management."""
+        with patch("src.Clients.FFAzureDeepSeek.ChatCompletionsClient") as MockClient:
+            MockClient.return_value = mock_azure_client
+            from src.Clients.FFAzureDeepSeek import FFAzureDeepSeek
+
+            client = FFAzureDeepSeek(api_key="test-key", endpoint="https://test.endpoint.com")
+
+            client.set_conversation_history([{"role": "user", "content": "test"}])
+            history = client.get_conversation_history()
+            assert len(history) == 1
+
+
+class TestFFAzureMSDeepSeekR1Extended:
+    """Extended tests for FFAzureMSDeepSeekR1."""
+
+    def test_init_with_custom_params(self, mock_azure_client):
+        """Test initialization with custom parameters."""
+        with patch("src.Clients.FFAzureMSDeepSeekR1.ChatCompletionsClient") as MockClient:
+            MockClient.return_value = mock_azure_client
+            from src.Clients.FFAzureMSDeepSeekR1 import FFAzureMSDeepSeekR1
+
+            client = FFAzureMSDeepSeekR1(
+                api_key="test-key",
+                endpoint="https://test.endpoint.com",
+                temperature=0.2,
+                max_tokens=16000,
+            )
+
+            assert client.temperature == 0.2
+            assert client.max_tokens == 16000
+
+    def test_generate_response_basic(self, mock_azure_client, mock_azure_response):
+        """Test basic response generation."""
+        with patch("src.Clients.FFAzureMSDeepSeekR1.ChatCompletionsClient") as MockClient:
+            MockClient.return_value = mock_azure_client
+            from src.Clients.FFAzureMSDeepSeekR1 import FFAzureMSDeepSeekR1
+
+            client = FFAzureMSDeepSeekR1(api_key="test-key", endpoint="https://test.endpoint.com")
+            response = client.generate_response("Hello!")
+
+            assert response == "This is a test response."
+
+
+class TestFFAzureCodestralExtended:
+    """Extended tests for FFAzureCodestral."""
+
+    def test_init_with_custom_params(self, mock_azure_client):
+        """Test initialization with custom parameters."""
+        with patch("src.Clients.FFAzureCodestral.ChatCompletionsClient") as MockClient:
+            MockClient.return_value = mock_azure_client
+            from src.Clients.FFAzureCodestral import FFAzureCodestral
+
+            client = FFAzureCodestral(
+                api_key="test-key",
+                endpoint="https://test.endpoint.com",
+                temperature=0.3,
+                max_tokens=4000,
+            )
+
+            assert client.temperature == 0.3
+            assert client.max_tokens == 4000
+
+    def test_stream_response_basic(self, mock_azure_client):
+        """Test streaming response."""
+        with patch("src.Clients.FFAzureCodestral.ChatCompletionsClient") as MockClient:
+            mock_stream = iter(
+                [
+                    MagicMock(choices=[MagicMock(delta=MagicMock(content="Hello"))]),
+                    MagicMock(choices=[MagicMock(delta=MagicMock(content=" World"))]),
+                ]
+            )
+            mock_azure_client.complete.return_value = mock_stream
+            MockClient.return_value = mock_azure_client
+
+            from src.Clients.FFAzureCodestral import FFAzureCodestral
+
+            client = FFAzureCodestral(api_key="test-key", endpoint="https://test.endpoint.com")
+
+            chunks = list(client.stream_response("Hello!"))
+            assert len(chunks) == 2
+
+    def test_stream_response_empty_prompt_raises(self, mock_azure_client):
+        """Test that empty prompt raises ValueError for streaming."""
+        with patch("src.Clients.FFAzureCodestral.ChatCompletionsClient") as MockClient:
+            MockClient.return_value = mock_azure_client
+            from src.Clients.FFAzureCodestral import FFAzureCodestral
+
+            client = FFAzureCodestral(api_key="test-key", endpoint="https://test.endpoint.com")
+
+            with pytest.raises(ValueError, match="Empty prompt"):
+                list(client.stream_response(""))
+
+
+class TestFFAzureMistralSmallExtended:
+    """Extended tests for FFAzureMistralSmall."""
+
+    def test_init_with_custom_params(self, mock_azure_client):
+        """Test initialization with custom parameters."""
+        with patch("src.Clients.FFAzureClientBase.ChatCompletionsClient") as MockClient:
+            MockClient.return_value = mock_azure_client
+            from src.Clients.FFAzureMistralSmall import FFAzureMistralSmall
+
+            client = FFAzureMistralSmall(
+                api_key="test-key",
+                endpoint="https://test.endpoint.com",
+                temperature=0.4,
+                max_tokens=8000,
+            )
+
+            assert client.temperature == 0.4
+            assert client.max_tokens == 8000
+
+    def test_generate_response_basic(self, mock_azure_client, mock_azure_response):
+        """Test basic response generation."""
+        with patch("src.Clients.FFAzureClientBase.ChatCompletionsClient") as MockClient:
+            MockClient.return_value = mock_azure_client
+            from src.Clients.FFAzureMistralSmall import FFAzureMistralSmall
+
+            client = FFAzureMistralSmall(api_key="test-key", endpoint="https://test.endpoint.com")
+            response = client.generate_response("Hello!")
+
+            assert response == "This is a test response."
+
+
+class TestFFAzurePhiExtended:
+    """Extended tests for FFAzurePhi."""
+
+    def test_init_with_custom_params(self, mock_azure_client):
+        """Test initialization with custom parameters."""
+        with patch("src.Clients.FFAzureClientBase.ChatCompletionsClient") as MockClient:
+            MockClient.return_value = mock_azure_client
+            from src.Clients.FFAzurePhi import FFAzurePhi
+
+            client = FFAzurePhi(
+                api_key="test-key",
+                endpoint="https://test.endpoint.com",
+                temperature=0.5,
+                max_tokens=2000,
+            )
+
+            assert client.temperature == 0.5
+            assert client.max_tokens == 2000
+
+    def test_generate_response_basic(self, mock_azure_client, mock_azure_response):
+        """Test basic response generation."""
+        with patch("src.Clients.FFAzureClientBase.ChatCompletionsClient") as MockClient:
+            MockClient.return_value = mock_azure_client
+            from src.Clients.FFAzurePhi import FFAzurePhi
+
+            client = FFAzurePhi(api_key="test-key", endpoint="https://test.endpoint.com")
+            response = client.generate_response("Hello!")
+
+            assert response == "This is a test response."
+
+
+class TestFFAzureDeepSeekV3Extended:
+    """Extended tests for FFAzureDeepSeekV3."""
+
+    def test_init_with_custom_params(self, mock_azure_client):
+        """Test initialization with custom parameters."""
+        with patch("src.Clients.FFAzureClientBase.ChatCompletionsClient") as MockClient:
+            MockClient.return_value = mock_azure_client
+            from src.Clients.FFAzureDeepSeekV3 import FFAzureDeepSeekV3
+
+            client = FFAzureDeepSeekV3(
+                api_key="test-key",
+                endpoint="https://test.endpoint.com",
+                temperature=0.4,
+                max_tokens=8000,
+            )
+
+            assert client.temperature == 0.4
+            assert client.max_tokens == 8000
+
+    def test_generate_response_basic(self, mock_azure_client, mock_azure_response):
+        """Test basic response generation."""
+        with patch("src.Clients.FFAzureClientBase.ChatCompletionsClient") as MockClient:
+            MockClient.return_value = mock_azure_client
+            from src.Clients.FFAzureDeepSeekV3 import FFAzureDeepSeekV3
+
+            client = FFAzureDeepSeekV3(api_key="test-key", endpoint="https://test.endpoint.com")
+            response = client.generate_response("Hello!")
+
+            assert response == "This is a test response."
