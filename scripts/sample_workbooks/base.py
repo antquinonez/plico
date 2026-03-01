@@ -91,6 +91,7 @@ class SectionDefinition:
 
 
 DEFAULT_CONFIG_FIELDS = [
+    ("client_type", "default_client_type"),
     ("model", "default_model"),
     ("max_retries", "default_retries"),
     ("temperature", "default_temperature"),

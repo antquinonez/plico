@@ -8,26 +8,26 @@ import pytest
 from openpyxl import load_workbook
 
 
-class TestWorkbookBuilderInit:
-    """Tests for WorkbookBuilder initialization."""
+class TestWorkbookParserInit:
+    """Tests for WorkbookParser initialization."""
 
     def test_init(self, temp_workbook):
         """Test basic initialization."""
-        from src.orchestrator.workbook_builder import WorkbookBuilder
+        from src.orchestrator.workbook_parser import WorkbookParser
 
-        builder = WorkbookBuilder(temp_workbook)
+        builder = WorkbookParser(temp_workbook)
 
         assert builder.workbook_path == temp_workbook
 
 
-class TestWorkbookBuilderCreateTemplate:
+class TestWorkbookParserCreateTemplate:
     """Tests for template workbook creation."""
 
     def test_create_template_workbook(self, temp_workbook):
         """Test creating a template workbook."""
-        from src.orchestrator.workbook_builder import WorkbookBuilder
+        from src.orchestrator.workbook_parser import WorkbookParser
 
-        builder = WorkbookBuilder(temp_workbook)
+        builder = WorkbookParser(temp_workbook)
         result = builder.create_template_workbook()
 
         assert result == temp_workbook
@@ -35,9 +35,9 @@ class TestWorkbookBuilderCreateTemplate:
 
     def test_template_has_config_sheet(self, temp_workbook):
         """Test that template has config sheet."""
-        from src.orchestrator.workbook_builder import WorkbookBuilder
+        from src.orchestrator.workbook_parser import WorkbookParser
 
-        builder = WorkbookBuilder(temp_workbook)
+        builder = WorkbookParser(temp_workbook)
         builder.create_template_workbook()
 
         wb = load_workbook(temp_workbook)
@@ -45,9 +45,9 @@ class TestWorkbookBuilderCreateTemplate:
 
     def test_template_has_prompts_sheet(self, temp_workbook):
         """Test that template has prompts sheet."""
-        from src.orchestrator.workbook_builder import WorkbookBuilder
+        from src.orchestrator.workbook_parser import WorkbookParser
 
-        builder = WorkbookBuilder(temp_workbook)
+        builder = WorkbookParser(temp_workbook)
         builder.create_template_workbook()
 
         wb = load_workbook(temp_workbook)
@@ -55,9 +55,9 @@ class TestWorkbookBuilderCreateTemplate:
 
     def test_template_config_has_required_fields(self, temp_workbook):
         """Test that config sheet has required fields."""
-        from src.orchestrator.workbook_builder import WorkbookBuilder
+        from src.orchestrator.workbook_parser import WorkbookParser
 
-        builder = WorkbookBuilder(temp_workbook)
+        builder = WorkbookParser(temp_workbook)
         builder.create_template_workbook()
 
         wb = load_workbook(temp_workbook)
@@ -74,9 +74,9 @@ class TestWorkbookBuilderCreateTemplate:
 
     def test_template_prompts_has_required_headers(self, temp_workbook):
         """Test that prompts sheet has required headers."""
-        from src.orchestrator.workbook_builder import WorkbookBuilder
+        from src.orchestrator.workbook_parser import WorkbookParser
 
-        builder = WorkbookBuilder(temp_workbook)
+        builder = WorkbookParser(temp_workbook)
         builder.create_template_workbook()
 
         wb = load_workbook(temp_workbook)
@@ -90,23 +90,23 @@ class TestWorkbookBuilderCreateTemplate:
         assert "history" in headers
 
 
-class TestWorkbookBuilderValidate:
+class TestWorkbookParserValidate:
     """Tests for workbook validation."""
 
     def test_validate_workbook_success(self, temp_workbook_with_data):
         """Test validating a valid workbook."""
-        from src.orchestrator.workbook_builder import WorkbookBuilder
+        from src.orchestrator.workbook_parser import WorkbookParser
 
-        builder = WorkbookBuilder(temp_workbook_with_data)
+        builder = WorkbookParser(temp_workbook_with_data)
         result = builder.validate_workbook()
 
         assert result is True
 
     def test_validate_workbook_not_found(self, temp_workbook):
         """Test validating non-existent workbook."""
-        from src.orchestrator.workbook_builder import WorkbookBuilder
+        from src.orchestrator.workbook_parser import WorkbookParser
 
-        builder = WorkbookBuilder(temp_workbook)
+        builder = WorkbookParser(temp_workbook)
 
         with pytest.raises(FileNotFoundError):
             builder.validate_workbook()
@@ -115,14 +115,14 @@ class TestWorkbookBuilderValidate:
         """Test validating workbook missing config sheet."""
         from openpyxl import Workbook
 
-        from src.orchestrator.workbook_builder import WorkbookBuilder
+        from src.orchestrator.workbook_parser import WorkbookParser
 
         wb = Workbook()
         wb.create_sheet("prompts")
         del wb["Sheet"]
         wb.save(temp_workbook)
 
-        builder = WorkbookBuilder(temp_workbook)
+        builder = WorkbookParser(temp_workbook)
 
         with pytest.raises(ValueError, match="Missing required sheet: config"):
             builder.validate_workbook()
@@ -131,14 +131,14 @@ class TestWorkbookBuilderValidate:
         """Test validating workbook missing prompts sheet."""
         from openpyxl import Workbook
 
-        from src.orchestrator.workbook_builder import WorkbookBuilder
+        from src.orchestrator.workbook_parser import WorkbookParser
 
         wb = Workbook()
         wb.create_sheet("config")
         del wb["Sheet"]
         wb.save(temp_workbook)
 
-        builder = WorkbookBuilder(temp_workbook)
+        builder = WorkbookParser(temp_workbook)
 
         with pytest.raises(ValueError, match="Missing required sheet: prompts"):
             builder.validate_workbook()
@@ -147,7 +147,7 @@ class TestWorkbookBuilderValidate:
         """Test validating workbook missing required columns."""
         from openpyxl import Workbook
 
-        from src.orchestrator.workbook_builder import WorkbookBuilder
+        from src.orchestrator.workbook_parser import WorkbookParser
 
         wb = Workbook()
         wb.create_sheet("config")
@@ -157,20 +157,20 @@ class TestWorkbookBuilderValidate:
         del wb["Sheet"]
         wb.save(temp_workbook)
 
-        builder = WorkbookBuilder(temp_workbook)
+        builder = WorkbookParser(temp_workbook)
 
         with pytest.raises(ValueError, match="Missing required columns"):
             builder.validate_workbook()
 
 
-class TestWorkbookBuilderLoadConfig:
+class TestWorkbookParserLoadConfig:
     """Tests for loading configuration."""
 
     def test_load_config(self, temp_workbook_with_data, sample_config):
         """Test loading configuration from workbook."""
-        from src.orchestrator.workbook_builder import WorkbookBuilder
+        from src.orchestrator.workbook_parser import WorkbookParser
 
-        builder = WorkbookBuilder(temp_workbook_with_data)
+        builder = WorkbookParser(temp_workbook_with_data)
         config = builder.load_config()
 
         assert config["model"] == sample_config["model"]
@@ -182,7 +182,7 @@ class TestWorkbookBuilderLoadConfig:
         """Test that config values are converted to correct types."""
         from openpyxl import Workbook
 
-        from src.orchestrator.workbook_builder import WorkbookBuilder
+        from src.orchestrator.workbook_parser import WorkbookParser
 
         wb = Workbook()
         ws = wb.active
@@ -197,7 +197,7 @@ class TestWorkbookBuilderLoadConfig:
         ws["B4"] = "8192"
         wb.save(temp_workbook)
 
-        builder = WorkbookBuilder(temp_workbook)
+        builder = WorkbookParser(temp_workbook)
         config = builder.load_config()
 
         assert isinstance(config["max_retries"], int)
@@ -205,14 +205,14 @@ class TestWorkbookBuilderLoadConfig:
         assert isinstance(config["max_tokens"], int)
 
 
-class TestWorkbookBuilderLoadPrompts:
+class TestWorkbookParserLoadPrompts:
     """Tests for loading prompts."""
 
     def test_load_prompts(self, temp_workbook_with_data, sample_prompts):
         """Test loading prompts from workbook."""
-        from src.orchestrator.workbook_builder import WorkbookBuilder
+        from src.orchestrator.workbook_parser import WorkbookParser
 
-        builder = WorkbookBuilder(temp_workbook_with_data)
+        builder = WorkbookParser(temp_workbook_with_data)
         prompts = builder.load_prompts()
 
         assert len(prompts) == 3
@@ -222,9 +222,9 @@ class TestWorkbookBuilderLoadPrompts:
 
     def test_load_prompts_sorted_by_sequence(self, temp_workbook_with_data):
         """Test that prompts are sorted by sequence number."""
-        from src.orchestrator.workbook_builder import WorkbookBuilder
+        from src.orchestrator.workbook_parser import WorkbookParser
 
-        builder = WorkbookBuilder(temp_workbook_with_data)
+        builder = WorkbookParser(temp_workbook_with_data)
         prompts = builder.load_prompts()
 
         sequences = [p["sequence"] for p in prompts]
@@ -232,23 +232,23 @@ class TestWorkbookBuilderLoadPrompts:
 
     def test_load_prompts_parses_history(self, temp_workbook_with_data):
         """Test that history column is parsed correctly."""
-        from src.orchestrator.workbook_builder import WorkbookBuilder
+        from src.orchestrator.workbook_parser import WorkbookParser
 
-        builder = WorkbookBuilder(temp_workbook_with_data)
+        builder = WorkbookParser(temp_workbook_with_data)
         prompts = builder.load_prompts()
 
         followup = next(p for p in prompts if p["prompt_name"] == "followup")
         assert followup["history"] == ["math", "greeting"]
 
 
-class TestWorkbookBuilderParseHistoryString:
+class TestWorkbookParserParseHistoryString:
     """Tests for parsing history strings."""
 
     def test_parse_history_string_json_array(self, temp_workbook):
         """Test parsing JSON array format."""
-        from src.orchestrator.workbook_builder import WorkbookBuilder
+        from src.orchestrator.workbook_parser import WorkbookParser
 
-        builder = WorkbookBuilder(temp_workbook)
+        builder = WorkbookParser(temp_workbook)
 
         result = builder.parse_history_string('["a", "b", "c"]')
 
@@ -256,9 +256,9 @@ class TestWorkbookBuilderParseHistoryString:
 
     def test_parse_history_string_quoted(self, temp_workbook):
         """Test parsing quoted format."""
-        from src.orchestrator.workbook_builder import WorkbookBuilder
+        from src.orchestrator.workbook_parser import WorkbookParser
 
-        builder = WorkbookBuilder(temp_workbook)
+        builder = WorkbookParser(temp_workbook)
 
         result = builder.parse_history_string('["math", "greeting"]')
 
@@ -266,9 +266,9 @@ class TestWorkbookBuilderParseHistoryString:
 
     def test_parse_history_string_none(self, temp_workbook):
         """Test parsing None."""
-        from src.orchestrator.workbook_builder import WorkbookBuilder
+        from src.orchestrator.workbook_parser import WorkbookParser
 
-        builder = WorkbookBuilder(temp_workbook)
+        builder = WorkbookParser(temp_workbook)
 
         result = builder.parse_history_string(None)
 
@@ -276,9 +276,9 @@ class TestWorkbookBuilderParseHistoryString:
 
     def test_parse_history_string_empty(self, temp_workbook):
         """Test parsing empty string."""
-        from src.orchestrator.workbook_builder import WorkbookBuilder
+        from src.orchestrator.workbook_parser import WorkbookParser
 
-        builder = WorkbookBuilder(temp_workbook)
+        builder = WorkbookParser(temp_workbook)
 
         result = builder.parse_history_string("")
 
@@ -286,9 +286,9 @@ class TestWorkbookBuilderParseHistoryString:
 
     def test_parse_history_string_already_list(self, temp_workbook):
         """Test parsing already-list input."""
-        from src.orchestrator.workbook_builder import WorkbookBuilder
+        from src.orchestrator.workbook_parser import WorkbookParser
 
-        builder = WorkbookBuilder(temp_workbook)
+        builder = WorkbookParser(temp_workbook)
 
         result = builder.parse_history_string(["a", "b"])
 
@@ -296,23 +296,23 @@ class TestWorkbookBuilderParseHistoryString:
 
     def test_parse_history_string_comma_separated(self, temp_workbook):
         """Test parsing comma-separated format."""
-        from src.orchestrator.workbook_builder import WorkbookBuilder
+        from src.orchestrator.workbook_parser import WorkbookParser
 
-        builder = WorkbookBuilder(temp_workbook)
+        builder = WorkbookParser(temp_workbook)
 
         result = builder.parse_history_string("[a, b, c]")
 
         assert result == ["a", "b", "c"]
 
 
-class TestWorkbookBuilderWriteResults:
+class TestWorkbookParserWriteResults:
     """Tests for writing results."""
 
     def test_write_results(self, temp_workbook_with_data):
         """Test writing results to workbook."""
-        from src.orchestrator.workbook_builder import WorkbookBuilder
+        from src.orchestrator.workbook_parser import WorkbookParser
 
-        builder = WorkbookBuilder(temp_workbook_with_data)
+        builder = WorkbookParser(temp_workbook_with_data)
 
         results = [
             {
@@ -338,9 +338,9 @@ class TestWorkbookBuilderWriteResults:
 
     def test_write_results_creates_new_sheet_name(self, temp_workbook_with_data):
         """Test that duplicate sheet names get timestamp suffix."""
-        from src.orchestrator.workbook_builder import WorkbookBuilder
+        from src.orchestrator.workbook_parser import WorkbookParser
 
-        builder = WorkbookBuilder(temp_workbook_with_data)
+        builder = WorkbookParser(temp_workbook_with_data)
 
         builder.write_results([], "results_test")
         sheet_name = builder.write_results([], "results_test")
@@ -349,9 +349,9 @@ class TestWorkbookBuilderWriteResults:
 
     def test_write_results_has_all_columns(self, temp_workbook_with_data):
         """Test that results sheet has all required columns."""
-        from src.orchestrator.workbook_builder import WorkbookBuilder
+        from src.orchestrator.workbook_parser import WorkbookParser
 
-        builder = WorkbookBuilder(temp_workbook_with_data)
+        builder = WorkbookParser(temp_workbook_with_data)
 
         results = [
             {
@@ -388,9 +388,9 @@ class TestWorkbookBuilderWriteResults:
 
     def test_write_results_converts_history_to_json(self, temp_workbook_with_data):
         """Test that history is converted to JSON string."""
-        from src.orchestrator.workbook_builder import WorkbookBuilder
+        from src.orchestrator.workbook_parser import WorkbookParser
 
-        builder = WorkbookBuilder(temp_workbook_with_data)
+        builder = WorkbookParser(temp_workbook_with_data)
 
         results = [
             {
@@ -417,28 +417,28 @@ class TestWorkbookBuilderWriteResults:
         assert history_cell == '["a", "b"]'
 
 
-class TestWorkbookBuilderBatchData:
+class TestWorkbookParserBatchData:
     """Tests for batch data sheet functionality."""
 
     def test_has_data_sheet_true(self, temp_workbook_with_batch_data):
         """Test has_data_sheet returns True when data sheet exists."""
-        from src.orchestrator.workbook_builder import WorkbookBuilder
+        from src.orchestrator.workbook_parser import WorkbookParser
 
-        builder = WorkbookBuilder(temp_workbook_with_batch_data)
+        builder = WorkbookParser(temp_workbook_with_batch_data)
         assert builder.has_data_sheet() is True
 
     def test_has_data_sheet_false(self, temp_workbook_with_data):
         """Test has_data_sheet returns False when no data sheet."""
-        from src.orchestrator.workbook_builder import WorkbookBuilder
+        from src.orchestrator.workbook_parser import WorkbookParser
 
-        builder = WorkbookBuilder(temp_workbook_with_data)
+        builder = WorkbookParser(temp_workbook_with_data)
         assert builder.has_data_sheet() is False
 
     def test_load_data(self, temp_workbook_with_batch_data):
         """Test loading data from data sheet."""
-        from src.orchestrator.workbook_builder import WorkbookBuilder
+        from src.orchestrator.workbook_parser import WorkbookParser
 
-        builder = WorkbookBuilder(temp_workbook_with_batch_data)
+        builder = WorkbookParser(temp_workbook_with_batch_data)
         data = builder.load_data()
 
         assert len(data) == 3
@@ -448,9 +448,9 @@ class TestWorkbookBuilderBatchData:
 
     def test_load_data_columns(self, temp_workbook_with_batch_data):
         """Test that data columns are loaded correctly."""
-        from src.orchestrator.workbook_builder import WorkbookBuilder
+        from src.orchestrator.workbook_parser import WorkbookParser
 
-        builder = WorkbookBuilder(temp_workbook_with_batch_data)
+        builder = WorkbookParser(temp_workbook_with_batch_data)
         data = builder.load_data()
 
         assert "id" in data[0]
@@ -462,18 +462,18 @@ class TestWorkbookBuilderBatchData:
 
     def test_load_data_empty_when_no_sheet(self, temp_workbook_with_data):
         """Test load_data returns empty list when no data sheet."""
-        from src.orchestrator.workbook_builder import WorkbookBuilder
+        from src.orchestrator.workbook_parser import WorkbookParser
 
-        builder = WorkbookBuilder(temp_workbook_with_data)
+        builder = WorkbookParser(temp_workbook_with_data)
         data = builder.load_data()
 
         assert data == []
 
     def test_get_data_columns(self, temp_workbook_with_batch_data):
         """Test getting data column names."""
-        from src.orchestrator.workbook_builder import WorkbookBuilder
+        from src.orchestrator.workbook_parser import WorkbookParser
 
-        builder = WorkbookBuilder(temp_workbook_with_batch_data)
+        builder = WorkbookParser(temp_workbook_with_batch_data)
         columns = builder.get_data_columns()
 
         assert "id" in columns
@@ -482,9 +482,9 @@ class TestWorkbookBuilderBatchData:
 
     def test_create_template_with_data_sheet(self, temp_workbook):
         """Test creating template with data sheet."""
-        from src.orchestrator.workbook_builder import WorkbookBuilder
+        from src.orchestrator.workbook_parser import WorkbookParser
 
-        builder = WorkbookBuilder(temp_workbook)
+        builder = WorkbookParser(temp_workbook)
         builder.create_template_workbook(with_data_sheet=True)
 
         wb = load_workbook(temp_workbook)
@@ -492,23 +492,23 @@ class TestWorkbookBuilderBatchData:
 
     def test_create_template_without_data_sheet(self, temp_workbook):
         """Test creating template without data sheet."""
-        from src.orchestrator.workbook_builder import WorkbookBuilder
+        from src.orchestrator.workbook_parser import WorkbookParser
 
-        builder = WorkbookBuilder(temp_workbook)
+        builder = WorkbookParser(temp_workbook)
         builder.create_template_workbook(with_data_sheet=False)
 
         wb = load_workbook(temp_workbook)
         assert "data" not in wb.sheetnames
 
 
-class TestWorkbookBuilderWriteBatchResults:
+class TestWorkbookParserWriteBatchResults:
     """Tests for writing batch results to separate sheets."""
 
     def test_write_batch_results(self, temp_workbook_with_batch_data):
         """Test writing batch results to a separate sheet."""
-        from src.orchestrator.workbook_builder import WorkbookBuilder
+        from src.orchestrator.workbook_parser import WorkbookParser
 
-        builder = WorkbookBuilder(temp_workbook_with_batch_data)
+        builder = WorkbookParser(temp_workbook_with_batch_data)
 
         results = [
             {
@@ -532,9 +532,9 @@ class TestWorkbookBuilderWriteBatchResults:
 
     def test_write_results_with_batch_info(self, temp_workbook_with_batch_data):
         """Test writing results with batch_id and batch_name columns."""
-        from src.orchestrator.workbook_builder import WorkbookBuilder
+        from src.orchestrator.workbook_parser import WorkbookParser
 
-        builder = WorkbookBuilder(temp_workbook_with_batch_data)
+        builder = WorkbookParser(temp_workbook_with_batch_data)
 
         results = [
             {
@@ -562,14 +562,14 @@ class TestWorkbookBuilderWriteBatchResults:
         assert "batch_name" in headers
 
 
-class TestWorkbookBuilderClientsSheet:
+class TestWorkbookParserClientsSheet:
     """Tests for clients sheet functionality."""
 
     def test_has_clients_sheet_true(self, temp_workbook):
         """Test has_clients_sheet returns True when clients sheet exists."""
         from openpyxl import Workbook
 
-        from src.orchestrator.workbook_builder import WorkbookBuilder
+        from src.orchestrator.workbook_parser import WorkbookParser
 
         wb = Workbook()
         wb.create_sheet("config")
@@ -578,21 +578,21 @@ class TestWorkbookBuilderClientsSheet:
         del wb["Sheet"]
         wb.save(temp_workbook)
 
-        builder = WorkbookBuilder(temp_workbook)
+        builder = WorkbookParser(temp_workbook)
         assert builder.has_clients_sheet() is True
 
     def test_has_clients_sheet_false(self, temp_workbook_with_data):
         """Test has_clients_sheet returns False when no clients sheet."""
-        from src.orchestrator.workbook_builder import WorkbookBuilder
+        from src.orchestrator.workbook_parser import WorkbookParser
 
-        builder = WorkbookBuilder(temp_workbook_with_data)
+        builder = WorkbookParser(temp_workbook_with_data)
         assert builder.has_clients_sheet() is False
 
     def test_load_clients(self, temp_workbook):
         """Test loading clients from clients sheet."""
         from openpyxl import Workbook
 
-        from src.orchestrator.workbook_builder import WorkbookBuilder
+        from src.orchestrator.workbook_parser import WorkbookParser
 
         wb = Workbook()
         wb.create_sheet("config")
@@ -616,7 +616,7 @@ class TestWorkbookBuilderClientsSheet:
         del wb["Sheet"]
         wb.save(temp_workbook)
 
-        builder = WorkbookBuilder(temp_workbook)
+        builder = WorkbookParser(temp_workbook)
         clients = builder.load_clients()
 
         assert len(clients) == 2
@@ -626,18 +626,18 @@ class TestWorkbookBuilderClientsSheet:
 
     def test_load_clients_empty_when_no_sheet(self, temp_workbook_with_data):
         """Test load_clients returns empty list when no clients sheet."""
-        from src.orchestrator.workbook_builder import WorkbookBuilder
+        from src.orchestrator.workbook_parser import WorkbookParser
 
-        builder = WorkbookBuilder(temp_workbook_with_data)
+        builder = WorkbookParser(temp_workbook_with_data)
         clients = builder.load_clients()
 
         assert clients == []
 
     def test_create_template_with_clients_sheet(self, temp_workbook):
         """Test creating template with clients sheet."""
-        from src.orchestrator.workbook_builder import WorkbookBuilder
+        from src.orchestrator.workbook_parser import WorkbookParser
 
-        builder = WorkbookBuilder(temp_workbook)
+        builder = WorkbookParser(temp_workbook)
         builder.create_template_workbook(with_clients_sheet=True)
 
         wb = load_workbook(temp_workbook)
@@ -647,7 +647,7 @@ class TestWorkbookBuilderClientsSheet:
         """Test loading prompts that include client column."""
         from openpyxl import Workbook
 
-        from src.orchestrator.workbook_builder import WorkbookBuilder
+        from src.orchestrator.workbook_parser import WorkbookParser
 
         wb = Workbook()
         wb.create_sheet("config")
@@ -672,7 +672,7 @@ class TestWorkbookBuilderClientsSheet:
         del wb["Sheet"]
         wb.save(temp_workbook)
 
-        builder = WorkbookBuilder(temp_workbook)
+        builder = WorkbookParser(temp_workbook)
         prompts = builder.load_prompts()
 
         assert len(prompts) == 2

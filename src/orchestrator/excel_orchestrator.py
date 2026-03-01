@@ -33,7 +33,7 @@ from .client_registry import ClientRegistry
 from .condition_evaluator import ConditionEvaluator
 from .document_processor import DocumentProcessor
 from .document_registry import DocumentRegistry
-from .workbook_builder import WorkbookBuilder
+from .workbook_parser import WorkbookParser
 
 if TYPE_CHECKING:
     from ..RAG import FFRAGClient
@@ -134,7 +134,7 @@ class ExcelOrchestrator:
         self.concurrency = min(max(1, concurrency), max_concurrency)
 
         self.progress_callback = progress_callback
-        self.builder = WorkbookBuilder(workbook_path)
+        self.builder = WorkbookParser(workbook_path)
 
         self.config: dict[str, Any] = {}
         self.prompts: list[dict[str, Any]] = []

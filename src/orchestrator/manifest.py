@@ -36,7 +36,7 @@ from .client_registry import ClientRegistry
 from .condition_evaluator import ConditionEvaluator
 from .document_processor import DocumentProcessor
 from .document_registry import DocumentRegistry
-from .workbook_builder import WorkbookBuilder
+from .workbook_parser import WorkbookParser
 
 if TYPE_CHECKING:
     from ..RAG import FFRAGClient
@@ -63,7 +63,7 @@ class WorkbookManifestExporter:
 
         """
         self.workbook_path = workbook_path
-        self.builder = WorkbookBuilder(workbook_path)
+        self.builder = WorkbookParser(workbook_path)
         self._config = get_config()
 
     def export(self, manifest_dir: str | None = None) -> str:

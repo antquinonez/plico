@@ -630,12 +630,12 @@ ManifestOrchestrator
 ├── DocumentProcessor (internal)
 ├── DocumentRegistry (internal)
 ├── ConditionEvaluator (internal)
-├── WorkbookBuilder (internal, for loading reference)
+├── WorkbookParser (internal, for loading reference)
 ├── polars (external, parquet output)
 └── pyyaml (external, manifest parsing)
 
 WorkbookManifestExporter
-├── WorkbookBuilder (internal)
+├── WorkbookParser (internal)
 └── pyyaml (external, manifest writing)
 ```
 

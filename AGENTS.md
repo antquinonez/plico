@@ -91,7 +91,7 @@ src/
 ├── orchestrator/              # Excel workbook orchestration
 │   ├── __init__.py
 │   ├── excel_orchestrator.py  # Main Excel orchestration engine
-│   ├── workbook_builder.py    # Excel workbook creation/parsing
+│   ├── workbook_parser.py    # Excel workbook parsing/validation
 │   ├── manifest.py            # Manifest export and execution
 │   ├── condition_evaluator.py # Conditional expression evaluation
 │   ├── client_registry.py     # Multi-client configuration registry
@@ -141,7 +141,7 @@ tests/
 ├── test_config.py             # Configuration tests
 ├── test_manifest.py           # Manifest workflow tests
 ├── test_excel_orchestrator.py # Orchestrator tests
-├── test_workbook_builder.py   # Workbook builder tests
+├── test_workbook_parser.py    # Workbook parser tests
 ├── test_condition_evaluator.py # Condition evaluation tests
 ├── test_client_registry.py    # Client registry tests
 ├── test_document_processor.py # Document processor tests

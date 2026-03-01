@@ -671,7 +671,7 @@ def index_rebuild(c: Context, workbook: str = "") -> None:
 
     from src.orchestrator.document_processor import DocumentProcessor
     from src.orchestrator.document_registry import DocumentRegistry
-    from src.orchestrator.workbook_builder import WorkbookBuilder
+    from src.orchestrator.workbook_parser import WorkbookParser
     from src.RAG import FFRAGClient
 
     load_dotenv()
@@ -689,7 +689,7 @@ def index_rebuild(c: Context, workbook: str = "") -> None:
         return
 
     try:
-        builder = WorkbookBuilder(workbook_path)
+        builder = WorkbookParser(workbook_path)
         documents_data = builder.load_documents()
 
         if not documents_data:

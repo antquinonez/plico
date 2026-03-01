@@ -255,9 +255,9 @@ def main():
     if not os.path.exists(workbook_path):
         logger.info(f"Workbook not found, will create: {workbook_path}")
 
-    from src.orchestrator.workbook_builder import WorkbookBuilder
+    from src.orchestrator.workbook_parser import WorkbookParser
 
-    builder = WorkbookBuilder(workbook_path)
+    builder = WorkbookParser(workbook_path)
 
     if not os.path.exists(workbook_path):
         builder.create_template_workbook()
@@ -277,7 +277,7 @@ def main():
             print(f"  - Seq {p['sequence']}: {p.get('prompt_name', '(unnamed)')}")
         return 0
 
-    client_type = workbook_config.get("client") or args.client
+    client_type = workbook_config.get("client_type") or args.client
     client = get_client(client_type, workbook_config)
 
     prompts = builder.load_prompts()

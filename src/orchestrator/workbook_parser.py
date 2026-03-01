@@ -2,11 +2,10 @@
 # SPDX-License-Identifier: MIT
 # Contact: antquinonez@farfiner.com
 
-"""Excel workbook builder for prompt orchestration.
+"""Excel workbook parser for prompt orchestration.
 
-Provides utilities for creating, validating, and reading/writing
-orchestrator workbooks with config, prompts, data, clients, and
-documents sheets.
+Provides utilities for validating, reading, and writing orchestrator workbooks
+with config, prompts, data, clients, and documents sheets.
 """
 
 import json
@@ -24,11 +23,11 @@ from ..config import get_config
 logger = logging.getLogger(__name__)
 
 
-class WorkbookBuilder:
-    """Creates and validates Excel workbooks for prompt orchestration."""
+class WorkbookParser:
+    """Parses and validates Excel workbooks for prompt orchestration."""
 
     def __init__(self, workbook_path: str) -> None:
-        """Initialize the WorkbookBuilder.
+        """Initialize the WorkbookParser.
 
         Args:
             workbook_path: Path to the Excel workbook file.
@@ -64,7 +63,7 @@ class WorkbookBuilder:
     def CONFIG_FIELDS(self) -> list[tuple[str, str]]:
         defaults = self._config.workbook.defaults
         return [
-            ("client", ""),
+            ("client_type", ""),
             ("model", defaults.model),
             ("api_key_env", defaults.api_key_env),
             ("max_retries", str(defaults.max_retries)),

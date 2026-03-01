@@ -64,7 +64,7 @@ The Excel Orchestrator enables non-programmers to define and execute AI prompt w
          │                     │                     │                 │
          ▼                     ▼                     ▼                 ▼
 ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐
-│ WorkbookBuilder │  │  ClientRegistry │  │ DocumentRegistry│  │      FFAI       │
+│ WorkbookParser │  │  ClientRegistry │  │ DocumentRegistry│  │      FFAI       │
 │                 │  │                 │  │                 │  │                 │
 │ - load_config() │  │ - register()    │  │ - get_content() │  │ - generate_resp │
 │ - load_prompts()│  │ - get()         │  │ - inject_refs() │  │ - history mgmt  │
@@ -160,31 +160,31 @@ The Excel Orchestrator enables non-programmers to define and execute AI prompt w
 
 ```
 1. INITIALIZATION
-   Workbook → WorkbookBuilder.validate_workbook()
+   Workbook → WorkbookParser.validate_workbook()
               └─► Check: config sheet exists
               └─► Check: prompts sheet exists
               └─► Check: required columns present
 
 2. CONFIGURATION LOADING
-   config sheet → WorkbookBuilder.load_config()
+   config sheet → WorkbookParser.load_config()
                   └─► Parse field/value pairs
                   └─► Type conversion (int, float)
                   └─► Apply config_overrides
 
 3. CLIENT REGISTRY INITIALIZATION
-   clients sheet → WorkbookBuilder.load_clients()
+   clients sheet → WorkbookParser.load_clients()
                    └─► For each client config:
                        ClientRegistry.register(name, type, config)
 
 4. PROMPT LOADING
-   prompts sheet → WorkbookBuilder.load_prompts()
+   prompts sheet → WorkbookParser.load_prompts()
                    └─► Read all rows
                    └─► Parse history column (JSON → list)
                    └─► Extract client column
                    └─► Sort by sequence number
 
 5. BATCH MODE DETECTION
-   data sheet → WorkbookBuilder.load_data()
+   data sheet → WorkbookParser.load_data()
                 └─► If data rows exist: enable batch mode
                 └─► Resolve {{variable}} templates per batch
 
@@ -212,7 +212,7 @@ The Excel Orchestrator enables non-programmers to define and execute AI prompt w
    └─────────────────────────────────────────────────────────────┘
 
 8. RESULTS WRITING
-   Results List → WorkbookBuilder.write_results()
+   Results List → WorkbookParser.write_results()
                   └─► Include batch_id, batch_name, client columns
 ```
 
@@ -348,10 +348,10 @@ class ClientRegistry:
         """Get list of available client types."""
 ```
 
-### WorkbookBuilder
+### WorkbookParser
 
 ```python
-class WorkbookBuilder:
+class WorkbookParser:
     """Creates and validates Excel workbooks for prompt orchestration."""
 
     CONFIG_SHEET = "config"
@@ -723,7 +723,7 @@ if summary.get("batch_mode"):
 
 ### Test Categories
 
-1. **WorkbookBuilder Tests** - Creation, validation, loading
+1. **WorkbookParser Tests** - Creation, validation, loading
 2. **ExcelOrchestrator Tests** - Execution, dependencies, parallel
 3. **ClientRegistry Tests** - Registration, retrieval, fallback
 4. **Batch Execution Tests** - Variable resolution, batch naming

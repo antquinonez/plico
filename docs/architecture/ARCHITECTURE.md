@@ -102,7 +102,7 @@ FFClients is a declarative context handling API wrapper for AI models with Excel
 
 **Key Components:**
 - `ExcelOrchestrator` - Main orchestration engine with parallel execution
-- `WorkbookBuilder` - Excel file creation, validation, and I/O
+- `WorkbookParser` - Excel file creation, validation, and I/O
 - `ClientRegistry` - Client factory and multi-client support
 - `DocumentProcessor` - Document parsing and checksum-based caching
 - `DocumentRegistry` - Document lookup and reference injection
@@ -295,7 +295,7 @@ FFClients/
 │   └── orchestrator/                  # SUBSYSTEM 2: Excel Orchestrator
 │       ├── __init__.py
 │       ├── excel_orchestrator.py      # Main orchestration engine
-│       ├── workbook_builder.py        # Excel I/O and validation
+│       ├── workbook_parser.py        # Excel I/O and validation
 │       ├── client_registry.py         # Client factory and registry
 │       ├── document_processor.py      # Document parsing and caching
 │       ├── document_registry.py       # Document lookup and injection
@@ -378,7 +378,7 @@ FFClients/
 │   ├── test_ordered_prompt_history.py
 │   ├── test_permanent_history.py
 │   ├── test_excel_orchestrator.py
-│   ├── sample_workbook_builder.py
+│   ├── sample_workbook_parser.py
 │   ├── test_client_registry.py
 │   ├── test_document_processor.py
 │   ├── test_document_registry.py
@@ -419,7 +419,7 @@ FFClients/
 |---------|----------|---------|
 | Abstract Base Class | `FFAIClientBase`, `FFAzureClientBase` | Define client contract |
 | Facade | `FFAI` | Simplify client interaction, add context management |
-| Builder | `WorkbookBuilder` | Construct Excel workbooks |
+| Builder | `WorkbookParser` | Construct Excel workbooks |
 | Strategy | Client implementations | Interchangeable AI providers |
 | Template Method | `FFAzureClientBase._initialize_client()` | Allow subclasses to customize |
 | Registry | `ClientRegistry` | Lazy client instantiation, name-to-factory mapping |
@@ -454,7 +454,7 @@ Response returned to user
 Excel Workbook
     │
     ▼
-WorkbookBuilder.load_prompts()
+WorkbookParser.load_prompts()
     │
     ▼
 ExcelOrchestrator.run()
@@ -484,7 +484,7 @@ ExcelOrchestrator.run()
     │    └──► execute() ← Sequential execution
     │
     ▼
-WorkbookBuilder.write_results()
+WorkbookParser.write_results()
     │
     ▼
 Excel Workbook (with results sheet)
@@ -531,7 +531,7 @@ Excel Workbook (with results sheet)
 7. Add tests in `tests/test_ffnewprovider.py`
 
 ### Extending Orchestrator
-1. Modify `WorkbookBuilder` for new sheet formats
+1. Modify `WorkbookParser` for new sheet formats
 2. Modify `ExcelOrchestrator` for new execution logic
 3. Update `ClientRegistry` if new client configuration needed
 4. Update tests
@@ -546,7 +546,7 @@ FFAI
 
 ExcelOrchestrator
   ├── FFAI (uses)
-  ├── WorkbookBuilder
+  ├── WorkbookParser
   ├── ClientRegistry
   ├── DocumentProcessor
   └── DocumentRegistry
@@ -576,7 +576,7 @@ FFRAGClient
 RAGMCPTools
 └── FFRAGClient
 
-WorkbookBuilder
+WorkbookParser
   └── openpyxl (external)
 
 FFLiteLLMClient (recommended)

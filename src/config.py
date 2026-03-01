@@ -356,8 +356,9 @@ class SampleClientConfig(BaseSettings):
 
 
 class SampleConfig(BaseSettings):
-    """Sample workbook generator configuration."""
+    """Sample workbook configuration."""
 
+    default_client_type: str = "litellm-mistral"
     default_model: str = "mistral-small-latest"
     default_temperature: float = 0.7
     default_max_tokens: int = 300

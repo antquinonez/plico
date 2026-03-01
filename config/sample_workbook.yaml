@@ -4,6 +4,7 @@
 # Used by scripts/sample_workbook_*_create_v001.py
 
 sample_workbooks:
+  default_client_type: "litellm-mistral"
   default_model: "mistral-small-latest"
   default_temperature: 0.7
   default_max_tokens: 300
