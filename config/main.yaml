@@ -65,7 +65,7 @@ document_processor:
 rag:
   enabled: true
   persist_dir: "./chroma_db"
-  collection_name: "ffclients_kb"
+  collection_name: "plico_kb"
   embedding_model: "mistral/mistral-embed"
   local_embeddings: false
   embedding_cache_size: 256

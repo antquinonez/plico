@@ -52,7 +52,7 @@ class FFVectorStore:
 
     def __init__(
         self,
-        collection_name: str = "ffclients_kb",
+        collection_name: str = "plico_kb",
         persist_dir: str = "./chroma_db",
         embedding_model: FFEmbeddings | str | None = None,
         client: Any | None = None,

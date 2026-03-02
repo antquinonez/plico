@@ -116,7 +116,7 @@ class RAGMCPTools:
 
         Example:
             >>> rag_get_stats()
-            {"collection_name": "ffclients_kb", "count": 150, ...}
+            {"collection_name": "plico_kb", "count": 150, ...}
 
         """
         return self._rag.get_stats()

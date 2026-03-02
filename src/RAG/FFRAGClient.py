@@ -71,7 +71,7 @@ class FFRAGClient:
         rag_config = getattr(app_config, "rag", None)
 
         self.collection_name = collection_name or (
-            rag_config.collection_name if rag_config else "ffclients_kb"
+            rag_config.collection_name if rag_config else "plico_kb"
         )
         self.persist_dir = persist_dir or (rag_config.persist_dir if rag_config else "./chroma_db")
 
