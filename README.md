@@ -252,20 +252,6 @@ python scripts/run_manifest.py ./manifests/my_first/ -c 2
 
 ### Or, Start in Excel
 
-```bash
-# Create workbook template (exits after creating)
-python scripts/run_orchestrator.py analysis.xlsx
-
-# Edit the prompts sheet in Excel, then run again to execute
-python scripts/run_orchestrator.py analysis.xlsx -c 4
-
-# Results are written to a timestamped sheet in the workbook
-
-# Optionally export to manifest for version control
-python scripts/export_manifest.py analysis.xlsx
-python scripts/run_manifest.py ./manifests/manifest_analysis/
-```
-
 **Try a sample workbook:**
 
 ```bash
@@ -280,6 +266,22 @@ inv create             # Create all sample workbooks
 ```
 
 Sample workbooks are created in the project root (e.g., `sample_workbook.xlsx`). Run `inv --list` to see all tasks, or see [AGENTS.md](AGENTS.md) for details.
+
+**Or create your own:**
+
+```bash
+# Create workbook template (exits after creating)
+python scripts/run_orchestrator.py analysis.xlsx
+
+# Edit the prompts sheet in Excel, then run again to execute
+python scripts/run_orchestrator.py analysis.xlsx -c 4
+
+# Results are written to a timestamped sheet in the workbook
+
+# Optionally export to manifest for version control
+python scripts/export_manifest.py analysis.xlsx
+python scripts/run_manifest.py ./manifests/manifest_analysis/
+```
 
 ---
 
