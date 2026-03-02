@@ -570,7 +570,9 @@ def index_status(c: Context) -> None:
                 ref = doc.get("reference_name", "unknown")
                 checksum = doc.get("document_checksum", "")[:8]
                 indexed_at = doc.get("indexed_at", "unknown")
-                print(f"  {ref}: checksum={checksum}... indexed={indexed_at}")
+                tags = doc.get("tags", "")
+                tags_display = f" tags=[{tags}]" if tags else ""
+                print(f"  {ref}: checksum={checksum}... indexed={indexed_at}{tags_display}")
 
     except ImportError:
         print("\nRAG not available. Ensure chromadb is installed.")

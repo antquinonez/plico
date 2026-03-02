@@ -300,6 +300,8 @@ class FFRAGClient:
         common_name: str,
         checksum: str,
         force: bool = False,
+        tags: list[str] | None = None,
+        chunking_strategy: str | None = None,
     ) -> int:
         """Index a document if not already indexed with current strategy/checksum.
 
@@ -312,12 +314,14 @@ class FFRAGClient:
             common_name: Human-readable name for the document.
             checksum: Document checksum for change detection.
             force: Force reindexing even if document appears unchanged.
+            tags: Optional list of tags for filtering.
+            chunking_strategy: Override chunking strategy for this document.
 
         Returns:
             Number of chunks indexed (0 if skipped).
 
         """
-        strategy = self.chunking_strategy
+        strategy = chunking_strategy or self.chunking_strategy
 
         if not force and not self._vector_store.needs_reindex(
             reference_name=reference_name,
@@ -334,10 +338,14 @@ class FFRAGClient:
             chunking_strategy=strategy,
         )
 
+        metadata: dict[str, Any] = {"common_name": common_name}
+        if tags:
+            metadata["tags"] = ",".join(tags)
+
         chunks_added = self.add_document(
             content=content,
             reference_name=reference_name,
-            metadata={"common_name": common_name},
+            metadata=metadata,
             checksum=checksum,
             chunking_strategy=strategy,
         )

@@ -284,6 +284,8 @@ class DocumentProcessor:
         content: str,
         checksum: str,
         force: bool = False,
+        tags: list[str] | None = None,
+        chunking_strategy: str | None = None,
     ) -> int:
         """Index document content to RAG for semantic search.
 
@@ -296,6 +298,8 @@ class DocumentProcessor:
             content: Document content to index
             checksum: Document checksum for change detection
             force: Force reindexing even if document appears unchanged
+            tags: Optional list of tags for filtering
+            chunking_strategy: Optional chunking strategy override
 
         Returns:
             Number of chunks indexed, or 0 if RAG is not configured or skipped
@@ -316,6 +320,8 @@ class DocumentProcessor:
                 common_name=common_name,
                 checksum=checksum,
                 force=force,
+                tags=tags,
+                chunking_strategy=chunking_strategy,
             )
             if chunks_added > 0:
                 logger.info(f"Indexed {chunks_added} chunks to RAG for: {reference_name}")
