@@ -129,28 +129,42 @@ Named client configurations for per-prompt client selection.
 
 ### documents Sheet (Optional)
 
-Document definitions for reference injection into prompts.
+Document definitions for reference injection and RAG indexing.
 
 | Column | Description |
 |--------|-------------|
 | `reference_name` | Unique identifier to reference in prompts |
 | `common_name` | Human-readable name |
 | `file_path` | Path to document (relative to workbook) |
+| `tags` | Comma-separated tags for filtering (e.g., `api,authentication,reference`) |
 | `notes` | Optional description |
 
 **Example:**
 
-| reference_name | common_name | file_path | notes |
-|----------------|-------------|-----------|-------|
-| product_spec | Product Specification | library/product_spec.md | Main product docs |
-| api_guide | API Reference | library/api_reference.pdf | REST API documentation |
-| config | Configuration | library/config.json | System configuration |
+| reference_name | common_name | file_path | tags | notes |
+|----------------|-------------|-----------|------|-------|
+| product_spec | Product Specification | library/product_spec.md | product,specification,overview | Main product docs |
+| api_guide | API Reference | library/api_reference.pdf | api,reference,authentication | REST API documentation |
+| config | Configuration | library/config.json | config,json,settings | System configuration |
+| architecture | System Architecture | library/ARCHITECTURE.md | architecture,design,system | System design |
 
 **How Documents Work:**
 
 1. Documents are parsed (text files read directly, others via LlamaParse)
-2. Parsed content is cached as parquet files with checksum-based deduplication
-3. When a prompt has `references`, the document content is injected into the prompt
+2. **Chunking strategy is automatically inferred from file extension:**
+   - `.md` files → `markdown` chunking (header-aware)
+   - `.py`, `.js`, `.ts`, etc. → `code` chunking (function-aware)
+   - Other files → `recursive` chunking (general purpose)
+3. Parsed content is cached as parquet files with checksum-based deduplication
+4. When a prompt has `references`, the document content is injected into the prompt
+
+**Tags for RAG Filtering:**
+
+Tags are stored in chunk metadata and can be used for semantic filtering (note: ChromaDB's `$contains` operator has limitations with metadata filtering in current versions):
+
+```json
+{"reference_name": "api_guide"}
+```
 
 **Cache Directory:** `doc_cache/` (created next to workbook, or configured via `document_cache_dir` in config)
 

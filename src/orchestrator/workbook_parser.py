@@ -453,7 +453,9 @@ class WorkbookParser:
             - reference_name: unique identifier for referencing in prompts
             - common_name: human-readable name
             - file_path: path to document (relative to workbook)
+            - tags: comma-separated tags for filtering (optional)
             - notes: optional description
+            - chunking_strategy: inferred from file extension
 
         """
         if not self.has_documents_sheet():
@@ -478,21 +480,65 @@ class WorkbookParser:
                     has_content = True
 
             if has_content and row_data.get("reference_name") and row_data.get("file_path"):
+                file_path = str(row_data.get("file_path", "")).strip()
+                tags_raw = row_data.get("tags")
+                tags_list = None
+                if tags_raw:
+                    tags_str = str(tags_raw).strip()
+                    tags_list = [t.strip() for t in tags_str.split(",") if t.strip()]
+
                 documents.append(
                     {
                         "reference_name": str(row_data.get("reference_name", "")).strip(),
                         "common_name": str(row_data.get("common_name", "")).strip()
                         if row_data.get("common_name")
                         else row_data.get("reference_name", ""),
-                        "file_path": str(row_data.get("file_path", "")).strip(),
+                        "file_path": file_path,
+                        "tags": tags_list,
                         "notes": str(row_data.get("notes", "")).strip()
                         if row_data.get("notes")
                         else None,
+                        "chunking_strategy": self._infer_chunking_strategy(file_path),
                     }
                 )
 
         logger.info(f"Loaded {len(documents)} document configurations")
         return documents
+
+    def _infer_chunking_strategy(self, file_path: str) -> str:
+        """Infer chunking strategy from file extension.
+
+        Args:
+            file_path: Path to the document file.
+
+        Returns:
+            Chunking strategy name: 'markdown', 'code', or 'recursive' (default).
+
+        """
+        ext = os.path.splitext(file_path)[1].lower()
+
+        if ext == ".md":
+            return "markdown"
+        elif ext in {
+            ".py",
+            ".js",
+            ".ts",
+            ".jsx",
+            ".tsx",
+            ".java",
+            ".go",
+            ".rs",
+            ".c",
+            ".cpp",
+            ".h",
+            ".rb",
+            ".php",
+            ".swift",
+            ".kt",
+        }:
+            return "code"
+        else:
+            return "recursive"
 
     def parse_history_string(self, history_str: Any) -> list[str] | None:  # noqa: ANN401
         """Parse history string like '["a", "b"]' into list."""

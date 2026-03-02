@@ -399,13 +399,27 @@ Based on the documents above and relevant context, please answer:
 | Field | Description |
 |-------|-------------|
 | `reference_name` | Document identifier |
-| `chunking_strategy` | Chunking strategy used (recursive, markdown, code, hierarchical, character) |
+| `common_name` | Human-readable document name |
+| `tags` | Comma-separated tags for filtering (e.g., `api,authentication`) |
+| `chunking_strategy` | Chunking strategy used (recursive, markdown, code, hierarchical, character) - **auto-inferred from file extension** |
 | `document_checksum` | SHA256 hash of original document content |
 | `indexed_at` | ISO timestamp when document was indexed |
 | `_chunk_index` | Index within document |
 | `_start_char` | Start position in original text |
 | `_end_char` | End position in original text |
 | (custom) | Any additional metadata passed |
+
+### Automatic Chunking Strategy Inference
+
+The chunking strategy is automatically inferred from the document's file extension:
+
+| Extension | Strategy | Description |
+|-----------|----------|-------------|
+| `.md` | `markdown` | Header-aware chunking, preserves document structure |
+| `.py`, `.js`, `.ts`, `.jsx`, `.tsx`, `.java`, `.go`, `.rs`, `.c`, `.cpp`, `.h`, `.rb`, `.php`, `.swift`, `.kt` | `code` | AST-style chunking, function-aware |
+| All others | `recursive` | General-purpose hierarchical chunking |
+
+This inference happens at document load time in `WorkbookParser._infer_chunking_strategy()`.
 
 ### Persistence
 
@@ -434,6 +448,15 @@ Each chunk in ChromaDB includes metadata for tracking:
 | `document_checksum` | SHA256 hash of document content |
 | `indexed_at` | ISO timestamp when document was indexed |
 | `reference_name` | Document identifier |
+| `tags` | Comma-separated tags from documents sheet |
+| `common_name` | Human-readable document name |
+| `tags` | Comma-separated tags for filtering |
+| `chunking_strategy` | Chunking strategy used (auto-inferred from file extension) |
+| `document_checksum` | SHA256 hash of document content |
+| `indexed_at` | ISO timestamp when document was indexed |
+| `_chunk_index` | Index within document |
+| `_start_char` | Start position in original text |
+| `_end_char` | End position in original text |
 
 ### Reindexing Logic
 
