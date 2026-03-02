@@ -84,6 +84,14 @@ Same manifest. Same execution engine. Same audit trail.
 
 Excel is Plico's human-friendly authoring surface. Define prompts as rows, dependencies as cell references, and conditions as expressions. Export to manifest when ready.
 
+**Sample prompts worksheet:**
+
+| sequence | prompt_name | prompt | history | client | condition | references | semantic_query |
+|----------|-------------|--------|---------|--------|-----------|------------|----------------|
+| 1 | intro | What is your name? | | | | | |
+| 2 | question | What is interesting about AI? | `["intro"]` | | | | |
+| 3 | summarize | Summarize our conversation in one sentence. | `["intro", "question"]` | | | | |
+
 ```bash
 # Create workbook template (exits after creating if file doesn't exist)
 python scripts/run_orchestrator.py my_analysis.xlsx
