@@ -252,6 +252,22 @@ python scripts/run_manifest.py ./manifests/my_first/ -c 2
 
 ### Or, Start in Excel
 
+**Quick start with a sample workbook:**
+
+```bash
+# Create a sample workbook (e.g., sample_workbook.xlsx)
+inv basic
+
+# Run the orchestrator on it
+python scripts/run_orchestrator.py sample_workbook.xlsx -c 4
+
+# Results are written to a timestamped sheet in the workbook
+```
+
+Available samples: `inv basic`, `inv conditional`, `inv batch`, `inv multiclient`, `inv documents`, `inv max`. Run `inv --list` to see all tasks, or see [AGENTS.md](AGENTS.md) for details.
+
+**Or create your own from scratch:**
+
 ```bash
 # Create workbook template (exits after creating)
 python scripts/run_orchestrator.py analysis.xlsx
