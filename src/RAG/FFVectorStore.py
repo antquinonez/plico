@@ -310,7 +310,7 @@ class FFVectorStore:
             chunking_strategy: Optional filter by chunking strategy.
 
         Returns:
-            List of dicts with reference_name, chunking_strategy, document_checksum, indexed_at.
+            List of dicts with reference_name, chunking_strategy, document_checksum, indexed_at, tags.
 
         """
         where_filter = None
@@ -329,6 +329,7 @@ class FFVectorStore:
                 strategy = meta.get("chunking_strategy", "unknown")
                 checksum = meta.get("document_checksum", "")
                 indexed_at = meta.get("indexed_at", "")
+                tags = meta.get("tags", "")
 
                 if ref_name:
                     key = (ref_name, strategy)
@@ -340,6 +341,7 @@ class FFVectorStore:
                             "chunking_strategy": strategy,
                             "document_checksum": checksum,
                             "indexed_at": indexed_at,
+                            "tags": tags,
                         }
 
         return list(indexed_docs.values())

@@ -155,6 +155,7 @@ DEFAULT_DOCUMENTS_HEADERS = [
     "reference_name",
     "common_name",
     "file_path",
+    "tags",
     "notes",
 ]
 
@@ -163,6 +164,7 @@ DEFAULT_DOCUMENTS_COLUMN_WIDTHS = {
     "B": 25,
     "C": 50,
     "D": 30,
+    "E": 30,
 }
 
 STATUS_COLUMN = 12
