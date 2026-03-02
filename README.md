@@ -266,6 +266,21 @@ python scripts/export_manifest.py analysis.xlsx
 python scripts/run_manifest.py ./manifests/manifest_analysis/
 ```
 
+**Try a sample workbook:**
+
+```bash
+inv basic              # Parallel execution with dependencies
+inv conditional        # Conditional expressions
+inv batch              # Batch execution with variables
+inv multiclient        # Multi-client routing
+inv documents          # Document references and RAG
+inv max                # All features combined
+
+inv create             # Create all sample workbooks
+```
+
+Sample workbooks are created in the project root (e.g., `sample_workbook.xlsx`). Run `inv --list` to see all tasks, or see [AGENTS.md](AGENTS.md) for details.
+
 ---
 
 ## The Manifest Protocol
