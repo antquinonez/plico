@@ -32,29 +32,52 @@ Same manifest. Same execution engine. Same audit trail.
 
 ## Three Paths to a Manifest
 
-```mermaid
-flowchart TB
-    subgraph authoring["Authoring Surfaces"]
-        excel["<b>Excel Workbook</b><br/>Human-friendly visual editor"]
-        python["<b>Python Script</b><br/>Programmatic generation"]
-        ai["<b>AI Agent</b><br/>Autonomous composition"]
-    end
-
-    subgraph manifest["YAML Manifest"]
-        files["<b>manifest.yaml</b> (metadata)<br/><b>config.yaml</b> (settings)<br/><b>prompts.yaml</b> (workflow)<br/><b>data.yaml</b> (batches)<br/><b>clients.yaml</b> (models)<br/><b>documents.yaml</b> (resources)"]
-        props["• Git versioned<br/>• AI readable<br/>• AI writable"]
-    end
-
-    subgraph execution["Execution Layer"]
-        orchestrator["<b>ManifestOrchestrator</b>"]
-        parquet["<b>Timestamped Parquet</b><br/>• analytics-ready<br/>• AI can analyze<br/>• AI can iterate"]
-    end
-
-    excel --> files
-    python --> files
-    ai --> files
-    files --> orchestrator
-    orchestrator --> parquet
+```
++--------------------------------------------------------------------------------------------------+
+|                                        AUTHORING SURFACES                                        |
+|                                                                                                  |
+|   +---------------------+          +---------------------+          +-------------------------+  |
+|   |       Excel         |          |       Python        |          |        AI Agent         |  |
+|   |      Workbook       |          |        Script       |          |     (writes YAML)       |  |
+|   |                     |          |                     |          |                         |  |
+|   |   Human-friendly    |          |   Programmatic      |          |   Autonomous            |  |
+|   |   visual editor     |          |   generation        |          |   composition           |  |
+|   +----------+----------+          +----------+----------+          +------------+------------+  |
+|              |                                |                                  |              |
+|              +--------------------------------+----------------------------------+              |
+|                                               v                                                 |
+|                             +-------------------------------------+                             |
+|                             |          YAML MANIFEST              |                             |
+|                             |                                     |                             |
+|                             |  manifest.yaml   (metadata)         |                             |
+|                             |  config.yaml     (settings)         |                             |
+|                             |  prompts.yaml    (workflow)         |                             |
+|                             |  data.yaml       (batches)          |                             |
+|                             |  clients.yaml    (models)           |                             |
+|                             |  documents.yaml  (resources)        |                             |
+|                             |                                     |                             |
+|                             |  <-- Git versioned -->              |                             |
+|                             |  <-- AI readable -->                |                             |
+|                             |  <-- AI writable -->                |                             |
+|                             +------------------+------------------+                             |
+|                                                |                                                |
++------------------------------------------------+------------------------------------------------+
+                                                 v
++--------------------------------------------------------------------------------------------------+
+|                                        EXECUTION LAYER                                            |
+|                                                                                                  |
+|                                        ManifestOrchestrator                                      |
+|                                               |                                                  |
+|                                               v                                                  |
+|                           +-------------------------------------+                                |
+|                           |      Timestamped Parquet            |                                |
+|                           |      (analytics-ready)              |                                |
+|                           |                                     |                                |
+|                           |  <-- AI can analyze -->             |                                |
+|                           |  <-- AI can iterate -->             |                                |
+|                           +-------------------------------------+                                |
+|                                                                                                  |
++--------------------------------------------------------------------------------------------------+
 ```
 
 ### Path 1: Excel (Human Authoring)
@@ -673,40 +696,57 @@ client = FFLiteLLMClient(
 
 ## Architecture
 
-```mermaid
-flowchart TB
-    subgraph L1["Authoring Layer"]
-        A1["Excel Workbook<br/><i>human visual</i>"]
-        A2["Python Script<br/><i>programmatic</i>"]
-        A3["AI Agent<br/><i>autonomous</i>"]
-    end
-
-    subgraph L2["Manifest Layer"]
-        M["<b>YAML Manifest</b><br/>manifest.yaml, config.yaml, prompts.yaml...<br/>• Git versioned<br/>• AI readable<br/>• AI writable"]
-    end
-
-    subgraph L3["Execution Layer"]
-        E["<b>ManifestOrchestrator</b>"]
-        E1["Dependency DAG construction"]
-        E2["Parallel scheduling (ThreadPoolExecutor)"]
-        E3["Condition evaluation (AST-sandboxed)"]
-        E4["Context assembly (declarative history)"]
-        E5["Client isolation (clone pattern)"]
-        E --> E1 & E2 & E3 & E4 & E5
-    end
-
-    subgraph L4["Client Layer"]
-        C["<b>FFAIClientBase</b> (ABC)"]
-        C1["FFLiteLLMClient<br/><i>100+ providers via LiteLLM</i>"]
-        C2["FFMistral, FFAnthropic,<br/>FFGemini, FFPerplexity"]
-        C3["FFAzureClientBase →<br/>FFAzureMistral, FFAzurePhi..."]
-    end
-
-    subgraph L5["Output Layer"]
-        O["<b>Timestamped Parquet</b><br/>• analytics-ready<br/>• AI can analyze<br/>• AI can iterate"]
-    end
-
-    L1 --> L2 --> L3 --> L4 --> L5
+```
++--------------------------------------------------------------------------------------------------+
+|                                        AUTHORING LAYER                                            |
+|                                                                                                  |
+|   Excel Workbook              Python Script              AI Agent                                 |
+|   (human visual)              (programmatic)             (autonomous)                             |
+|                                                                                                  |
++------------------------------------------------+-------------------------------------------------+
+                                                 |
+                                                 v
++--------------------------------------------------------------------------------------------------+
+|                                        MANIFEST LAYER                                             |
+|                                                                                                  |
+|   YAML Manifest (manifest.yaml, config.yaml, prompts.yaml, ...)                                  |
+|                                                                                                  |
+|   <-- Git versioned -->    <-- AI readable -->    <-- AI writable -->                           |
+|                                                                                                  |
++------------------------------------------------+-------------------------------------------------+
+                                                 |
+                                                 v
++--------------------------------------------------------------------------------------------------+
+|                                        EXECUTION LAYER                                            |
+|                                                                                                  |
+|   ManifestOrchestrator                                                                           |
+|   +-- Dependency DAG construction                                                                |
+|   +-- Parallel scheduling (ThreadPoolExecutor)                                                   |
+|   +-- Condition evaluation (AST-sandboxed)                                                       |
+|   +-- Context assembly (declarative history)                                                     |
+|   +-- Client isolation (clone pattern)                                                           |
+|                                                                                                  |
++------------------------------------------------+-------------------------------------------------+
+                                                 |
+                                                 v
++--------------------------------------------------------------------------------------------------+
+|                                        CLIENT LAYER                                               |
+|                                                                                                  |
+|   FFAIClientBase (ABC)                                                                           |
+|   +-- FFLiteLLMClient (100+ providers via LiteLLM)                                               |
+|   +-- FFMistral, FFAnthropic, FFGemini, FFPerplexity                                             |
+|   +-- FFAzureClientBase --> FFAzureMistral, FFAzurePhi, ...                                      |
+|                                                                                                  |
++------------------------------------------------+-------------------------------------------------+
+                                                 |
+                                                 v
++--------------------------------------------------------------------------------------------------+
+|                                        OUTPUT LAYER                                               |
+|                                                                                                  |
+|   Timestamped Parquet (analytics-ready)                                                          |
+|   <-- AI can analyze -->    <-- AI can iterate -->                                               |
+|                                                                                                  |
++--------------------------------------------------------------------------------------------------+
 ```
 
 ### Key Design Decisions
