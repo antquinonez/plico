@@ -97,7 +97,6 @@ python scripts/export_manifest.py my_analysis.xlsx
 # Creates: ./manifests/manifest_my_analysis/
 python scripts/run_manifest.py ./manifests/manifest_my_analysis/
 ```
-```
 
 **When to use:** Non-developers, ad-hoc analysis, visual workflow design, stakeholders who live in spreadsheets.
 
