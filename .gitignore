@@ -11,3 +11,4 @@ chroma_db/*
 library/*
 manifests/*
 docs/readmes/*
+manifests_test/*
