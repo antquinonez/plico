@@ -396,6 +396,8 @@ class DocumentRegistry:
         for ref_name, doc in self.documents.items():
             file_path = self.resolve_path(doc.get("file_path", ""))
             common_name = doc.get("common_name", ref_name)
+            tags = doc.get("tags")
+            chunking_strategy = doc.get("chunking_strategy")
 
             if not os.path.exists(file_path):
                 logger.warning(f"Document file not found, skipping: {file_path}")
@@ -412,6 +414,8 @@ class DocumentRegistry:
                     content=content,
                     checksum=checksum,
                     force=force,
+                    tags=tags,
+                    chunking_strategy=chunking_strategy,
                 )
                 results[ref_name] = chunks_indexed
 

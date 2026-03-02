@@ -342,13 +342,37 @@ documents:
   - reference_name: spec
     common_name: "Product Specification"
     file_path: "library/product_spec.md"
+    tags: "product,specification,overview"
 
   - reference_name: api
     common_name: "API Reference"
     file_path: "library/api_reference.pdf"
+    tags: "api,reference,authentication"
 ```
 
 Reference in prompts: `references: ["spec", "api"]`
+
+**Fields:**
+
+| Field | Description |
+|-------|-------------|
+| `reference_name` | Unique identifier for prompt references |
+| `common_name` | Human-readable name |
+| `file_path` | Path to document (relative to workbook) |
+| `tags` | Comma-separated tags for RAG filtering (optional) |
+
+**Chunking strategy is auto-inferred from file extension:**
+
+| Extension | Strategy | Description |
+|-----------|----------|-------------|
+| `.md` | `markdown` | Header-aware chunking |
+| `.py`, `.js`, `.ts`, etc. | `code` | Function-aware chunking |
+| Others | `recursive` | General-purpose chunking |
+
+**Note:** Chunking strategy is automatically inferred from file extension:
+- `.md` files → `markdown` chunking (header-aware)
+- `.py`, `.js`, `.ts`, etc. → `code` chunking (function-aware)
+- Other files → `recursive` chunking (general purpose)
 
 ---
 
