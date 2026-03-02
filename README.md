@@ -252,22 +252,21 @@ python scripts/run_manifest.py ./manifests/my_first/ -c 2
 
 ### Or, Start in Excel
 
-**Try a sample workbook:**
+**Quick start with a sample workbook:**
 
 ```bash
-inv basic              # Parallel execution with dependencies
-inv conditional        # Conditional expressions
-inv batch              # Batch execution with variables
-inv multiclient        # Multi-client routing
-inv documents          # Document references and RAG
-inv max                # All features combined
+# Create a sample workbook (e.g., sample_workbook.xlsx)
+inv basic
 
-inv create             # Create all sample workbooks
+# Run the orchestrator on it
+python scripts/run_orchestrator.py sample_workbook.xlsx -c 4
+
+# Results are written to a timestamped sheet in the workbook
 ```
 
-Sample workbooks are created in the project root (e.g., `sample_workbook.xlsx`). Run `inv --list` to see all tasks, or see [AGENTS.md](AGENTS.md) for details.
+Available samples: `inv basic`, `inv conditional`, `inv batch`, `inv multiclient`, `inv documents`, `inv max`. Run `inv --list` to see all tasks, or see [AGENTS.md](AGENTS.md) for details.
 
-**Or create your own:**
+**Or create your own from scratch:**
 
 ```bash
 # Create workbook template (exits after creating)
