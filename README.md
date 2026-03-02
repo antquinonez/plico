@@ -885,13 +885,13 @@ Plico/
 
 | Document | Description |
 |----------|-------------|
-| [ORCHESTRATOR README](../ORCHESTRATOR%20README.md) | Excel and manifest execution guide |
-| [CLIENT API USER GUIDE](../CLIENT%20API%20USER%20GUIDE.md) | Python API reference |
-| [CONDITIONAL EXPRESSIONS](../CONDITIONAL%20EXPRESSIONS%20USER%20GUIDE.md) | Condition syntax and security |
-| [CONFIGURATION](../CONFIGURATION.md) | Configuration system reference |
-| [ARCHITECTURE](../architecture/ARCHITECTURE.md) | System design and data flows |
-| [RAG ARCHITECTURE](../architecture/RAG_ARCHITECTURE.md) | Semantic search subsystem |
-| [CLIENTS ARCHITECTURE](../architecture/CLIENTS_ARCHITECTURE.md) | Adding new providers |
+| [ORCHESTRATOR README](https://github.com/antquinonez/plico/blob/main/docs/ORCHESTRATOR%20README.md) | Excel and manifest execution guide |
+| [CLIENT API USER GUIDE](https://github.com/antquinonez/plico/blob/main/docs/CLIENT%20API%20USER%20GUIDE.md) | Python API reference |
+| [CONDITIONAL EXPRESSIONS](https://github.com/antquinonez/plico/blob/main/docs/CONDITIONAL%20EXPRESSIONS%20USER%20GUIDE.md) | Condition syntax and security |
+| [CONFIGURATION](https://github.com/antquinonez/plico/blob/main/docs/CONFIGURATION.md) | Configuration system reference |
+| [ARCHITECTURE](https://github.com/antquinonez/plico/blob/main/docs/architecture/ARCHITECTURE.md) | System design and data flows |
+| [RAG ARCHITECTURE](https://github.com/antquinonez/plico/blob/main/docs/architecture/RAG_ARCHITECTURE.md) | Semantic search subsystem |
+| [CLIENTS ARCHITECTURE](https://github.com/antquinonez/plico/blob/main/docs/architecture/CLIENTS_ARCHITECTURE.md) | Adding new providers |
 
 ---
 
