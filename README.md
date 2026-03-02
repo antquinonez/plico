@@ -42,12 +42,12 @@ flowchart TB
 
     subgraph manifest["YAML Manifest"]
         files["<b>manifest.yaml</b> (metadata)<br/><b>config.yaml</b> (settings)<br/><b>prompts.yaml</b> (workflow)<br/><b>data.yaml</b> (batches)<br/><b>clients.yaml</b> (models)<br/><b>documents.yaml</b> (resources)"]
-        props["Git versioned<br/>AI readable<br/>AI writable"]
+        props["• Git versioned<br/>• AI readable<br/>• AI writable"]
     end
 
     subgraph execution["Execution Layer"]
         orchestrator["<b>ManifestOrchestrator</b>"]
-        parquet["<b>Timestamped Parquet</b><br/>analytics-ready<br/>AI can analyze<br/>AI can iterate"]
+        parquet["<b>Timestamped Parquet</b><br/>• analytics-ready<br/>• AI can analyze<br/>• AI can iterate"]
     end
 
     excel --> files
@@ -682,7 +682,7 @@ flowchart TB
     end
 
     subgraph L2["Manifest Layer"]
-        M["<b>YAML Manifest</b><br/>manifest.yaml, config.yaml, prompts.yaml...<br/><i>Git versioned | AI readable | AI writable</i>"]
+        M["<b>YAML Manifest</b><br/>manifest.yaml, config.yaml, prompts.yaml...<br/>• Git versioned<br/>• AI readable<br/>• AI writable"]
     end
 
     subgraph L3["Execution Layer"]
@@ -703,7 +703,7 @@ flowchart TB
     end
 
     subgraph L5["Output Layer"]
-        O["<b>Timestamped Parquet</b><br/><i>analytics-ready | AI can analyze | AI can iterate</i>"]
+        O["<b>Timestamped Parquet</b><br/>• analytics-ready<br/>• AI can analyze<br/>• AI can iterate"]
     end
 
     L1 --> L2 --> L3 --> L4 --> L5
