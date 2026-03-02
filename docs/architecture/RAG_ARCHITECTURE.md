@@ -142,7 +142,7 @@ class RAGConfig(BaseModel):
 
     enabled: bool = True
     persist_dir: str = "./chroma_db"
-    collection_name: str = "ffclients_documents"
+    collection_name: str = "plico_documents"
     embedding_model: str = "mistral/mistral-embed"
     local_embeddings: bool = False
     embedding_cache_size: int = 256
@@ -183,7 +183,7 @@ class RAGSearchConfig(BaseModel):
 rag:
   enabled: true
   persist_dir: "./chroma_db"
-  collection_name: "ffclients_kb"
+  collection_name: "plico_kb"
   embedding_model: "mistral/mistral-embed"
   local_embeddings: false
   embedding_cache_size: 256

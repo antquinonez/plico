@@ -1,4 +1,4 @@
-# AGENTS.md - FFClients Development Guide
+# AGENTS.md - Plico Development Guide
 
 Guidelines for AI coding agents working in this repository.
 
@@ -287,7 +287,7 @@ results = rag.search("What is this about?", n_results=5)
 rag:
   enabled: true
   persist_dir: "./chroma_db"
-  collection_name: "ffclients_kb"
+  collection_name: "plico_kb"
   embedding_model: "mistral/mistral-embed"
   chunking:
     strategy: "recursive"

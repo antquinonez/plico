@@ -513,7 +513,7 @@ Traditional `eval()` and `exec()` are dangerous because they can execute arbitra
 eval("os.system('rm -rf /')")  # Could delete files
 ```
 
-FFClients uses Python's `ast` (Abstract Syntax Tree) module to parse expressions without executing them. The expression is converted to a tree structure, and only whitelisted operations are evaluated.
+Plico uses Python's `ast` (Abstract Syntax Tree) module to parse expressions without executing them. The expression is converted to a tree structure, and only whitelisted operations are evaluated.
 
 ### Evaluation Flow
 

@@ -2,7 +2,7 @@
 
 ## Overview
 
-FFClients uses a centralized configuration system built on `pydantic-settings`. Configuration is loaded from YAML files in the `config/` directory with type-safe access, environment variable overrides, and runtime validation.
+Plico uses a centralized configuration system built on `pydantic-settings`. Configuration is loaded from YAML files in the `config/` directory with type-safe access, environment variable overrides, and runtime validation.
 
 ## Configuration Files
 
@@ -140,7 +140,7 @@ The RAG system supports multiple chunking strategies, hybrid search, and hierarc
 rag:
   enabled: true
   persist_dir: "./chroma_db"
-  collection_name: "ffclients_documents"
+  collection_name: "plico_documents"
   embedding_model: "mistral/mistral-embed"
   chunk_size: 1000
   chunk_overlap: 200

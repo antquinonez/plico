@@ -2,7 +2,7 @@
 
 ## Executive Summary
 
-This document analyzes the feasibility and approach for integrating LiteLLM as the underlying client layer for FFClients, replacing the current hand-maintained client wrappers while preserving FFClients' unique value-adds: declarative context management, multiple history tracking, and Excel-based orchestration.
+This document analyzes the feasibility and approach for integrating LiteLLM as the underlying client layer for Plico, replacing the current hand-maintained client wrappers while preserving Plico' unique value-adds: declarative context management, multiple history tracking, and Excel-based orchestration.
 
 ---
 
@@ -87,7 +87,7 @@ FFAI
 
 ### What LiteLLM Provides
 
-| Feature | LiteLLM | FFClients Current |
+| Feature | LiteLLM | Plico Current |
 |---------|---------|-------------------|
 | Provider count | 100+ | 15 (manual) |
 | Unified API | `completion()` | Per-provider classes |
@@ -128,7 +128,7 @@ response = completion(model="...", messages=messages)
 
 ## Gap Analysis
 
-### What FFClients Has That LiteLLM Lacks
+### What Plico Has That LiteLLM Lacks
 
 | Feature | Impact if Lost |
 |---------|----------------|
@@ -138,7 +138,7 @@ response = completion(model="...", messages=messages)
 | **Per-client default properties** | Low - can be moved to FFAI |
 | **System instructions per-client** | Low - FFAI handles this |
 
-### What LiteLLM Has That FFClients Lacks
+### What LiteLLM Has That Plico Lacks
 
 | Feature | Benefit |
 |---------|---------|
@@ -180,7 +180,7 @@ Create `FFLiteLLMClient` implementing FFAIClientBase, keep existing clients for 
 
 ### Option C: LiteLLM as Provider Adapter (Recommended)
 
-Create a translation layer that maps FFClients patterns to LiteLLM calls while preserving the FFAIClientBase contract.
+Create a translation layer that maps Plico patterns to LiteLLM calls while preserving the FFAIClientBase contract.
 
 **Pros:**
 - Preserves existing architecture

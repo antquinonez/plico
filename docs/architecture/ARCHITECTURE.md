@@ -1,8 +1,8 @@
-# FFClients Architecture Overview
+# Plico Architecture Overview
 
 ## System Context
 
-FFClients is a declarative context handling API wrapper for AI models with Excel-based orchestration capabilities. It enables:
+Plico is a declarative context handling API wrapper for AI models with Excel-based orchestration capabilities. It enables:
 
 1. **Unified AI Client Interface** - Abstract away provider differences behind a consistent API
 2. **Declarative Context Management** - Reference previous prompts by name for automatic context assembly
@@ -261,7 +261,7 @@ Named client        Default client
 ## Directory Structure
 
 ```
-FFClients/
+Plico/
 ├── src/
 │   ├── __init__.py                    # Package exports
 │   ├── FFAI.py                        # Core wrapper (BRIDGE between subsystems)

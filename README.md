@@ -1,15 +1,15 @@
-# FFClients
+# Plico
 
 **Excel-Based AI Orchestration for Analysts, Researchers, and Non-Developers**
 
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-FFClients enables you to define and execute AI prompt workflows using Excel spreadsheets—no coding required. Define prompts, dependencies, and configurations in Excel, then run the orchestrator to execute and capture results with full traceability.
+Plico enables you to define and execute AI prompt workflows using Excel spreadsheets—no coding required. Define prompts, dependencies, and configurations in Excel, then run the orchestrator to execute and capture results with full traceability.
 
 ---
 
-## Why FFClients?
+## Why Plico?
 
 | For Analysts | For Researchers | For Non-Developers |
 |--------------|-----------------|-------------------|
@@ -57,9 +57,9 @@ Define your workflow in an Excel workbook, run the orchestrator from the command
 
 ---
 
-## How FFClients Compares
+## How Plico Compares
 
-| Feature | FFClients | LangChain | CrewAI | LlamaIndex |
+| Feature | Plico | LangChain | CrewAI | LlamaIndex |
 |---------|:---------:|:---------:|:------:|:----------:|
 | **No-code workflow** | ✅ Excel-native | ❌ Python only | Partial | ❌ Python only |
 | **Full audit trail** | ✅ Built-in | ❌ Requires setup | ✅ Via platform | ❌ Requires setup |
@@ -70,13 +70,13 @@ Define your workflow in an Excel workbook, run the orchestrator from the command
 | **Tool/function calling** | ❌ | ✅ | ✅ | ✅ |
 | **Real-time streaming** | ❌ | ✅ | ✅ | ✅ |
 
-**FFClients fills a unique niche**: Making AI orchestration accessible to non-programmers while maintaining enterprise-grade traceability.
+**Plico fills a unique niche**: Making AI orchestration accessible to non-programmers while maintaining enterprise-grade traceability.
 
 ---
 
-## When to Use FFClients
+## When to Use Plico
 
-### ✅ Use FFClients if you:
+### ✅ Use Plico if you:
 - Prefer working in Excel over writing code
 - Need full audit trails for compliance or reproducibility
 - Want to batch process multiple data sets through the same AI workflow
@@ -96,8 +96,8 @@ Define your workflow in an Excel workbook, run the orchestrator from the command
 
 ```bash
 # Clone the repository
-git clone https://github.com/farfiner/ffclients.git
-cd ffclients
+git clone https://github.com/farfiner/plico.git
+cd plico
 
 # Create virtual environment
 python -m venv .venv
@@ -329,4 +329,4 @@ Antonio Quinonez - [antquinonez@farfiner.com](mailto:antquinonez@farfiner.com)
 
 ---
 
-**FFClients** — Making AI workflows accessible to everyone, one spreadsheet at a time.
+**Plico** — Declarative AI orchestration through Excel. Fold your intent, unfold your workflow.

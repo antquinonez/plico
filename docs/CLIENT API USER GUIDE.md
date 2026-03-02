@@ -2,7 +2,7 @@
 
 ## Overview
 
-The FFClients library provides a declarative context handling API wrapper for AI clients. It consists of:
+The Plico library provides a declarative context handling API wrapper for AI clients. It consists of:
 
 - **FFAIClientBase** - Abstract base class defining the client interface
 - **FFMistral / FFMistralSmall** - Concrete client implementations for Mistral AI

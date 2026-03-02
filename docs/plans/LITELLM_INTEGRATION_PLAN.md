@@ -2,7 +2,7 @@
 
 ## Overview
 
-This document outlines the implementation plan for integrating LiteLLM as a client layer in FFClients while preserving all existing functionality including declarative context management, multiple history tracking, and the clone pattern for parallel execution.
+This document outlines the implementation plan for integrating LiteLLM as a client layer in Plico while preserving all existing functionality including declarative context management, multiple history tracking, and the clone pattern for parallel execution.
 
 ---
 
@@ -17,7 +17,7 @@ class FFLiteLLMClient(FFAIClientBase):
     """
     LiteLLM-backed client implementing FFAIClientBase contract.
 
-    Translates FFClients patterns to LiteLLM while maintaining:
+    Translates Plico patterns to LiteLLM while maintaining:
     - Internal conversation history for get/set/clone
     - Model-specific default handling
     - Thread-safe operation support
@@ -110,7 +110,7 @@ def get_model_defaults(model_string: str) -> dict:
 LiteLLM uses specific env var patterns. Create mapping layer:
 
 ```python
-# FFClients env vars -> LiteLLM env vars
+# Plico env vars -> LiteLLM env vars
 ENV_MAPPING = {
     # Azure models need api_base, api_key, api_version
     "azure": {
