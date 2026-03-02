@@ -122,6 +122,127 @@ class TestRecursiveChunker:
 
         assert len(chunks) >= 1
 
+    def test_chunk_whitespace_only(self) -> None:
+        """Test chunk with whitespace-only text returns empty."""
+        chunker = RecursiveChunker(chunk_size=100, chunk_overlap=20)
+        chunks = chunker.chunk("   \n\n   \t\t   ")
+
+        assert chunks == []
+
+    def test_chunk_with_overlap(self) -> None:
+        """Test chunk creates proper overlap between chunks."""
+        chunker = RecursiveChunker(chunk_size=50, chunk_overlap=20)
+        text = "A" * 30 + " " + "B" * 30 + " " + "C" * 30
+        chunks = chunker.chunk(text)
+
+        assert len(chunks) > 1
+
+    def test_chunk_large_text_splitting(self) -> None:
+        """Test splitting of text that exceeds chunk_size."""
+        chunker = RecursiveChunker(chunk_size=50, chunk_overlap=10)
+        text = "word " * 100
+        chunks = chunker.chunk(text)
+
+        assert len(chunks) > 1
+        for chunk in chunks:
+            assert len(chunk.content) <= 60
+
+    def test_split_recursive_empty_separators(self) -> None:
+        """Test _split_text_recursive with empty separators list."""
+        chunker = RecursiveChunker(chunk_size=100, chunk_overlap=20)
+        result = chunker._split_text_recursive("test text", [])
+
+        assert result == ["test text"]
+
+    def test_split_recursive_character_mode(self) -> None:
+        """Test _split_text_recursive with empty string separator."""
+        chunker = RecursiveChunker(chunk_size=100, chunk_overlap=20)
+        result = chunker._split_text_recursive("abc", [""])
+
+        assert len(result) == 3
+        assert result == ["a", "b", "c"]
+
+    def test_split_recursive_without_keep_separator(self) -> None:
+        """Test _split_text_recursive with keep_separator=False."""
+        chunker = RecursiveChunker(chunk_size=100, chunk_overlap=20, keep_separator=False)
+        text = "part1, part2, part3"
+        result = chunker._split_text_recursive(text, [", "])
+
+        assert ", " not in "".join(result)
+
+    def test_split_recursive_empty_splits(self) -> None:
+        """Test _split_text_recursive when splits become empty."""
+        chunker = RecursiveChunker(chunk_size=100, chunk_overlap=20)
+        result = chunker._split_text_recursive("", ["\n\n", "\n"])
+
+        assert result == []
+
+    def test_split_large_text_respects_word_boundaries(self) -> None:
+        """Test _split_large_text finds last space."""
+        chunker = RecursiveChunker(chunk_size=20, chunk_overlap=5)
+        text = "word1 word2 word3 word4 word5"
+        result = chunker._split_large_text(text, 0)
+
+        assert len(result) >= 1
+
+    def test_get_overlap_text(self) -> None:
+        """Test _get_overlap_text method."""
+        chunker = RecursiveChunker(chunk_size=100, chunk_overlap=20)
+        chunks = [("This is some text that is longer than overlap", 0, 45)]
+        overlap = chunker._get_overlap_text(chunks)
+
+        assert len(overlap) <= 20
+
+    def test_get_overlap_text_empty_chunks(self) -> None:
+        """Test _get_overlap_text with empty chunks."""
+        chunker = RecursiveChunker(chunk_size=100, chunk_overlap=20)
+        overlap = chunker._get_overlap_text([])
+
+        assert overlap == ""
+
+    def test_get_overlap_text_shorter_than_overlap(self) -> None:
+        """Test _get_overlap_text when combined text is shorter than overlap."""
+        chunker = RecursiveChunker(chunk_size=100, chunk_overlap=50)
+        chunks = [("Short", 0, 5)]
+        overlap = chunker._get_overlap_text(chunks)
+
+        assert overlap == "Short"
+
+    def test_finalize_chunks_empty(self) -> None:
+        """Test _finalize_chunks with empty chunks."""
+        chunker = RecursiveChunker(chunk_size=100, chunk_overlap=20)
+        result: list[TextChunk] = []
+        chunker._finalize_chunks([], result, {})
+
+        assert result == []
+
+    def test_finalize_chunks_whitespace_only(self) -> None:
+        """Test _finalize_chunks with whitespace-only text."""
+        chunker = RecursiveChunker(chunk_size=100, chunk_overlap=20)
+        result: list[TextChunk] = []
+        chunker._finalize_chunks([("   ", 0, 3)], result, {})
+
+        assert result == []
+
+    def test_chunk_position_tracking(self) -> None:
+        """Test that chunks have correct position tracking."""
+        chunker = RecursiveChunker(chunk_size=50, chunk_overlap=10)
+        text = "A" * 20 + " " + "B" * 20 + " " + "C" * 20
+        chunks = chunker.chunk(text)
+
+        for chunk in chunks:
+            assert chunk.start_char >= 0
+            assert chunk.end_char > chunk.start_char
+            assert chunk.end_char <= len(text)
+
+    def test_text_longer_than_chunk_with_no_spaces(self) -> None:
+        """Test handling text without spaces longer than chunk_size."""
+        chunker = RecursiveChunker(chunk_size=20, chunk_overlap=5)
+        text = "a" * 100
+        chunks = chunker.chunk(text)
+
+        assert len(chunks) >= 1
+
 
 class TestMarkdownChunker:
     """Tests for MarkdownChunker."""

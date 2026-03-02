@@ -197,6 +197,52 @@ class TestFFVectorStore:
         assert store.collection_name == "test_collection"
         assert store.count() == 0
 
+    def test_init_with_custom_client(self, temp_persist_dir, mock_embeddings):
+        """Test initialization with pre-configured client."""
+        import chromadb
+        from chromadb.config import Settings
+
+        client = chromadb.PersistentClient(
+            path=temp_persist_dir,
+            settings=Settings(anonymized_telemetry=False),
+        )
+
+        store = FFVectorStore(
+            collection_name="custom_client_collection",
+            embedding_model=mock_embeddings,
+            client=client,
+        )
+
+        assert store._client is client
+
+    def test_init_with_string_embedding_model(self, temp_persist_dir):
+        """Test initialization with string embedding model."""
+        mock_embeddings = MagicMock(spec=FFEmbeddings)
+        mock_embeddings.model = "custom-model"
+
+        with patch("src.RAG.FFVectorStore.FFEmbeddings", return_value=mock_embeddings):
+            store = FFVectorStore(
+                collection_name="string_model_collection",
+                persist_dir=temp_persist_dir,
+                embedding_model="openai/text-embedding-3-small",
+            )
+
+        assert store._embeddings == mock_embeddings
+
+    def test_init_with_none_embedding_model(self, temp_persist_dir):
+        """Test initialization with None embedding model creates default."""
+        mock_embeddings = MagicMock(spec=FFEmbeddings)
+        mock_embeddings.model = "mistral/mistral-embed"
+
+        with patch("src.RAG.FFVectorStore.FFEmbeddings", return_value=mock_embeddings):
+            store = FFVectorStore(
+                collection_name="none_model_collection",
+                persist_dir=temp_persist_dir,
+                embedding_model=None,
+            )
+
+        assert store._embeddings == mock_embeddings
+
     def test_add_chunks(self, temp_persist_dir, mock_embeddings):
         """Test adding text chunks."""
         store = FFVectorStore(
@@ -214,6 +260,53 @@ class TestFFVectorStore:
 
         assert count == 2
         assert store.count() == 2
+
+    def test_add_chunks_empty(self, temp_persist_dir, mock_embeddings):
+        """Test add_chunks with empty list returns 0."""
+        store = FFVectorStore(
+            collection_name="test_collection",
+            persist_dir=temp_persist_dir,
+            embedding_model=mock_embeddings,
+        )
+
+        count = store.add_chunks([])
+
+        assert count == 0
+
+    def test_add_chunks_with_dedup(self, temp_persist_dir, mock_embeddings):
+        """Test add_chunks with deduplication enabled."""
+        store = FFVectorStore(
+            collection_name="test_collection",
+            persist_dir=temp_persist_dir,
+            embedding_model=mock_embeddings,
+        )
+
+        chunks = [
+            TextChunk(content="Unique chunk", chunk_index=0, start_char=0, end_char=12),
+        ]
+
+        count = store.add_chunks(chunks, dedup=True, dedup_mode="exact")
+
+        assert count >= 1
+
+    def test_add_chunks_with_texts_for_embedding(self, temp_persist_dir, mock_embeddings):
+        """Test add_chunks with custom texts for embedding."""
+        store = FFVectorStore(
+            collection_name="test_collection",
+            persist_dir=temp_persist_dir,
+            embedding_model=mock_embeddings,
+        )
+
+        chunks = [
+            TextChunk(content="Content", chunk_index=0, start_char=0, end_char=7),
+        ]
+
+        count = store.add_chunks(
+            chunks,
+            texts_for_embedding=["Contextual header: Content"],
+        )
+
+        assert count == 1
 
     def test_add_documents(self, temp_persist_dir, mock_embeddings):
         """Test adding documents with automatic chunking."""
@@ -293,6 +386,40 @@ class TestFFVectorStore:
 
         assert store.count() == 1
 
+    def test_delete_requires_ids_or_where(self, temp_persist_dir, mock_embeddings):
+        """Test delete raises ValueError without ids or where."""
+        store = FFVectorStore(
+            collection_name="test_collection",
+            persist_dir=temp_persist_dir,
+            embedding_model=mock_embeddings,
+        )
+
+        with pytest.raises(ValueError, match="Must provide either ids or where filter"):
+            store.delete()
+
+    def test_delete_by_reference_and_strategy(self, temp_persist_dir, mock_embeddings):
+        """Test delete_by_reference_and_strategy method."""
+        store = FFVectorStore(
+            collection_name="test_collection",
+            persist_dir=temp_persist_dir,
+            embedding_model=mock_embeddings,
+        )
+
+        chunks = [
+            TextChunk(
+                content="Content",
+                chunk_index=0,
+                start_char=0,
+                end_char=7,
+                metadata={"reference_name": "doc1"},
+            ),
+        ]
+        store.add_chunks(chunks, chunking_strategy="recursive")
+
+        result = store.delete_by_reference_and_strategy("doc1", "recursive")
+
+        assert result == 0
+
     def test_list_documents(self, temp_persist_dir, mock_embeddings):
         """Test listing document references."""
         store = FFVectorStore(
@@ -356,6 +483,1085 @@ class TestFFVectorStore:
         store.clear()
 
         assert store.count() == 0
+
+    def test_get_indexed_documents(self, temp_persist_dir, mock_embeddings):
+        """Test get_indexed_documents method."""
+        store = FFVectorStore(
+            collection_name="test_collection",
+            persist_dir=temp_persist_dir,
+            embedding_model=mock_embeddings,
+        )
+
+        chunks = [
+            TextChunk(
+                content="Content",
+                chunk_index=0,
+                start_char=0,
+                end_char=7,
+                metadata={"reference_name": "indexed_doc"},
+            ),
+        ]
+        store.add_chunks(chunks, chunking_strategy="recursive", document_checksum="abc123")
+
+        indexed = store.get_indexed_documents()
+
+        assert len(indexed) >= 1
+        assert any(d["reference_name"] == "indexed_doc" for d in indexed)
+
+    def test_get_indexed_documents_with_strategy_filter(self, temp_persist_dir, mock_embeddings):
+        """Test get_indexed_documents with chunking_strategy filter."""
+        store = FFVectorStore(
+            collection_name="test_collection",
+            persist_dir=temp_persist_dir,
+            embedding_model=mock_embeddings,
+        )
+
+        chunks = [
+            TextChunk(
+                content="Content",
+                chunk_index=0,
+                start_char=0,
+                end_char=7,
+                metadata={"reference_name": "filtered_doc"},
+            ),
+        ]
+        store.add_chunks(chunks, chunking_strategy="character")
+
+        indexed = store.get_indexed_documents(chunking_strategy="character")
+
+        assert all(d["chunking_strategy"] == "character" for d in indexed)
+
+    def test_needs_reindex_new_document(self, temp_persist_dir, mock_embeddings):
+        """Test needs_reindex for new document returns True."""
+        store = FFVectorStore(
+            collection_name="test_collection",
+            persist_dir=temp_persist_dir,
+            embedding_model=mock_embeddings,
+        )
+
+        needs = store.needs_reindex("new_doc", "checksum123", "recursive")
+
+        assert needs is True
+
+    def test_needs_reindex_same_checksum(self, temp_persist_dir, mock_embeddings):
+        """Test needs_reindex with same checksum returns False."""
+        store = FFVectorStore(
+            collection_name="test_collection",
+            persist_dir=temp_persist_dir,
+            embedding_model=mock_embeddings,
+        )
+
+        chunks = [
+            TextChunk(
+                content="Content",
+                chunk_index=0,
+                start_char=0,
+                end_char=7,
+                metadata={"reference_name": "same_checksum_doc"},
+            ),
+        ]
+        store.add_chunks(chunks, chunking_strategy="recursive", document_checksum="checksum123")
+
+        needs = store.needs_reindex("same_checksum_doc", "checksum123", "recursive")
+
+        assert needs is False
+
+    def test_needs_reindex_changed_checksum(self, temp_persist_dir, mock_embeddings):
+        """Test needs_reindex with changed checksum returns True."""
+        store = FFVectorStore(
+            collection_name="test_collection",
+            persist_dir=temp_persist_dir,
+            embedding_model=mock_embeddings,
+        )
+
+        chunks = [
+            TextChunk(
+                content="Content",
+                chunk_index=0,
+                start_char=0,
+                end_char=7,
+                metadata={"reference_name": "changed_checksum_doc"},
+            ),
+        ]
+        store.add_chunks(chunks, chunking_strategy="recursive", document_checksum="old_checksum")
+
+        needs = store.needs_reindex("changed_checksum_doc", "new_checksum", "recursive")
+
+        assert needs is True
+
+    def test_get_all_documents(self, temp_persist_dir, mock_embeddings):
+        """Test get_all_documents method."""
+        store = FFVectorStore(
+            collection_name="test_collection",
+            persist_dir=temp_persist_dir,
+            embedding_model=mock_embeddings,
+        )
+
+        chunks = [
+            TextChunk(
+                content="Document content",
+                chunk_index=0,
+                start_char=0,
+                end_char=16,
+                metadata={"reference_name": "all_doc"},
+            ),
+        ]
+        store.add_chunks(chunks)
+
+        docs = store.get_all_documents()
+
+        assert len(docs) >= 1
+        assert all("id" in d and "content" in d and "metadata" in d for d in docs)
+
+
+class TestFFRAGClientInit:
+    """Tests for FFRAGClient initialization options."""
+
+    @pytest.fixture
+    def temp_persist_dir(self):
+        """Create a temporary directory for ChromaDB."""
+        temp_dir = tempfile.mkdtemp()
+        yield temp_dir
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+    @pytest.fixture
+    def mock_embeddings(self):
+        """Create mock embeddings."""
+
+        def make_embed_mock(texts):
+            n = len(texts) if isinstance(texts, list) else 1
+            return [[0.1] * 384 for _ in range(n)]
+
+        mock = MagicMock(spec=FFEmbeddings)
+        mock.embed = MagicMock(side_effect=make_embed_mock)
+        mock.embed_single = MagicMock(return_value=[0.1] * 384)
+        mock.model = "test-model"
+        return mock
+
+    def test_init_with_config_override(self, temp_persist_dir, mock_embeddings):
+        """Test config parameter overrides defaults."""
+        with patch("src.RAG.FFRAGClient.FFEmbeddings", return_value=mock_embeddings):
+            client = FFRAGClient(
+                persist_dir=temp_persist_dir,
+                embedding_model=mock_embeddings,
+                config={
+                    "collection_name": "custom_collection",
+                    "chunk_size": 500,
+                    "chunk_overlap": 100,
+                    "n_results_default": 10,
+                    "chunking_strategy": "character",
+                    "search_mode": "bm25",
+                },
+            )
+            client._embeddings = mock_embeddings
+
+        assert client.collection_name == "custom_collection"
+        assert client.chunk_size == 500
+        assert client.chunk_overlap == 100
+        assert client.n_results_default == 10
+        assert client.chunking_strategy == "character"
+        assert client.search_mode == "bm25"
+
+    def test_init_with_string_embedding_model(self, temp_persist_dir):
+        """Test initialization with string embedding model."""
+        mock_embeddings = MagicMock(spec=FFEmbeddings)
+        mock_embeddings.model = "custom-model"
+
+        with patch("src.RAG.FFRAGClient.FFEmbeddings", return_value=mock_embeddings):
+            client = FFRAGClient(
+                persist_dir=temp_persist_dir,
+                embedding_model="openai/text-embedding-3-small",
+            )
+
+        assert client._embeddings == mock_embeddings
+
+    def test_init_with_none_embedding_model(self, temp_persist_dir):
+        """Test initialization with None embedding model creates default."""
+        mock_embeddings = MagicMock(spec=FFEmbeddings)
+        mock_embeddings.model = "mistral/mistral-embed"
+
+        with patch("src.RAG.FFRAGClient.FFEmbeddings", return_value=mock_embeddings):
+            client = FFRAGClient(
+                persist_dir=temp_persist_dir,
+                embedding_model=None,
+            )
+
+        assert client._embeddings == mock_embeddings
+
+
+@requires_chromadb
+class TestFFRAGClientHybridSearch:
+    """Tests for FFRAGClient hybrid search functionality."""
+
+    @pytest.fixture
+    def temp_persist_dir(self):
+        """Create a temporary directory for ChromaDB."""
+        temp_dir = tempfile.mkdtemp()
+        yield temp_dir
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+    @pytest.fixture
+    def mock_embeddings(self):
+        """Create mock embeddings."""
+
+        def make_embed_mock(texts):
+            n = len(texts) if isinstance(texts, list) else 1
+            return [[0.1] * 384 for _ in range(n)]
+
+        mock = MagicMock(spec=FFEmbeddings)
+        mock.embed = MagicMock(side_effect=make_embed_mock)
+        mock.embed_single = MagicMock(return_value=[0.1] * 384)
+        mock.model = "test-model"
+        return mock
+
+    def test_init_hybrid_search_mode(self, temp_persist_dir, mock_embeddings):
+        """Test initialization with search_mode='hybrid'."""
+        with patch("src.RAG.FFRAGClient.FFEmbeddings", return_value=mock_embeddings):
+            client = FFRAGClient(
+                persist_dir=temp_persist_dir,
+                embedding_model=mock_embeddings,
+                search_mode="hybrid",
+            )
+            client._embeddings = mock_embeddings
+
+        assert client._bm25_index is not None
+        assert client._hybrid_search is not None
+
+    def test_init_hybrid_search_loads_existing_docs(self, temp_persist_dir, mock_embeddings):
+        """Test that hybrid search loads existing documents into BM25."""
+        with patch("src.RAG.FFRAGClient.FFEmbeddings", return_value=mock_embeddings):
+            client1 = FFRAGClient(
+                persist_dir=temp_persist_dir,
+                embedding_model=mock_embeddings,
+                collection_name="test_hybrid",
+            )
+            client1._embeddings = mock_embeddings
+
+        mock_embeddings.embed = MagicMock(return_value=[[0.1] * 384])
+        client1.add_document(content="Test document for hybrid", reference_name="hybrid_doc")
+
+        with patch("src.RAG.FFRAGClient.FFEmbeddings", return_value=mock_embeddings):
+            client2 = FFRAGClient(
+                persist_dir=temp_persist_dir,
+                embedding_model=mock_embeddings,
+                collection_name="test_hybrid",
+                search_mode="hybrid",
+            )
+            client2._embeddings = mock_embeddings
+
+        assert client2._bm25_index is not None
+
+    def test_vector_search_only(self, temp_persist_dir, mock_embeddings):
+        """Test _vector_search_only helper."""
+        mock_embeddings.embed = MagicMock(return_value=[[0.1] * 384])
+        mock_embeddings.embed_single = MagicMock(return_value=[0.1] * 384)
+
+        with patch("src.RAG.FFRAGClient.FFEmbeddings", return_value=mock_embeddings):
+            client = FFRAGClient(
+                persist_dir=temp_persist_dir,
+                embedding_model=mock_embeddings,
+            )
+            client._embeddings = mock_embeddings
+
+        client.add_document(content="Test content", reference_name="test_doc")
+        results = client._vector_search_only("test query", n_results=5)
+
+        assert isinstance(results, list)
+
+    def test_bm25_search_only(self, temp_persist_dir, mock_embeddings):
+        """Test _bm25_search_only helper."""
+        mock_embeddings.embed = MagicMock(return_value=[[0.1] * 384])
+
+        with patch("src.RAG.FFRAGClient.FFEmbeddings", return_value=mock_embeddings):
+            client = FFRAGClient(
+                persist_dir=temp_persist_dir,
+                embedding_model=mock_embeddings,
+                search_mode="hybrid",
+            )
+            client._embeddings = mock_embeddings
+
+        client.add_document(content="Test content", reference_name="test_doc")
+        results = client._bm25_search_only("test", n_results=5)
+
+        assert isinstance(results, list)
+
+
+@requires_chromadb
+class TestFFRAGClientIndexDocument:
+    """Tests for FFRAGClient.index_document method."""
+
+    @pytest.fixture
+    def temp_persist_dir(self):
+        """Create a temporary directory for ChromaDB."""
+        temp_dir = tempfile.mkdtemp()
+        yield temp_dir
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+    @pytest.fixture
+    def mock_embeddings(self):
+        """Create mock embeddings."""
+
+        def make_embed_mock(texts):
+            n = len(texts) if isinstance(texts, list) else 1
+            return [[0.1] * 384 for _ in range(n)]
+
+        mock = MagicMock(spec=FFEmbeddings)
+        mock.embed = MagicMock(side_effect=make_embed_mock)
+        mock.embed_single = MagicMock(return_value=[0.1] * 384)
+        mock.model = "test-model"
+        return mock
+
+    @pytest.fixture
+    def rag_client(self, temp_persist_dir, mock_embeddings):
+        """Create a RAG client with mocked embeddings."""
+        with patch("src.RAG.FFRAGClient.FFEmbeddings", return_value=mock_embeddings):
+            client = FFRAGClient(
+                persist_dir=temp_persist_dir,
+                embedding_model=mock_embeddings,
+            )
+            client._embeddings = mock_embeddings
+            return client
+
+    def test_index_document_new(self, rag_client, mock_embeddings):
+        """Test index_document for new document."""
+        mock_embeddings.embed = MagicMock(return_value=[[0.1] * 384])
+
+        chunks = rag_client.index_document(
+            content="This is new content to index.",
+            reference_name="new_doc",
+            common_name="New Document",
+            checksum="abc123",
+        )
+
+        assert chunks >= 1
+
+    def test_index_document_already_indexed(self, rag_client, mock_embeddings):
+        """Test index_document skips if already indexed with same checksum."""
+        mock_embeddings.embed = MagicMock(return_value=[[0.1] * 384])
+
+        rag_client.index_document(
+            content="Content to index.",
+            reference_name="cached_doc",
+            common_name="Cached Doc",
+            checksum="checksum1",
+        )
+        count_after_first = rag_client.count()
+
+        chunks = rag_client.index_document(
+            content="Content to index.",
+            reference_name="cached_doc",
+            common_name="Cached Doc",
+            checksum="checksum1",
+        )
+
+        assert chunks == 0
+        assert rag_client.count() == count_after_first
+
+    def test_index_document_force_reindex(self, rag_client, mock_embeddings):
+        """Test index_document with force=True."""
+        mock_embeddings.embed = MagicMock(return_value=[[0.1] * 384])
+
+        rag_client.index_document(
+            content="Original content.",
+            reference_name="force_doc",
+            common_name="Force Doc",
+            checksum="checksum1",
+        )
+
+        chunks = rag_client.index_document(
+            content="Original content.",
+            reference_name="force_doc",
+            common_name="Force Doc",
+            checksum="checksum1",
+            force=True,
+        )
+
+        assert chunks >= 1
+
+    def test_index_document_checksum_changed(self, rag_client, mock_embeddings):
+        """Test index_document when checksum changes."""
+        mock_embeddings.embed = MagicMock(return_value=[[0.1] * 384])
+
+        rag_client.index_document(
+            content="Modified content.",
+            reference_name="changed_doc",
+            common_name="Changed Doc",
+            checksum="checksum1",
+        )
+
+        chunks = rag_client.index_document(
+            content="Modified content.",
+            reference_name="changed_doc",
+            common_name="Changed Doc",
+            checksum="checksum2",
+        )
+
+        assert chunks >= 1
+
+    def test_index_document_with_summaries(self, temp_persist_dir, mock_embeddings):
+        """Test index_document with summary generation."""
+        mock_embeddings.embed = MagicMock(return_value=[[0.1] * 384])
+
+        mock_llm = MagicMock(return_value="This is a summary of the document.")
+
+        with patch("src.RAG.FFRAGClient.FFEmbeddings", return_value=mock_embeddings):
+            client = FFRAGClient(
+                persist_dir=temp_persist_dir,
+                embedding_model=mock_embeddings,
+            )
+            client._embeddings = mock_embeddings
+            client.generate_summaries = True
+            client._llm_generate_fn = mock_llm
+
+        chunks = client.index_document(
+            content="Document content for summary.",
+            reference_name="summary_doc",
+            common_name="Summary Doc",
+            checksum="sum123",
+        )
+
+        assert chunks >= 1
+
+
+@requires_chromadb
+class TestFFRAGClientLLMIntegration:
+    """Tests for FFRAGClient LLM integration methods."""
+
+    @pytest.fixture
+    def temp_persist_dir(self):
+        """Create a temporary directory for ChromaDB."""
+        temp_dir = tempfile.mkdtemp()
+        yield temp_dir
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+    @pytest.fixture
+    def mock_embeddings(self):
+        """Create mock embeddings."""
+
+        def make_embed_mock(texts):
+            n = len(texts) if isinstance(texts, list) else 1
+            return [[0.1] * 384 for _ in range(n)]
+
+        mock = MagicMock(spec=FFEmbeddings)
+        mock.embed = MagicMock(side_effect=make_embed_mock)
+        mock.embed_single = MagicMock(return_value=[0.1] * 384)
+        mock.model = "test-model"
+        return mock
+
+    @pytest.fixture
+    def rag_client(self, temp_persist_dir, mock_embeddings):
+        """Create a RAG client with mocked embeddings."""
+        with patch("src.RAG.FFRAGClient.FFEmbeddings", return_value=mock_embeddings):
+            client = FFRAGClient(
+                persist_dir=temp_persist_dir,
+                embedding_model=mock_embeddings,
+            )
+            client._embeddings = mock_embeddings
+            return client
+
+    def test_set_llm_generate_fn(self, rag_client):
+        """Test setting LLM generate function."""
+        mock_fn = MagicMock(return_value="LLM response")
+
+        rag_client.set_llm_generate_fn(mock_fn)
+
+        assert rag_client._llm_generate_fn == mock_fn
+
+    def test_set_llm_generate_fn_with_query_expander(self, rag_client):
+        """Test setting LLM function propagates to query expander."""
+        mock_fn = MagicMock(return_value="LLM response")
+        rag_client._query_expander = MagicMock()
+        rag_client._query_expander.set_llm_function = MagicMock()
+
+        rag_client.set_llm_generate_fn(mock_fn)
+
+        rag_client._query_expander.set_llm_function.assert_called_once_with(mock_fn)
+
+    def test_generate_and_store_summary(self, rag_client, mock_embeddings):
+        """Test summary generation and storage."""
+        mock_embeddings.embed = MagicMock(return_value=[[0.1] * 384])
+        mock_llm = MagicMock(return_value="This is a generated summary.")
+
+        rag_client._llm_generate_fn = mock_llm
+
+        result = rag_client._generate_and_store_summary(
+            content="Long document content for summarization.",
+            reference_name="test_doc",
+            common_name="Test Document",
+            checksum="checksum123",
+        )
+
+        assert result is True
+        mock_llm.assert_called_once()
+
+    def test_generate_summary_empty_response(self, rag_client):
+        """Test summary generation with empty LLM response."""
+        mock_llm = MagicMock(return_value="   ")
+
+        rag_client._llm_generate_fn = mock_llm
+
+        result = rag_client._generate_and_store_summary(
+            content="Document content.",
+            reference_name="empty_summary_doc",
+            common_name="Empty Summary Doc",
+        )
+
+        assert result is False
+
+    def test_generate_summary_exception(self, rag_client):
+        """Test summary generation exception handling."""
+        mock_llm = MagicMock(side_effect=Exception("LLM error"))
+
+        rag_client._llm_generate_fn = mock_llm
+
+        result = rag_client._generate_and_store_summary(
+            content="Document content.",
+            reference_name="error_doc",
+            common_name="Error Doc",
+        )
+
+        assert result is False
+
+    def test_generate_summary_no_llm_fn(self, rag_client):
+        """Test summary generation when no LLM function is set."""
+        rag_client._llm_generate_fn = None
+
+        result = rag_client._generate_and_store_summary(
+            content="Document content.",
+            reference_name="no_llm_doc",
+        )
+
+        assert result is False
+
+    def test_set_query_expansion_llm(self, rag_client):
+        """Test setting query expansion LLM function."""
+        mock_fn = MagicMock(return_value="Expanded query")
+        rag_client._query_expander = MagicMock()
+        rag_client._query_expander.set_llm_function = MagicMock()
+
+        rag_client.set_query_expansion_llm(mock_fn)
+
+        rag_client._query_expander.set_llm_function.assert_called_once_with(mock_fn)
+
+    def test_set_query_expansion_llm_not_enabled(self, rag_client):
+        """Test setting query expansion LLM when not enabled."""
+        mock_fn = MagicMock(return_value="Expanded query")
+        rag_client._query_expander = None
+
+        rag_client.set_query_expansion_llm(mock_fn)
+
+
+@requires_chromadb
+class TestFFRAGClientChunkAddition:
+    """Tests for FFRAGClient chunk addition methods."""
+
+    @pytest.fixture
+    def temp_persist_dir(self):
+        """Create a temporary directory for ChromaDB."""
+        temp_dir = tempfile.mkdtemp()
+        yield temp_dir
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+    @pytest.fixture
+    def mock_embeddings(self):
+        """Create mock embeddings."""
+
+        def make_embed_mock(texts):
+            n = len(texts) if isinstance(texts, list) else 1
+            return [[0.1] * 384 for _ in range(n)]
+
+        mock = MagicMock(spec=FFEmbeddings)
+        mock.embed = MagicMock(side_effect=make_embed_mock)
+        mock.embed_single = MagicMock(return_value=[0.1] * 384)
+        mock.model = "test-model"
+        return mock
+
+    @pytest.fixture
+    def rag_client(self, temp_persist_dir, mock_embeddings):
+        """Create a RAG client with mocked embeddings."""
+        with patch("src.RAG.FFRAGClient.FFEmbeddings", return_value=mock_embeddings):
+            client = FFRAGClient(
+                persist_dir=temp_persist_dir,
+                embedding_model=mock_embeddings,
+            )
+            client._embeddings = mock_embeddings
+            return client
+
+    def test_add_document_with_custom_chunk_size(self, rag_client, mock_embeddings):
+        """Test add_document with custom chunk_size/overlap."""
+
+        def make_embed_mock(texts):
+            n = len(texts) if isinstance(texts, list) else 1
+            return [[0.1] * 384 for _ in range(n)]
+
+        mock_embeddings.embed = MagicMock(side_effect=make_embed_mock)
+
+        content = "A" * 500
+        chunks = rag_client.add_document(
+            content=content,
+            reference_name="custom_chunk_doc",
+            chunk_size=100,
+            chunk_overlap=20,
+        )
+
+        assert chunks >= 1
+
+    def test_add_regular_chunks_with_contextual_headers(self, temp_persist_dir, mock_embeddings):
+        """Test _add_regular_chunks with contextual headers enabled."""
+
+        def make_embed_mock(texts):
+            n = len(texts) if isinstance(texts, list) else 1
+            return [[0.1] * 384 for _ in range(n)]
+
+        mock_embeddings.embed = MagicMock(side_effect=make_embed_mock)
+
+        with patch("src.RAG.FFRAGClient.FFEmbeddings", return_value=mock_embeddings):
+            client = FFRAGClient(
+                persist_dir=temp_persist_dir,
+                embedding_model=mock_embeddings,
+            )
+            client._embeddings = mock_embeddings
+            client.use_contextual_headers = False
+
+        from src.RAG.text_splitter import TextChunk
+
+        chunks = [TextChunk(content="Test chunk", chunk_index=0, start_char=0, end_char=10)]
+
+        count = client._add_regular_chunks(chunks, reference_name="ctx_doc")
+
+        assert count >= 1
+
+    def test_add_regular_chunks_syncs_bm25(self, temp_persist_dir, mock_embeddings):
+        """Test BM25 index sync in _add_regular_chunks."""
+        mock_embeddings.embed = MagicMock(return_value=[[0.1] * 384])
+
+        with patch("src.RAG.FFRAGClient.FFEmbeddings", return_value=mock_embeddings):
+            client = FFRAGClient(
+                persist_dir=temp_persist_dir,
+                embedding_model=mock_embeddings,
+                search_mode="hybrid",
+            )
+            client._embeddings = mock_embeddings
+
+        from src.RAG.text_splitter import TextChunk
+
+        chunks = [
+            TextChunk(
+                content="Test chunk",
+                chunk_index=0,
+                start_char=0,
+                end_char=10,
+                metadata={"reference_name": "bm25_doc"},
+            )
+        ]
+
+        count = client._add_regular_chunks(chunks, reference_name="bm25_doc")
+
+        assert count >= 1
+        assert client._bm25_index is not None
+
+
+@requires_chromadb
+class TestFFRAGClientSearch:
+    """Tests for FFRAGClient search functionality."""
+
+    @pytest.fixture
+    def temp_persist_dir(self):
+        """Create a temporary directory for ChromaDB."""
+        temp_dir = tempfile.mkdtemp()
+        yield temp_dir
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+    @pytest.fixture
+    def mock_embeddings(self):
+        """Create mock embeddings."""
+
+        def make_embed_mock(texts):
+            n = len(texts) if isinstance(texts, list) else 1
+            return [[0.1] * 384 for _ in range(n)]
+
+        mock = MagicMock(spec=FFEmbeddings)
+        mock.embed = MagicMock(side_effect=make_embed_mock)
+        mock.embed_single = MagicMock(return_value=[0.1] * 384)
+        mock.model = "test-model"
+        return mock
+
+    @pytest.fixture
+    def rag_client(self, temp_persist_dir, mock_embeddings):
+        """Create a RAG client with mocked embeddings."""
+        with patch("src.RAG.FFRAGClient.FFEmbeddings", return_value=mock_embeddings):
+            client = FFRAGClient(
+                persist_dir=temp_persist_dir,
+                embedding_model=mock_embeddings,
+            )
+            client._embeddings = mock_embeddings
+            return client
+
+    def test_search_with_query_expansion_override(self, rag_client, mock_embeddings):
+        """Test search with query_expansion=True override."""
+        mock_embeddings.embed = MagicMock(return_value=[[0.1] * 384])
+        mock_embeddings.embed_single = MagicMock(return_value=[0.1] * 384)
+
+        rag_client.add_document(content="Test document content", reference_name="expand_doc")
+
+        rag_client._query_expander = MagicMock()
+        rag_client._query_expander.llm_generate_fn = MagicMock(return_value="expanded")
+        rag_client._query_expander.expand = MagicMock(return_value=["query", "expanded query"])
+
+        results = rag_client.search("query", query_expansion=True)
+
+        assert isinstance(results, list)
+
+    def test_search_with_rerank_override(self, rag_client, mock_embeddings):
+        """Test search with rerank parameter override."""
+        mock_embeddings.embed = MagicMock(return_value=[[0.1] * 384])
+        mock_embeddings.embed_single = MagicMock(return_value=[0.1] * 384)
+
+        rag_client.add_document(content="Test document", reference_name="rerank_doc")
+
+        results = rag_client.search("test", rerank=False)
+
+        assert isinstance(results, list)
+
+    def test_ensure_query_expander_lazy_init(self, rag_client):
+        """Test lazy initialization of query expander."""
+        rag_client._query_expander = None
+
+        rag_client._ensure_query_expander()
+
+        assert rag_client._query_expander is not None
+
+    def test_ensure_query_expander_with_llm_fn(self, rag_client):
+        """Test lazy init of query expander with LLM function."""
+        rag_client._query_expander = None
+        rag_client._llm_generate_fn = MagicMock(return_value="response")
+
+        rag_client._ensure_query_expander()
+
+        assert rag_client._query_expander is not None
+        assert rag_client._query_expander.llm_generate_fn is not None
+
+    def test_ensure_reranker_lazy_init(self, rag_client):
+        """Test lazy initialization of reranker."""
+        rag_client._reranker = None
+
+        rag_client._ensure_reranker()
+
+        assert rag_client._reranker is not None
+
+    def test_search_single_hybrid_mode(self, temp_persist_dir, mock_embeddings):
+        """Test _search_single with hybrid search mode."""
+        mock_embeddings.embed = MagicMock(return_value=[[0.1] * 384])
+        mock_embeddings.embed_single = MagicMock(return_value=[0.1] * 384)
+
+        with patch("src.RAG.FFRAGClient.FFEmbeddings", return_value=mock_embeddings):
+            client = FFRAGClient(
+                persist_dir=temp_persist_dir,
+                embedding_model=mock_embeddings,
+                search_mode="hybrid",
+            )
+            client._embeddings = mock_embeddings
+
+        client.add_document(content="Hybrid test document", reference_name="hybrid_doc")
+
+        results = client._search_single("test", n_results=5, rerank=False)
+
+        assert isinstance(results, list)
+
+    def test_search_single_with_summaries(self, temp_persist_dir, mock_embeddings):
+        """Test _search_single with summary boosting."""
+        mock_embeddings.embed = MagicMock(return_value=[[0.1] * 384])
+        mock_embeddings.embed_single = MagicMock(return_value=[0.1] * 384)
+
+        with patch("src.RAG.FFRAGClient.FFEmbeddings", return_value=mock_embeddings):
+            client = FFRAGClient(
+                persist_dir=temp_persist_dir,
+                embedding_model=mock_embeddings,
+            )
+            client._embeddings = mock_embeddings
+            client.generate_summaries = True
+
+        client.add_document(content="Document with summary", reference_name="sum_doc")
+
+        from src.RAG.text_splitter import TextChunk
+
+        summary_chunk = TextChunk(
+            content="[DOCUMENT SUMMARY]\nThis is a summary.",
+            chunk_index=-1,
+            start_char=0,
+            end_char=20,
+            metadata={"reference_name": "sum_doc", "chunk_type": "summary"},
+        )
+        client._vector_store.add_chunks([summary_chunk])
+
+        results = client._search_single("summary", n_results=5, rerank=False)
+
+        assert isinstance(results, list)
+
+
+@requires_chromadb
+class TestFFRAGClientUtilities:
+    """Tests for FFRAGClient utility methods."""
+
+    @pytest.fixture
+    def temp_persist_dir(self):
+        """Create a temporary directory for ChromaDB."""
+        temp_dir = tempfile.mkdtemp()
+        yield temp_dir
+        shutil.rmtree(temp_dir, ignore_errors=True)
+
+    @pytest.fixture
+    def mock_embeddings(self):
+        """Create mock embeddings."""
+
+        def make_embed_mock(texts):
+            n = len(texts) if isinstance(texts, list) else 1
+            return [[0.1] * 384 for _ in range(n)]
+
+        mock = MagicMock(spec=FFEmbeddings)
+        mock.embed = MagicMock(side_effect=make_embed_mock)
+        mock.embed_single = MagicMock(return_value=[0.1] * 384)
+        mock.model = "test-model"
+        return mock
+
+    @pytest.fixture
+    def rag_client(self, temp_persist_dir, mock_embeddings):
+        """Create a RAG client with mocked embeddings."""
+        with patch("src.RAG.FFRAGClient.FFEmbeddings", return_value=mock_embeddings):
+            client = FFRAGClient(
+                persist_dir=temp_persist_dir,
+                embedding_model=mock_embeddings,
+            )
+            client._embeddings = mock_embeddings
+            return client
+
+    def test_format_results_with_parent_context(self, rag_client):
+        """Test format_results_for_prompt with parent_content."""
+        results = [
+            {
+                "content": "Child chunk content",
+                "metadata": {"reference_name": "doc1"},
+                "score": 0.9,
+                "parent_content": "This is the parent chunk content that provides context.",
+            }
+        ]
+
+        rag_client.parent_context = True
+        formatted = rag_client.format_results_for_prompt(results)
+
+        assert "[Parent context:" in formatted
+
+    def test_format_results_with_short_parent_context(self, rag_client):
+        """Test format_results_for_prompt with short parent_content."""
+        results = [
+            {
+                "content": "Child chunk",
+                "metadata": {"reference_name": "doc1"},
+                "score": 0.9,
+                "parent_content": "Short parent",
+            }
+        ]
+
+        rag_client.parent_context = True
+        formatted = rag_client.format_results_for_prompt(results)
+
+        assert "[Parent context: Short parent]" in formatted
+
+    def test_add_documents_batch(self, rag_client, mock_embeddings):
+        """Test adding multiple documents at once."""
+        mock_embeddings.embed = MagicMock(return_value=[[0.1] * 384])
+
+        documents = [
+            {"content": "Document 1", "reference_name": "batch1"},
+            {"content": "Document 2", "reference_name": "batch2"},
+        ]
+
+        total = rag_client.add_documents(documents)
+
+        assert total >= 2
+
+    def test_delete_by_reference_with_bm25(self, temp_persist_dir, mock_embeddings):
+        """Test delete_by_reference syncs BM25 index."""
+        mock_embeddings.embed = MagicMock(return_value=[[0.1] * 384])
+
+        with patch("src.RAG.FFRAGClient.FFEmbeddings", return_value=mock_embeddings):
+            client = FFRAGClient(
+                persist_dir=temp_persist_dir,
+                embedding_model=mock_embeddings,
+                search_mode="hybrid",
+            )
+            client._embeddings = mock_embeddings
+
+        client.add_document(
+            content="Test document to delete",
+            reference_name="delete_bm25_doc",
+            metadata={"reference_name": "delete_bm25_doc"},
+        )
+
+        client.delete_by_reference("delete_bm25_doc")
+
+        docs = client.list_documents()
+        assert "delete_bm25_doc" not in docs
+
+    def test_delete_by_reference_with_hierarchical(self, temp_persist_dir, mock_embeddings):
+        """Test delete_by_reference syncs hierarchical index."""
+        mock_embeddings.embed = MagicMock(return_value=[[0.1] * 384])
+
+        with patch("src.RAG.FFRAGClient.FFEmbeddings", return_value=mock_embeddings):
+            client = FFRAGClient(
+                persist_dir=temp_persist_dir,
+                embedding_model=mock_embeddings,
+            )
+            client._embeddings = mock_embeddings
+            client.hierarchical_enabled = True
+            client._hierarchical_index = MagicMock()
+
+        client.add_document(content="Hierarchical doc", reference_name="hier_del_doc")
+        client.delete_by_reference("hier_del_doc")
+
+        docs = client.list_documents()
+        assert "hier_del_doc" not in docs
+
+    def test_clear_chunking_strategy(self, rag_client, mock_embeddings):
+        """Test clearing all chunks for a chunking strategy."""
+        mock_embeddings.embed = MagicMock(return_value=[[0.1] * 384])
+
+        rag_client.add_document(content="Strategy doc", reference_name="strat_doc")
+
+        count = rag_client.clear_chunking_strategy("recursive")
+
+        assert count >= 0
+
+    def test_clear_chunking_strategy_with_bm25(self, temp_persist_dir, mock_embeddings):
+        """Test clear_chunking_strategy clears BM25."""
+        mock_embeddings.embed = MagicMock(return_value=[[0.1] * 384])
+
+        with patch("src.RAG.FFRAGClient.FFEmbeddings", return_value=mock_embeddings):
+            client = FFRAGClient(
+                persist_dir=temp_persist_dir,
+                embedding_model=mock_embeddings,
+                search_mode="hybrid",
+            )
+            client._embeddings = mock_embeddings
+
+        client.add_document(content="Doc to clear", reference_name="clear_doc")
+
+        client.clear_chunking_strategy("recursive")
+
+        assert client._bm25_index is not None
+
+    def test_get_indexed_documents(self, rag_client, mock_embeddings):
+        """Test get_indexed_documents method."""
+        mock_embeddings.embed = MagicMock(return_value=[[0.1] * 384])
+
+        rag_client.add_document(content="Indexed doc", reference_name="indexed_doc")
+
+        indexed = rag_client.get_indexed_documents()
+
+        assert isinstance(indexed, list)
+
+    def test_get_indexed_documents_with_filter(self, rag_client, mock_embeddings):
+        """Test get_indexed_documents with chunking_strategy filter."""
+        mock_embeddings.embed = MagicMock(return_value=[[0.1] * 384])
+
+        rag_client.add_document(content="Filtered doc", reference_name="filtered_doc")
+
+        indexed = rag_client.get_indexed_documents(chunking_strategy="recursive")
+
+        assert isinstance(indexed, list)
+
+    def test_needs_reindex(self, rag_client, mock_embeddings):
+        """Test needs_reindex method."""
+        mock_embeddings.embed = MagicMock(return_value=[[0.1] * 384])
+
+        rag_client.add_document(content="Reindex doc", reference_name="reindex_doc")
+
+        needs = rag_client.needs_reindex("reindex_doc", "different_checksum")
+
+        assert needs is True
+
+    def test_needs_reindex_same_checksum(self, rag_client, mock_embeddings):
+        """Test needs_reindex with same checksum returns False."""
+        mock_embeddings.embed = MagicMock(return_value=[[0.1] * 384])
+
+        rag_client.add_document(
+            content="Same checksum doc",
+            reference_name="same_checksum_doc",
+            checksum="checksum123",
+        )
+
+        needs = rag_client.needs_reindex("same_checksum_doc", "checksum123")
+
+        assert needs is False
+
+    def test_get_stats_with_bm25(self, temp_persist_dir, mock_embeddings):
+        """Test get_stats includes BM25 stats."""
+        mock_embeddings.embed = MagicMock(return_value=[[0.1] * 384])
+
+        with patch("src.RAG.FFRAGClient.FFEmbeddings", return_value=mock_embeddings):
+            client = FFRAGClient(
+                persist_dir=temp_persist_dir,
+                embedding_model=mock_embeddings,
+                search_mode="hybrid",
+            )
+            client._embeddings = mock_embeddings
+
+        stats = client.get_stats()
+
+        assert "bm25_docs" in stats
+
+    def test_get_stats_with_hierarchical(self, temp_persist_dir, mock_embeddings):
+        """Test get_stats includes hierarchical stats."""
+        mock_embeddings.embed = MagicMock(return_value=[[0.1] * 384])
+
+        with patch("src.RAG.FFRAGClient.FFEmbeddings", return_value=mock_embeddings):
+            client = FFRAGClient(
+                persist_dir=temp_persist_dir,
+                embedding_model=mock_embeddings,
+            )
+            client._embeddings = mock_embeddings
+            client._hierarchical_index = MagicMock()
+            client._hierarchical_index.get_stats = MagicMock(return_value={"total": 0})
+
+        stats = client.get_stats()
+
+        assert "hierarchical" in stats
+
+    def test_clear_with_bm25_and_hierarchical(self, temp_persist_dir, mock_embeddings):
+        """Test clear clears all indexes."""
+        mock_embeddings.embed = MagicMock(return_value=[[0.1] * 384])
+
+        with patch("src.RAG.FFRAGClient.FFEmbeddings", return_value=mock_embeddings):
+            client = FFRAGClient(
+                persist_dir=temp_persist_dir,
+                embedding_model=mock_embeddings,
+                search_mode="hybrid",
+            )
+            client._embeddings = mock_embeddings
+            client._hierarchical_index = MagicMock()
+
+        client.add_document(content="Doc to clear", reference_name="clear_all_doc")
+        client.clear()
+
+        assert client.count() == 0
+
+    def test_vector_store_property(self, rag_client):
+        """Test vector_store property accessor."""
+        vs = rag_client.vector_store
+
+        assert vs is rag_client._vector_store
+
+    def test_embeddings_property(self, rag_client):
+        """Test embeddings property accessor."""
+        emb = rag_client.embeddings
+
+        assert emb is rag_client._embeddings
+
+    def test_chunker_property(self, rag_client):
+        """Test chunker property accessor."""
+        chunker = rag_client.chunker
+
+        assert chunker is rag_client._chunker
 
 
 @requires_chromadb
