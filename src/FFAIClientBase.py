@@ -14,12 +14,13 @@ logger = logging.getLogger(__name__)
 class FFAIClientBase(ABC):
     """Abstract base class defining the contract for AI client implementations.
 
-    All AI provider clients (Mistral, Anthropic, OpenAI, etc.) must inherit
-    from this class and implement its abstract methods.
+    from __future__ import annotations
+        All AI provider clients (Mistral, Anthropic, OpenAI, etc.) must inherit
+        from this class and implement its abstract methods.
 
-    Attributes:
-        model: The model identifier string.
-        system_instructions: System prompt/instructions for the AI.
+        Attributes:
+            model: The model identifier string.
+            system_instructions: System prompt/instructions for the AI.
 
     """
 
