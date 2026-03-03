@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: MIT
 # Contact: antquinonez@farfiner.com
 
+from __future__ import annotations
+
 import logging
 import os
 
@@ -148,7 +150,7 @@ class FFAnthropic:
         """Set the conversation history."""
         self.conversation_history = history
 
-    def clone(self) -> "FFAnthropic":
+    def clone(self) -> FFAnthropic:
         """Create a fresh clone of this client with empty history."""
         return FFAnthropic(
             api_key=self.api_key,

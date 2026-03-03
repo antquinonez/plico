@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: MIT
 # Contact: antquinonez@farfiner.com
 
+from __future__ import annotations
+
 import json
 import logging
 import os
@@ -94,7 +96,7 @@ class FFMistral(FFAIClientBase):
         """Set the conversation history."""
         self.conversation_history = history
 
-    def clone(self) -> "FFMistral":
+    def clone(self) -> FFMistral:
         """Create a fresh clone of this client with empty history."""
         return FFMistral(
             api_key=self.api_key,

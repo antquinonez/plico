@@ -8,6 +8,8 @@ Provides lazy instantiation and configuration of AI clients based on
 definitions in the workbook's 'clients' sheet and the config system.
 """
 
+from __future__ import annotations
+
 import importlib
 import logging
 from typing import Any

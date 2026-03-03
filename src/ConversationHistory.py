@@ -3,6 +3,9 @@
 # Contact: antquinonez@farfiner.com
 
 
+from __future__ import annotations
+
+
 class ConversationHistory:
     def __init__(self):
         self.turns = []

@@ -8,6 +8,8 @@ Uses AST parsing to safely evaluate conditions without eval()/exec(),
 supporting comparisons, boolean logic, function calls, and method access.
 """
 
+from __future__ import annotations
+
 import ast
 import json
 import logging
