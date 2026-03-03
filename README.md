@@ -2,7 +2,7 @@
 
 **Declarative AI orchestration. One manifest protocol. Three authoring paths: Excel, Python, or AI.**
 
-[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/) *(3.13 required for RAG)*
+[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/) *(3.14 incompatible with RAG due to ChromaDB dependency on pydantic 1.0)*
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ---
@@ -64,7 +64,7 @@ Same manifest. Same execution engine. Same audit trail.
 +------------------------------------------------+------------------------------------------------+
                                                  v
 +--------------------------------------------------------------------------------------------------+
-|                                        EXECUTION LAYER                                            |
+|                                        EXECUTION LAYER                                           |
 |                                                                                                  |
 |                                        ManifestOrchestrator                                      |
 |                                               |                                                  |
