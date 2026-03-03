@@ -49,7 +49,7 @@ dev = [
 testpaths = ["tests"]
 python_files = ["test_*.py"]
 python_functions = ["test_*"]
-addopts = "-v --tb=short"
+addopts = "-v --tb=short -m 'not integration'"
 markers = [
     "llamaparse: tests requiring LlamaParse API access",
     "integration: tests requiring real API keys",
