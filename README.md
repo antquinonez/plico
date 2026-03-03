@@ -187,7 +187,7 @@ prompts:
 ### Installation
 
 ```bash
-git clone https://github.com/farfiner/plico.git
+git clone https://github.com/antquinonez/plico.git
 cd plico
 pip install -e ".[dev]"
 ```
