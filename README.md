@@ -746,26 +746,26 @@ client = FFLiteLLMClient(
 
 ```
 +--------------------------------------------------------------------------------------------------+
-|                                        AUTHORING LAYER                                            |
+|                                        AUTHORING LAYER                                           |
 |                                                                                                  |
-|   Excel Workbook              Python Script              AI Agent                                 |
-|   (human visual)              (programmatic)             (autonomous)                             |
+|   Excel Workbook              Python Script              AI Agent                                |
+|   (human visual)              (programmatic)             (autonomous)                            |
 |                                                                                                  |
 +------------------------------------------------+-------------------------------------------------+
                                                  |
                                                  v
 +--------------------------------------------------------------------------------------------------+
-|                                        MANIFEST LAYER                                             |
+|                                        MANIFEST LAYER                                            |
 |                                                                                                  |
 |   YAML Manifest (manifest.yaml, config.yaml, prompts.yaml, ...)                                  |
 |                                                                                                  |
-|   <-- Git versioned -->    <-- AI readable -->    <-- AI writable -->                           |
+|   <-- Git versioned -->    <-- AI readable -->    <-- AI writable -->                            |
 |                                                                                                  |
 +------------------------------------------------+-------------------------------------------------+
                                                  |
                                                  v
 +--------------------------------------------------------------------------------------------------+
-|                                        EXECUTION LAYER                                            |
+|                                        EXECUTION LAYER                                           |
 |                                                                                                  |
 |   ManifestOrchestrator                                                                           |
 |   +-- Dependency DAG construction                                                                |
@@ -778,7 +778,7 @@ client = FFLiteLLMClient(
                                                  |
                                                  v
 +--------------------------------------------------------------------------------------------------+
-|                                        CLIENT LAYER                                               |
+|                                        CLIENT LAYER                                              |
 |                                                                                                  |
 |   FFAIClientBase (ABC)                                                                           |
 |   +-- FFLiteLLMClient (100+ providers via LiteLLM)                                               |
@@ -789,7 +789,7 @@ client = FFLiteLLMClient(
                                                  |
                                                  v
 +--------------------------------------------------------------------------------------------------+
-|                                        OUTPUT LAYER                                               |
+|                                        OUTPUT LAYER                                              |
 |                                                                                                  |
 |   Timestamped Parquet (analytics-ready)                                                          |
 |   <-- AI can analyze -->    <-- AI can iterate -->                                               |
