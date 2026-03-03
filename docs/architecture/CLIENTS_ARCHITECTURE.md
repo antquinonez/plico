@@ -16,24 +16,30 @@ The Client Wrappers subsystem provides a unified interface to multiple AI provid
 ```
                     FFAIClientBase (ABC)
                            │
-           ┌───────────────┼───────────────┐
-           │               │               │
-           ▼               ▼               ▼
-    ┌─────────────┐ ┌───────────┐ ┌─────────────┐
-    │  FFMistral  │ │FFAnthropic│ │FFOpenAI     │ ...
-    │FFMistralSmall│ │          │ │Assistant    │
-    └─────────────┘ └───────────┘ └─────────────┘
-           │
-           ▼
-    FFAzureClientBase (ABC)
-           │
-     ┌─────┴─────┬─────────────┬──────────────┐
-     │           │             │              │
-     ▼           ▼             ▼              ▼
-┌──────────┐┌──────────┐┌───────────┐┌────────────┐
-│FFAzure   ││FFAzure   ││FFAzure    ││FFAzurePhi  │
-│Mistral   ││Codestral ││DeepSeekV3 ││            │
-└──────────┘└──────────┘└───────────┘└────────────┘
+           ┌───────────────┼───────────────┬──────────────┐
+           │               │               │              │
+           ▼               ▼               ▼              ▼
+    ┌─────────────┐ ┌───────────┐ ┌─────────────┐ ┌──────────────┐
+    │  FFMistral  │ │FFAnthropic│ │ FFGemini    │ │FFNvidiaDeepSeek│
+    │FFMistralSmall│ │FFAnthropic│ │FFPerplexity │ │FFOpenAIAssistant│
+    └─────────────┘ │  Cached   │ └─────────────┘ └──────────────┘
+                    └───────────┘
+    ┌─────────────────┐
+    │ FFLiteLLMClient │
+    │ (Universal)     │
+    └─────────────────┘
+
+                    FFAzureClientBase (ABC)
+                    [Implements FFAIClientBase interface]
+                           │
+     ┌───────┬───────┬─────┴─────┬───────────┬────────────┬──────────┐
+     │       │       │           │           │            │          │
+     ▼       ▼       ▼           ▼           ▼            ▼          ▼
+ ┌───────┐┌───────┐┌───────┐┌──────────┐┌───────────┐┌─────────┐┌──────┐
+ │FFAzure││FFAzure││FFAzure││FFAzure   ││FFAzure    ││FFAzure  ││FFAzure│
+ │Mistral││Mistral││Code-  ││DeepSeek  ││DeepSeekV3 ││MSDeep   ││Phi   │
+ │       ││Small  ││stral  ││          ││           ││SeekR1   ││      │
+ └───────┘└───────┘└───────┘└──────────┘└───────────┘└─────────┘└──────┘
 ```
 
 ## FFAIClientBase Contract
@@ -191,10 +197,10 @@ client = create_azure_client(
 
 ## FFAzureClientBase Design
 
-Azure clients share significant common code. `FFAzureClientBase` is an ABC that inherits from `FFAIClientBase` and provides:
+Azure clients share significant common code. `FFAzureClientBase` is an ABC that inherits directly from `ABC` (not `FFAIClientBase`) but implements the same interface contract:
 
 ```python
-class FFAzureClientBase(FFAIClientBase):
+class FFAzureClientBase(ABC):
     """Base class for Azure AI Inference clients."""
 
     # Abstract properties for configuration
@@ -218,10 +224,15 @@ class FFAzureClientBase(FFAIClientBase):
     @abstractmethod
     def _env_key_prefix(self) -> str: pass  # e.g., "AZURE_MISTRAL"
 
-    # Common implementation
+    # Common implementation (implements FFAIClientBase interface)
     def generate_response(self, prompt, **kwargs) -> str:
         # Full implementation shared by all Azure clients
         ...
+
+    def clear_conversation(self) -> None: ...
+    def get_conversation_history(self) -> list: ...
+    def set_conversation_history(self, history: list) -> None: ...
+    # Note: clone() not implemented - Azure clients have their own parallel execution strategy
 ```
 
 ### Concrete Azure Client Example

@@ -85,7 +85,7 @@ Plico is a declarative context handling API wrapper for AI models with Excel-bas
 - `FFAIClientBase` - Abstract base class defining the contract
 - `FFLiteLLMClient` - Universal client supporting 100+ providers via LiteLLM (recommended)
 - `FFMistral`, `FFAnthropic`, `FFPerplexity`, etc. - Provider-specific implementations
-- `FFAzureClientBase` - Azure-specific base class (inherits from FFAIClientBase)
+- `FFAzureClientBase` - Azure-specific base class (implements FFAIClientBase interface, inherits from ABC)
 - `FFAzureLiteLLM` - Factory for creating Azure LiteLLM clients
 
 **Features:**
