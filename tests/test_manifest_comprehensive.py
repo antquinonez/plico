@@ -156,6 +156,7 @@ class TestManifestOrchestratorClientRegistry:
         assert ffai is not None
         assert ffai.client is not mock_ffmistralsmall
 
+    @pytest.mark.integration
     def test_get_isolated_ffai_named(self, tmp_path, mock_ffmistralsmall):
         """Test _get_isolated_ffai gets named client from registry."""
         from src.orchestrator.manifest import ManifestOrchestrator
@@ -714,6 +715,7 @@ class TestManifestOrchestratorExecute:
         assert result["status"] == "skipped"
         assert result["attempts"] == 0
 
+    @pytest.mark.integration
     def test_execute_with_client_name(self, tmp_path, mock_ffmistralsmall):
         """Test _execute_prompt uses named client."""
         from src.orchestrator.manifest import ManifestOrchestrator

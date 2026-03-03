@@ -1,4 +1,4 @@
-# uv pip install -r requirements.txt  
+# uv pip install -r requirements.txt
 mistralai
 
 duckdb
@@ -11,4 +11,3 @@ python-dotenv
 nest_asyncio
 matplotlib
 openpyxl
-
