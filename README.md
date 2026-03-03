@@ -963,4 +963,4 @@ Antonio Quinonez — [antquinonez@farfiner.com](mailto:antquinonez@farfiner.com)
 
 ---
 
-**Plico** — Declarative AI orchestration. One manifest protocol. Three authoring paths: Excel, Python, or AI.
+**Plico** — Declarative AI orchestration. One manifest protocol. Three authoring paths: Excel, Python, or AI
