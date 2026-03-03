@@ -9,6 +9,8 @@ and adds declarative context management, history tracking, and DataFrame
 export capabilities.
 """
 
+from __future__ import annotations
+
 import json
 import logging
 import os
@@ -31,7 +33,7 @@ def auto_persist(method: Callable[..., pl.DataFrame]) -> Callable[..., pl.DataFr
     """Persist DataFrame after method execution if auto_persist is enabled."""
 
     @wraps(method)
-    def wrapper(self: "FFAI", *args: Any, **kwargs: Any) -> pl.DataFrame:  # noqa: ANN401
+    def wrapper(self: FFAI, *args: Any, **kwargs: Any) -> pl.DataFrame:  # noqa: ANN401
         df = method(self, *args, **kwargs)
         if self.auto_persist and self.persist_name and not df.is_empty():
             file_path = os.path.join(

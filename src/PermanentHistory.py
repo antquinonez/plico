@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: MIT
 # Contact: antquinonez@farfiner.com
 
+from __future__ import annotations
+
 import time
 from copy import deepcopy
 
