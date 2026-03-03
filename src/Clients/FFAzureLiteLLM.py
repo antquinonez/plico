@@ -9,6 +9,8 @@ environment-based configuration, maintaining backward compatibility
 with existing FFAzure* client patterns.
 """
 
+from __future__ import annotations
+
 import logging
 import os
 from typing import Any

@@ -12,6 +12,8 @@ function while maintaining full compatibility with FFClients' architecture inclu
 - Support for fallbacks and retries
 """
 
+from __future__ import annotations
+
 import copy
 import logging
 import os
@@ -289,7 +291,7 @@ class FFLiteLLMClient(FFAIClientBase):
         self.conversation_history = list(history)
         logger.debug(f"Set conversation history with {len(history)} messages")
 
-    def clone(self) -> "FFLiteLLMClient":
+    def clone(self) -> FFLiteLLMClient:
         """Create a fresh clone of this client with empty history.
 
         Used for thread-safe parallel execution where each thread

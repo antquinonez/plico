@@ -9,6 +9,8 @@ interactions with named prompt references, enabling declarative context
 assembly in the FFAI wrapper.
 """
 
+from __future__ import annotations
+
 import logging
 import re
 import time
@@ -245,7 +247,7 @@ class OrderedPromptHistory:
         interactions = self.prompt_dict.get(prompt_name, [])
         return deepcopy([i for i in interactions if i.model == model])
 
-    def merge_histories(self, other: "OrderedPromptHistory") -> None:
+    def merge_histories(self, other: OrderedPromptHistory) -> None:
         """Merge another OrderedPromptHistory into this one.
 
         Args:
