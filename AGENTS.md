@@ -299,6 +299,119 @@ rag:
     rerank: false
 ```
 
+## Rate Limiting and Retries
+
+The FFClients library implements a **layered retry strategy** to handle transient failures like rate limits (429 errors), service unavailability (503), and network issues.
+
+### Architecture
+
+The retry system operates at two layers:
+
+1. **LiteLLM Layer** (FFLiteLLMClient): Uses LiteLLM's built-in retry mechanism
+2. **Client Layer** (All clients): Uses tenacity decorators for exponential backoff with jitter
+
+### Configuration
+
+Configure retry behavior globally in `config/main.yaml`:
+
+```yaml
+retry:
+  max_attempts: 3              # Maximum retry attempts
+  min_wait_seconds: 1          # Minimum initial wait time
+  max_wait_seconds: 60         # Maximum wait time cap
+  exponential_base: 2          # Backoff multiplier (2x each retry)
+  exponential_jitter: true     # Add randomness to prevent thundering herd
+  retry_on_status_codes:       # HTTP codes to retry
+    - 429                      # Rate limit
+    - 503                      # Service unavailable
+    - 502                      # Bad gateway
+    - 504                      # Gateway timeout
+  log_level: "INFO"            # Logging level for retry attempts
+```
+
+### Retry Behavior
+
+When a rate limit or transient error occurs:
+
+1. **Detection**: Client detects retryable error (429, 503, network timeout)
+2. **Extraction**: Parses `retry-after` header if present
+3. **Backoff**: Waits with exponential backoff + jitter
+4. **Retry**: Retries the API call up to `max_attempts`
+5. **Logging**: Logs each retry attempt with delay duration
+
+Example log output:
+```
+INFO - Retrying generate_response for FFMistralSmall (attempt 2/3) after 2.5s delay
+WARNING - Rate limit hit for gemini/gemini-2.5-flash-lite. Retry after 53.8s
+```
+
+### Wait Time Calculation
+
+With default settings:
+- Attempt 1: Immediate
+- Attempt 2: Wait ~2s (1 × 2^1 + jitter)
+- Attempt 3: Wait ~4s (1 × 2^2 + jitter)
+
+If the API provides a `retry-after` header, that value is used instead.
+
+### Client-Specific Behavior
+
+**LiteLLM Clients** (FFLiteLLMClient):
+- Uses LiteLLM's native `num_retries` configuration
+- Automatic retry on 429, 503, 502, 504 status codes
+- Respects `retry-after` headers from providers
+
+**Native Clients** (FFMistralSmall, FFAnthropic, FFGemini, etc.):
+- Tenacity decorator with exponential backoff
+- Converts provider-specific rate limit errors to `RateLimitError`
+- Shared retry configuration across all native clients
+
+### Best Practices
+
+1. **Start with defaults**: The default config (3 retries, 1-60s backoff) works for most APIs
+2. **Adjust for rate limits**: Increase `max_attempts` to 5 for heavily rate-limited APIs
+3. **Monitor logs**: Check `logs/orchestrator.log` for retry patterns
+4. **Reduce concurrency**: If seeing many 429s, lower `--concurrency` flag
+5. **Respect quotas**: Free tier APIs often have 10-60 requests/minute limits
+
+### Example: Handling Gemini Rate Limits
+
+```bash
+# Gemini free tier: 10 requests/minute
+# With 31 prompts, expect rate limits
+
+# Option 1: Lower concurrency
+python scripts/run_orchestrator.py workbook.xlsx --concurrency 1
+
+# Option 2: Increase retries (edit config/main.yaml)
+retry:
+  max_attempts: 5
+  min_wait_seconds: 2
+  max_wait_seconds: 120
+
+# Option 3: Use LiteLLM client (has built-in retry)
+# In workbook config sheet:
+# client_type: litellm-gemini
+```
+
+### Troubleshooting
+
+**Problem**: Still seeing 429 errors
+- Check `retry.max_attempts` in config
+- Verify logs show retry attempts
+- Reduce concurrency to 1
+- Wait 60s between runs (resets quota)
+
+**Problem**: Retries taking too long
+- Lower `max_wait_seconds`
+- Reduce `max_attempts`
+- Check if `retry-after` header is very long
+
+**Problem**: No retry logging
+- Verify `log_level` is set to "INFO"
+- Check that `src.retry_utils` is imported
+- Ensure client has retry decorator
+
 ## Manifest Workflow
 
 The manifest workflow separates workbook parsing from execution, enabling version control of prompts.

@@ -58,6 +58,7 @@ def _load_all_configs() -> dict[str, Any]:
         "paths": _load_yaml_file("paths.yaml").get("paths", {}),
         "workbook": _load_yaml_file("main.yaml").get("workbook", {}),
         "orchestrator": _load_yaml_file("main.yaml").get("orchestrator", {}),
+        "retry": _load_yaml_file("main.yaml").get("retry", {}),
         "document_processor": _load_yaml_file("main.yaml").get("document_processor", {}),
         "rag": _load_yaml_file("main.yaml").get("rag", {}),
         "clients": clients_yaml,
@@ -151,6 +152,18 @@ class OrchestratorConfig(BaseSettings):
 
     default_concurrency: int = 2
     max_concurrency: int = 10
+
+
+class RetryConfig(BaseSettings):
+    """Retry configuration for API calls."""
+
+    max_attempts: int = 3
+    min_wait_seconds: float = 1.0
+    max_wait_seconds: float = 60.0
+    exponential_base: float = 2.0
+    exponential_jitter: bool = True
+    retry_on_status_codes: list[int] = Field(default_factory=lambda: [429, 503, 502, 504])
+    log_level: str = "INFO"
 
 
 class DocumentProcessorConfig(BaseSettings):
@@ -385,6 +398,7 @@ class Config(BaseSettings):
     paths: PathsConfig = Field(default_factory=PathsConfig)
     workbook: WorkbookConfig = Field(default_factory=WorkbookConfig)
     orchestrator: OrchestratorConfig = Field(default_factory=OrchestratorConfig)
+    retry: RetryConfig = Field(default_factory=RetryConfig)
     document_processor: DocumentProcessorConfig = Field(default_factory=DocumentProcessorConfig)
     rag: RAGConfig = Field(default_factory=RAGConfig)
     clients: ClientsConfig = Field(default_factory=ClientsConfig)
