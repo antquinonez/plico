@@ -76,6 +76,16 @@ def setup_logging(quiet: bool = False, verbose: bool = False):
         console_handler.setFormatter(logging.Formatter(log_config.format))
         root_logger.addHandler(console_handler)
 
+    # Suppress LiteLLM's verbose logging in quiet mode
+    if quiet:
+        litellm_logger = logging.getLogger("LiteLLM")
+        litellm_logger.setLevel(logging.WARNING)
+        litellm_logger.propagate = False
+    else:
+        # In non-quiet mode, set LiteLLM to WARNING to reduce noise
+        litellm_logger = logging.getLogger("LiteLLM")
+        litellm_logger.setLevel(logging.WARNING)
+
     return logging.getLogger(__name__)
 
 

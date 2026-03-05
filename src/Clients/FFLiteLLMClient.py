@@ -17,11 +17,17 @@ from __future__ import annotations
 import copy
 import logging
 import os
+import time
 from typing import Any
 
+import litellm
 from litellm import completion
 
 from ..FFAIClientBase import FFAIClientBase
+from ..retry_utils import (
+    extract_retry_after,
+    should_retry_exception,
+)
 from .model_defaults import get_model_defaults
 
 logger = logging.getLogger(__name__)
@@ -83,9 +89,24 @@ class FFLiteLLMClient(FFAIClientBase):
         self._model_string = model_string
         self._config = config or {}
         self._fallbacks = fallbacks or []
-        self._retry_config = retry_config or {"max_retries": 3}
 
         self.model = model_string.split("/", 1)[-1] if "/" in model_string else model_string
+
+        # Get retry config from global config if not provided
+        if retry_config is None:
+            try:
+                from ..config import get_config
+
+                app_config = get_config()
+                retry_settings = getattr(app_config, "retry", None)
+                if retry_settings:
+                    retry_config = {
+                        "max_attempts": getattr(retry_settings, "max_attempts", 3),
+                    }
+            except Exception as e:
+                logger.debug(f"Could not load retry config: {e}")
+
+        self._retry_config = retry_config or {"max_attempts": 3}
 
         self._resolve_settings(
             api_key=api_key,
@@ -96,6 +117,8 @@ class FFLiteLLMClient(FFAIClientBase):
             max_tokens=max_tokens,
             **kwargs,
         )
+
+        self._configure_litellm_retry()
 
         self.conversation_history: list[dict[str, str]] = []
         logger.info(f"Initialized FFLiteLLMClient with model_string={model_string}")
@@ -136,6 +159,52 @@ class FFLiteLLMClient(FFAIClientBase):
 
         self._extra_kwargs = kwargs
 
+    def _configure_litellm_retry(self) -> None:
+        """Configure LiteLLM's built-in retry behavior from global config."""
+        from ..config import get_config
+
+        try:
+            app_config = get_config()
+            retry_settings = getattr(app_config, "retry", None)
+
+            if not retry_settings:
+                retry_settings = type(
+                    "RetryConfig",
+                    (),
+                    {
+                        "max_attempts": 3,
+                        "min_wait_seconds": 1,
+                        "max_wait_seconds": 60,
+                        "exponential_base": 2,
+                        "exponential_jitter": True,
+                    },
+                )()
+
+            max_attempts = getattr(retry_settings, "max_attempts", 3)
+            min_wait = getattr(retry_settings, "min_wait_seconds", 1)
+            max_wait = getattr(retry_settings, "max_wait_seconds", 60)
+
+            litellm.num_retries = max_attempts
+            litellm.retry_on_status_codes = getattr(
+                retry_settings, "retry_on_status_codes", [429, 503, 502, 504]
+            )
+
+            # Suppress LiteLLM's verbose INFO logging
+            litellm_logger = logging.getLogger("LiteLLM")
+            litellm_logger.setLevel(logging.WARNING)
+
+            logger.info(
+                f"Configured LiteLLM retry: max_attempts={max_attempts}, "
+                f"min_wait={min_wait}s, max_wait={max_wait}s"
+            )
+
+        except Exception as e:
+            logger.warning(f"Failed to configure LiteLLM retry from config: {e}")
+            litellm.num_retries = 3
+            # Still suppress LiteLLM logging even if config fails
+            litellm_logger = logging.getLogger("LiteLLM")
+            litellm_logger.setLevel(logging.WARNING)
+
     def _get_env(self, suffix: str) -> str | None:
         """Get environment variable with provider-specific prefix."""
         provider = self._model_string.split("/")[0] if "/" in self._model_string else "openai"
@@ -173,7 +242,7 @@ class FFLiteLLMClient(FFAIClientBase):
         max_tokens: int | None = None,
         **kwargs: Any,
     ) -> str:
-        """Generate a response from the AI model.
+        """Generate a response from the AI model with retry logic.
 
         Args:
             prompt: The user prompt
@@ -227,18 +296,61 @@ class FFLiteLLMClient(FFAIClientBase):
             f"Calling LiteLLM with model={model_string}, temperature={api_params.get('temperature')}"
         )
 
-        try:
-            response = completion(**api_params)
-            assistant_response = response.choices[0].message.content
+        # Get retry configuration
+        retry_config = self._retry_config or {}
+        max_attempts = retry_config.get("max_attempts", 3) if isinstance(retry_config, dict) else 3
 
-            self.conversation_history.append({"role": "assistant", "content": assistant_response})
+        # Retry loop
+        for attempt in range(1, max_attempts + 1):
+            try:
+                response = completion(**api_params)
+                assistant_response = response.choices[0].message.content
 
-            logger.debug(f"Response received: {assistant_response[:100]}...")
-            return assistant_response
+                self.conversation_history.append(
+                    {"role": "assistant", "content": assistant_response}
+                )
 
-        except Exception as e:
-            logger.warning(f"Primary model {model_string} failed: {e}")
-            return self._try_fallbacks(messages, api_params, str(e))
+                logger.debug(f"Response received: {assistant_response[:100]}...")
+                return assistant_response
+
+            except Exception as e:
+                error_str = str(e)
+
+                # Check if we should retry
+                if attempt < max_attempts and should_retry_exception(e):
+                    retry_after = extract_retry_after(e)
+
+                    if retry_after:
+                        wait_time = min(retry_after, 60)  # Cap at 60 seconds
+                        logger.warning(
+                            f"Rate limit hit for {model_string}. "
+                            f"Retrying in {wait_time:.1f}s (attempt {attempt}/{max_attempts})"
+                        )
+                    else:
+                        # Exponential backoff: 1s, 2s, 4s...
+                        wait_time = min(2 ** (attempt - 1), 60)
+                        logger.warning(
+                            f"Transient error for {model_string}. "
+                            f"Retrying in {wait_time:.1f}s (attempt {attempt}/{max_attempts})"
+                        )
+
+                    time.sleep(wait_time)
+                    continue
+
+                # If we get here, either:
+                # 1. This was the last attempt
+                # 2. The error is not retryable
+                # Try fallbacks if available
+                if self._fallbacks:
+                    logger.warning(f"Primary model {model_string} failed, trying fallbacks")
+                    return self._try_fallbacks(messages, api_params, error_str)
+
+                # No fallbacks, raise the error
+                logger.error(f"All retries exhausted for {model_string}: {error_str[:200]}")
+                raise
+
+        # This should never be reached, but just in case
+        raise RuntimeError(f"Unexpected error in retry loop for {model_string}")
 
     def _build_messages(self, system_instructions: str | None = None) -> list[dict[str, str]]:
         """Build messages list for LiteLLM API call."""
