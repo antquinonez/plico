@@ -326,6 +326,29 @@ max_retries: 3
 created_at: "2026-03-01T12:00:00"  # Auto-generated on export
 ```
 
+**Retry Configuration** (in `config/main.yaml`):
+
+```yaml
+retry:
+  max_attempts: 3              # Maximum retry attempts
+  min_wait_seconds: 1          # Minimum initial wait time
+  max_wait_seconds: 60         # Maximum wait time cap
+  exponential_base: 2          # Backoff multiplier (2x each retry)
+  exponential_jitter: true     # Add randomness to prevent thundering herd
+  retry_on_status_codes:       # HTTP codes to retry
+    - 429                      # Rate limit
+    - 503                      # Service unavailable
+    - 502                      # Bad gateway
+    - 504                      # Gateway timeout
+  log_level: "INFO"            # Logging level for retry attempts
+```
+
+The retry system operates at two layers:
+1. **Client layer**: Up to `max_attempts` retries with exponential backoff
+2. **Orchestrator layer**: `max_retries` from workbook/manifest config
+
+Wait times follow exponential backoff: 1s, 2s, 4s... (capped at `max_wait_seconds`). APIs that provide `retry-after` headers are respected.
+
 ### data.yaml Schema (Batch Mode)
 
 ```yaml
@@ -344,10 +367,12 @@ Use `{{region}}` and `{{product}}` in prompts for variable substitution.
 
 ### clients.yaml Schema (Multi-Model)
 
+**Note:** This is a simplified schema for manifest workflows. For the full client type configuration used by the orchestrator, see `config/clients.yaml.example`.
+
 ```yaml
 clients:
   - name: fast
-    client_type: litellm-mistral
+    client_type: litellm-mistral-small
     temperature: 0.3
     max_tokens: 100
 
@@ -358,6 +383,58 @@ clients:
 ```
 
 Reference by name in prompts: `client: fast`
+
+**Client Type Configuration** (`config/clients.yaml`):
+
+The full configuration supports 50+ client types across providers:
+
+```yaml
+default_client: "litellm-mistral-small"
+
+client_types:
+  # Native clients (direct API)
+  mistral-small:
+    client_class: "FFMistralSmall"
+    type: "native"
+    api_key_env: "MISTRALSMALL_KEY"
+    default_model: "mistral-small-2503"
+
+  anthropic:
+    client_class: "FFAnthropic"
+    type: "native"
+    api_key_env: "ANTHROPIC_TOKEN"
+    default_model: "claude-3-5-sonnet-20241022"
+
+  gemini:
+    client_class: "FFGemini"
+    type: "native"
+    api_key_env: "GEMINI_API_KEY"
+    default_model: "gemini-1.5-pro"
+
+  # LiteLLM clients (100+ providers)
+  litellm-gpt-4o:
+    client_class: "FFLiteLLMClient"
+    type: "litellm"
+    provider_prefix: "openai/"
+    api_key_env: "OPENAI_API_KEY"
+    default_model: "gpt-4o"
+
+  litellm-claude-3-5-sonnet:
+    client_class: "FFLiteLLMClient"
+    type: "litellm"
+    provider_prefix: "anthropic/"
+    api_key_env: "ANTHROPIC_API_KEY"
+    default_model: "claude-3-5-sonnet-20241022"
+
+  # ... 50+ more client types (see config/clients.yaml.example)
+```
+
+Each client type has:
+- `client_class`: Python class name (e.g., `FFMistralSmall`, `FFLiteLLMClient`)
+- `type`: Either `native` (direct API) or `litellm` (via LiteLLM routing)
+- `api_key_env`: Environment variable name for API key
+- `provider_prefix`: LiteLLM provider prefix (for `litellm` type only)
+- `default_model`: Default model identifier
 
 ### documents.yaml Schema
 
@@ -675,8 +752,9 @@ While manifests are the protocol, Excel provides a visual interface for human au
 
 ## Supported Providers
 
-### Via LiteLLM (Recommended)
+ ### Via LiteLLM (Recommended)
 
+FFLiteLLMClient supports 100+ providers through a unified interface:
 ```python
 FFLiteLLMClient(model_string="azure/mistral-small-2503")
 FFLiteLLMClient(model_string="anthropic/claude-3-5-sonnet-20241022")
@@ -684,30 +762,41 @@ FFLiteLLMClient(model_string="openai/gpt-4o")
 FFLiteLLMClient(model_string="mistral/mistral-small-latest")
 FFLiteLLMClient(model_string="gemini/gemini-1.5-pro")
 FFLiteLLMClient(model_string="perplexity/llama-3.1-sonar-large-128k-online")
-# + 100 more providers
+FFLiteLLMClient(model_string="deepseek/deepseek-chat")
+FFLiteLLMClient(model_string="deepseek/deepseek-coder")
+FFLiteLLMClient(model_string="groq/llama-3.3-70b-versatile")
+FFLiteLLMClient(model_string="cohere/command")
+FFLiteLLMClient(model_string="xai/grok-beta")
+FFLiteLLMClient(model_string="together_ai/meta-llama/Llama-3-70b-chat")
+FFLiteLLMClient(model_string="huggingface/meta-llama/Llama-2-7b-chat")
+FFLiteLLMClient(model_string="fireworks_ai/accounts/fireworks/models/llama-v3-70b-instruct")
+FFLiteLLMClient(model_string="vllm/meta-llama/Llama-3-70b")
+FFLiteLLMClient(model_string="replicate/meta-llama/llama-2-70b-chat")
+FFLiteLLMClient(model_string="openrouter/anthropic/claude-3.5-sonnet")
+FFLiteLLMClient(model_string="ollama/llama3.1")
+FFLiteLLMClient(model_string="lm_studio/local-model")
 ```
+
+**All clients include automatic retry** with exponential backoff.
 
 ### Native Direct-API Clients
 
-| Client | Provider |
-|--------|----------|
-| `FFMistral` / `FFMistralSmall` | Mistral AI |
+| Client | Provider | Description |
+|--------|----------|-------------|
+| `FFMistral` / `FFMistralSmall` | Mistral AI | Native SDK |
 | `FFAnthropic` / `FFAnthropicCached` | Anthropic (with prompt caching) |
-| `FFGemini` | Google Gemini |
-| `FFPerplexity` | Perplexity AI |
+| `FFGemini` | Google Gemini | Native SDK ( OpenAI-compatible API |
+| `FFPerplexity` | Perplexity AI | Native SDK |
 | `FFNvidiaDeepSeek` | DeepSeek via Nvidia NIM |
-| `FFAzureMistral` / `FFAzureCodestral` / `FFAzurePhi` | Azure AI Inference |
+| `FFAzureMistral` / `FFAzureCodestral` / `FFAzurePhi` | Azure AI Inference SDK |
 | `FFOpenAIAssistant` | OpenAI Assistant API |
-
-### Automatic Fallbacks
-
+### Automatic Fallbacks (LiteLLM only)
 ```python
 client = FFLiteLLMClient(
     model_string="anthropic/claude-3-opus-20240229",
     fallbacks=["openai/gpt-4", "azure/gpt-4"],
 )
 ```
-
 ---
 
 ## How Plico Compares
