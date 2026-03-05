@@ -8,6 +8,14 @@ Plico uses a centralized configuration system built on `pydantic-settings`. Conf
 
 ```
 config/
+├── main.yaml          # Core app settings (workbook, orchestrator, retry, document processor)
+├── logging.yaml       # Logging configuration
+├── paths.yaml         # File system paths
+├── clients.yaml       # AI client configurations
+├── model_defaults.yaml # Per-model default parameters
+└── sample_workbook.yaml # Test workbook defaults and paths
+```
+config/
 ├── main.yaml          # Core app settings (workbook, orchestrator, document processor)
 ├── logging.yaml       # Logging configuration
 ├── paths.yaml         # File system paths
@@ -98,6 +106,55 @@ orchestrator:
   default_concurrency: 2
   max_concurrency: 10
 ```
+
+| Field | Description |
+|-------|-------------|
+| `default_concurrency` | Default concurrency for parallel execution |
+| `max_concurrency` | Maximum concurrent threads |
+ **Rate limits:** Respect API quotas ( reduce concurrency | || | )
+
+### Retry Configuration (`main.yaml`)
+
+The retry system handles transient failures like rate limits (429 errors) and service unavailability (503) errors and network timeouts with exponential backoff.
+```yaml
+retry:
+  max_attempts: 3              # Maximum retry attempts
+  min_wait_seconds: 1          # Minimum initial wait time
+  max_wait_seconds: 60         # Maximum wait time cap
+  exponential_base: 2          # Backoff multiplier (2x each retry)
+  exponential_jitter: true     # Add randomness to prevent thundering herd
+  retry_on_status_codes:       # HTTP codes to retry
+    - 429                      # Rate limit
+    - 503                      # Service unavailable
+    - 502                      # Bad gateway
+    - 504                      # Gateway timeout
+  log_level: "info"             # Logging level for retry attempts
+```
+**Retry behavior:**
+
+When a rate limit or transient error occurs:
+1. **Detection**: Client detects retryable error (429, 503, network timeout)
+2. **extraction**: Parses `retry-after` header if present
+3. **backoff**: Waits with exponential backoff + jitter
+4. **retry**: Retries the API call up to `max_attempts`
+5. **logging**: Each retry attempt is logged with delay duration
+6. **result**: If all attempts fail, the request fails gracefully
+
+**Configuration fields:**
+- `max_attempts`: Maximum retry attempts (default: 3)
+- `min_wait_seconds`: Minimum initial wait time (default: 1s)
+- `max_wait_seconds`: Maximum wait time cap (default: 60s)
+- `exponential_base`: Backoff multiplier (default: 2)
+- `exponential_jitter`: Add randomness to prevent thundering herd ( default: `true` for better rate limit handling)
+- `retry_on_status_codes`: List of HTTP codes to retry ( default: [429, 503, 502, 504])
+- `log_level`: Logging level for retry attempts ( default: `INFO`)
+
+**Tips:**
+- Start with default settings
+- For rate-limited APIs (e.g., Gemini free tier: 10-20 requests/minute), reduce concurrency
+- for free tier quotas (10-20 requests/minute), lower concurrency
+- Use LiteLLM client (has built-in retry)
+- Wait 60s between runs (resets quota)
 
 ### Paths Configuration (`paths.yaml`)
 
@@ -196,27 +253,127 @@ rag:
 
 ### Client Configuration (`clients.yaml`)
 
+The client configuration defines available client types with their API keys and default models.
+
 ```yaml
-clients:
-  litellm-mistral:
-    type: "litellm"
-    provider_prefix: "mistral"
-    model: "mistral-small-latest"
+default_client: "litellm-mistral-small"
+
+client_types:
+  # ===========================================
+  # NATIVE CLIENTS (Direct API, no LiteLLM)
+  # ===========================================
+  mistral-small:
+    client_class: "FFMistralSmall"
+    type: "native"
     api_key_env: "MISTRALSMALL_KEY"
+    default_model: "mistral-small-2503"
+
+  anthropic:
+    client_class: "FFAnthropic"
+    type: "native"
+    api_key_env: "ANTHROPIC_TOKEN"
+    default_model: "claude-3-5-sonnet-20241022"
+
+  gemini:
+    client_class: "FFGemini"
+    type: "native"
+    api_key_env: "GEMINI_API_KEY"
+    default_model: "gemini-1.5-pro"
+
+  # ===========================================
+  # LITELLM CLIENTS (via LiteLLM routing)
+  # ===========================================
+  litellm-mistral-small:
+    client_class: "FFLiteLLMClient"
+    type: "litellm"
+    provider_prefix: "mistral/"
+    api_key_env: "MISTRAL_API_KEY"
+    default_model: "mistral-small-latest"
 
   litellm-anthropic:
+    client_class: "FFLiteLLMClient"
     type: "litellm"
-    provider_prefix: "anthropic"
-    model: "claude-3-5-sonnet-20241022"
+    provider_prefix: "anthropic/"
     api_key_env: "ANTHROPIC_API_KEY"
+    default_model: "claude-3-5-sonnet-20241022"
 
-  litellm-azure-mistral:
+  litellm-gpt-4o:
+    client_class: "FFLiteLLMClient"
     type: "litellm"
-    provider_prefix: "azure"
-    model: "mistral-small-2503"
-    api_key_env: "AZURE_MISTRALSMALL_KEY"
-    azure_endpoint: "https://your-instance.openai.azure.com"
+    provider_prefix: "openai/"
+    api_key_env: "OPENAI_API_KEY"
+    default_model: "gpt-4o"
+
+  # ... 50+ more client types (see config/clients.yaml.example)
 ```
+
+Each client type has:
+
+| Field | Description |
+|-------|-------------|
+| `client_class` | Python class (e.g., `FFMistralSmall`, `FFLiteLLMClient`) |
+| `type` | `native` for direct API, `litellm` for routing |
+| `api_key_env` | Environment variable name for API key |
+| `provider_prefix` | LiteLLM provider prefix (`litellm` type only) |
+| `default_model` | Default model identifier |
+
+**All clients include automatic retry** with exponential backoff for rate limits (429) and service unavailability (503) errors. See Retry Configuration section below.
+
+See `config/clients.yaml.example` for the full list of 50+ client types across Mistral, Anthropic, OpenAI, Gemini, Azure, and more.
+
+### Retry Configuration (`main.yaml`)
+
+The retry system handles transient failures like rate limits (429 errors) and service unavailability (503) errors with exponential backoff.
+
+```yaml
+retry:
+  max_attempts: 3              # Maximum retry attempts
+  min_wait_seconds: 1          # Minimum initial wait time
+  max_wait_seconds: 60         # Maximum wait time cap
+  exponential_base: 2          # Backoff multiplier (2x each retry)
+  exponential_jitter: true     # Add randomness to prevent thundering herd
+  retry_on_status_codes:       # HTTP codes to retry
+    - 429                      # Rate limit
+    - 503                      # Service unavailable
+    - 502                      # Bad gateway
+    - 504                      # Gateway timeout
+  log_level: "info"             # Logging level for retry attempts
+```
+
+**Configuration fields:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `max_attempts` | int | Maximum retry attempts (default: 3) |
+| `min_wait_seconds` | float | Minimum initial wait time (default: 1s) |
+| `max_wait_seconds` | float | Maximum wait time cap (default: 60s) |
+| `exponential_base` | float | Backoff multiplier (default: 2) |
+| `exponential_jitter` | bool | Add randomness to prevent thundering herd (default: `true`) |
+| `retry_on_status_codes` | list | HTTP codes to retry (default: [429, 503, 502, 504]) |
+| `log_level` | str | Logging level for retry attempts (default: `INFO`) |
+
+**Retry behavior:**
+
+When a rate limit or transient error occurs:
+1. **Detection**: Client detects retryable error (429, 503, network timeout)
+2. **extraction**: Parses `retry-after` header if present
+3. **backoff**: Waits with exponential backoff + jitter
+4. **retry**: Retries the API call up to `max_attempts`
+5. **logging**: Each retry attempt is logged with delay duration
+6. **result**: If all attempts fail, the request fails gracefully
+
+**Example log output:**
+```
+2026-03-04 18:05:00 - Rate limit hit. Retrying in 59.1s delay
+2026-03-04 18:06:00 - Rate limit hit. Retrying in 2.5s delay
+2026-03-04 18:07:00 - All retries exhausted
+```
+
+**Tips:**
+- Start with default settings (3 retries, 1-60s backoff)
+- For rate-limited APIs (e.g., Gemini free tier: 10-20 requests/minute), reduce concurrency
+- For free tier quotas, lower concurrency or use LiteLLM client (has built-in retry)
+- Wait 60s between runs to resets quota
 
 ### Model Defaults (`model_defaults.yaml`)
 
