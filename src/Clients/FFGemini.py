@@ -12,11 +12,17 @@ import subprocess
 import google.auth
 from openai import AsyncOpenAI
 
-# Configure logging
+from ..FFAIClientBase import FFAIClientBase
+from ..retry_utils import (
+    create_rate_limit_error,
+    get_retry_decorator,
+    should_retry_exception,
+)
+
 logger = logging.getLogger(__name__)
 
 
-class FFGemini:
+class FFGemini(FFAIClientBase):
     def __init__(self, config: dict | None = None, **kwargs):
         logger.info("Initializing FFGemini")
 
@@ -108,7 +114,7 @@ class FFGemini:
             logger.error(f"Error determining Google Cloud region using gcloud: {str(e)}")
             raise ValueError(f"Error determining Google Cloud region using gcloud: {str(e)}")
 
-    async def generate_response(self, prompt: str) -> str:
+    async def _generate_response_async(self, prompt: str) -> str:
         logger.debug(f"Generating response for prompt: {prompt}")
 
         if not prompt.strip():
@@ -141,7 +147,6 @@ class FFGemini:
 
             logger.debug(f"Full API response: {response}")
 
-            # Add a small delay to ensure response is fully processed
             await asyncio.sleep(0.1)
 
             if (
@@ -158,11 +163,66 @@ class FFGemini:
                 logger.error("Unexpected response structure from API")
                 raise ValueError("Unexpected response structure from API")
         except Exception as e:
-            logger.error(f"Error generating response: {str(e)}")
+            error_str = str(e)
+
+            if should_retry_exception(e):
+                logger.warning(f"Transient error, will retry: {error_str[:200]}")
+                raise create_rate_limit_error(e)
+
+            logger.error(f"Error generating response: {error_str}")
             raise
 
+    @staticmethod
+    def _get_retry_decorator():
+        """Get retry decorator configured from global config."""
+        from ..config import get_config
+
+        try:
+            app_config = get_config()
+            retry_settings = getattr(app_config, "retry", None)
+
+            if retry_settings:
+                return get_retry_decorator(
+                    max_attempts=getattr(retry_settings, "max_attempts", 3),
+                    min_wait=getattr(retry_settings, "min_wait_seconds", 1),
+                    max_wait=getattr(retry_settings, "max_wait_seconds", 60),
+                    exponential_base=getattr(retry_settings, "exponential_base", 2),
+                    jitter=getattr(retry_settings, "exponential_jitter", True),
+                )
+        except Exception as e:
+            logger.debug(f"Could not load retry config: {e}")
+
+        return get_retry_decorator()
+
+    async def generate_response(self, prompt: str) -> str:
+        """Generate a response asynchronously with retry logic."""
+        return await self._generate_response_with_retry(prompt)
+
+    @_get_retry_decorator()
+    async def _generate_response_with_retry(self, prompt: str) -> str:
+        """Internal async method with retry decorator."""
+        return await self._generate_response_async(prompt)
+
     def generate_response_sync(self, prompt: str) -> str:
+        """Synchronous wrapper for generate_response."""
         return asyncio.run(self.generate_response(prompt))
 
     def clear_conversation(self):
         self.chat_history = []
+
+    def get_conversation_history(self) -> list[dict[str, str]]:
+        """Get the conversation history."""
+        return self.chat_history
+
+    def set_conversation_history(self, history: list[dict[str, str]]) -> None:
+        """Set the conversation history."""
+        self.chat_history = history
+
+    def clone(self) -> FFGemini:
+        """Create a fresh clone of this client with empty history."""
+        return FFGemini(
+            model=self.model,
+            temperature=self.temperature,
+            max_tokens=self.max_tokens,
+            system_instructions=self.system_instructions,
+        )

@@ -101,3 +101,16 @@ rag:
     parent_context: true
     parent_chunk_size: 1500
     levels: 2
+
+retry:
+  max_attempts: 3
+  min_wait_seconds: 1
+  max_wait_seconds: 60
+  exponential_base: 2
+  exponential_jitter: true
+  retry_on_status_codes:
+    - 429
+    - 503
+    - 502
+    - 504
+  log_level: "INFO"

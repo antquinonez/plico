@@ -13,6 +13,11 @@ from dotenv import load_dotenv
 from mistralai import Mistral
 
 from ..FFAIClientBase import FFAIClientBase
+from ..retry_utils import (
+    create_rate_limit_error,
+    get_retry_decorator,
+    should_retry_exception,
+)
 
 load_dotenv()
 
@@ -125,6 +130,29 @@ class FFMistralSmall(FFAIClientBase):
 
         return messages
 
+    @staticmethod
+    def _get_retry_decorator():
+        """Get retry decorator configured from global config."""
+        from ..config import get_config
+
+        try:
+            app_config = get_config()
+            retry_settings = getattr(app_config, "retry", None)
+
+            if retry_settings:
+                return get_retry_decorator(
+                    max_attempts=getattr(retry_settings, "max_attempts", 3),
+                    min_wait=getattr(retry_settings, "min_wait_seconds", 1),
+                    max_wait=getattr(retry_settings, "max_wait_seconds", 60),
+                    exponential_base=getattr(retry_settings, "exponential_base", 2),
+                    jitter=getattr(retry_settings, "exponential_jitter", True),
+                )
+        except Exception as e:
+            logger.debug(f"Could not load retry config: {e}")
+
+        return get_retry_decorator()
+
+    @_get_retry_decorator()
     def generate_response(
         self,
         prompt: str,
@@ -305,18 +333,20 @@ class FFMistralSmall(FFAIClientBase):
                 return assistant_response
 
         except Exception as e:
-            logger.error(f"Error generating response: {str(e)}")
-            raise RuntimeError(f"Error generating response from Mistral: {str(e)}")
-            # Handle all other errors
-            logger.error("Problem with response generation")
-            logger.error(f"  -- exception: {str(e)}")
+            error_str = str(e)
+
+            if should_retry_exception(e):
+                logger.warning(f"Transient error, will retry: {error_str[:200]}")
+                raise create_rate_limit_error(e)
+
+            logger.error(f"Error generating response: {error_str}")
             logger.error(f"  -- model: {self.model}")
             logger.error(f"  -- system: {self.system_instructions}")
-            logger.error(f"  -- conversation history: {self.conversation_history}")
+            logger.error(f"  -- conversation history length: {len(self.conversation_history)}")
             logger.error(f"  -- max_tokens: {self.max_tokens}")
             logger.error(f"  -- temperature: {self.temperature}")
 
-            raise RuntimeError(f"Error generating response from Mistral: {str(e)}")
+            raise RuntimeError(f"Error generating response from Mistral: {error_str}")
 
     def add_tool_result(self, tool_call_id: str, content: Any) -> None:
         """
