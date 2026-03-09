@@ -104,7 +104,7 @@ class TestGetParquetPath:
         path = processor.get_parquet_path(checksum, base_name)
 
         assert str(path).startswith(temp_cache_dir)
-        assert "a1b2c3d4|My_Document.parquet" in str(path)
+        assert "a1b2c3d4@My_Document.parquet" in str(path)
 
     def test_get_parquet_path_sanitizes_name(self, processor):
         checksum = "a1b2c3d4" + "0" * 56
