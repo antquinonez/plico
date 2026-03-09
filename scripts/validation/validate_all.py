@@ -9,6 +9,11 @@ import argparse
 import sys
 from pathlib import Path
 
+# Fix Windows console encoding for Unicode characters
+if sys.platform == "win32":
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
+
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from openpyxl import load_workbook
