@@ -89,10 +89,16 @@ class TestDocumentRegistryInit:
 
 class TestResolvePath:
     def test_resolve_path_absolute(self, registry):
-        abs_path = "/absolute/path/to/file.txt"
+        import platform
+
+        if platform.system() == "Windows":
+            abs_path = "C:\\absolute\\path\\to\\file.txt"
+        else:
+            abs_path = "/absolute/path/to/file.txt"
 
         result = registry.resolve_path(abs_path)
 
+        assert os.path.isabs(result)
         assert result == abs_path
 
     def test_resolve_path_relative(self, registry, fixtures_dir):
