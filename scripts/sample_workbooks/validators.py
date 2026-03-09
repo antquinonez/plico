@@ -28,6 +28,11 @@ import argparse
 import json
 import sys
 from datetime import datetime
+
+# Fix Windows console encoding for Unicode characters
+if sys.platform == "win32":
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
 from pathlib import Path
 from typing import Any
 
