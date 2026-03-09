@@ -28,6 +28,11 @@ import importlib
 import logging
 import os
 import sys
+
+# Fix Windows console encoding for Unicode characters
+if sys.platform == "win32":
+    sys.stdout.reconfigure(encoding="utf-8")
+    sys.stderr.reconfigure(encoding="utf-8")
 import time
 from logging.handlers import TimedRotatingFileHandler
 
