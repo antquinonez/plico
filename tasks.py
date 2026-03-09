@@ -25,6 +25,7 @@ Parallel execution:
 
 from __future__ import annotations
 
+import os
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
@@ -39,21 +40,22 @@ sys.path.insert(0, str(Path(__file__).parent))
 from src.config import get_config
 
 IS_WINDOWS = platform.system() == "Windows"
-VENV_PYTHON = ".venv313\\Scripts\\python.exe" if IS_WINDOWS else ".venv313/bin/python"
-VENV_ACTIVATION = (
-    f"set POLARS_SKIP_CPU_CHECK=1 && {VENV_PYTHON}"
-    if IS_WINDOWS
-    else "source .venv313/bin/activate && POLARS_SKIP_CPU_CHECK=1"
-)
 PTY = not IS_WINDOWS
+
+# Use the current Python executable (from activated venv or system)
+PYTHON_EXE = sys.executable
 
 
 def _run_cmd(ctx: Context, cmd: str, capture: bool = False) -> subprocess.CompletedProcess | None:
     """Run a command with virtual environment activated."""
-    full_cmd = f"{VENV_ACTIVATION} && {cmd}"
+    env = os.environ.copy()
+    env["POLARS_SKIP_CPU_CHECK"] = "1"
+
+    cmd = cmd.replace("python ", f'"{PYTHON_EXE}" ')
+
     if capture:
-        return subprocess.run(full_cmd, shell=True, capture_output=True, text=True)
-    ctx.run(full_cmd, echo=False, pty=PTY)
+        return subprocess.run(cmd, shell=True, capture_output=True, text=True, env=env)
+    ctx.run(cmd, echo=False, pty=PTY, env=env)
     return None
 
 
@@ -107,9 +109,11 @@ def _create_single_workbook(name: str) -> tuple[str, bool, str]:
         Tuple of (name, success, output/error message)
     """
     script = _get_create_script(name)
-    cmd = f"{VENV_ACTIVATION} && python {script}"
+    cmd = f'"{PYTHON_EXE}" {script}'
 
-    result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+    env = os.environ.copy()
+    env["POLARS_SKIP_CPU_CHECK"] = "1"
+    result = subprocess.run(cmd, shell=True, capture_output=True, text=True, env=env)
 
     if result.returncode == 0:
         return (name, True, result.stdout)
@@ -127,9 +131,11 @@ def _run_single_workbook(name: str, concurrency: str) -> tuple[str, bool, str]:
     path, default_conc = configs[name]
     conc = concurrency or default_conc
 
-    cmd = f"{VENV_ACTIVATION} && python scripts/run_orchestrator.py {path} -c {conc}"
+    cmd = f'"{PYTHON_EXE}" scripts/run_orchestrator.py {path} -c {conc}'
 
-    result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+    env = os.environ.copy()
+    env["POLARS_SKIP_CPU_CHECK"] = "1"
+    result = subprocess.run(cmd, shell=True, capture_output=True, text=True, env=env)
 
     if result.returncode == 0:
         return (name, True, result.stdout[-500:] if len(result.stdout) > 500 else result.stdout)
@@ -147,9 +153,11 @@ def _validate_single_workbook(name: str) -> tuple[str, bool, str]:
     path, _ = configs[name]
     script = _get_validate_script(name)
 
-    cmd = f"{VENV_ACTIVATION} && python {script} {path}"
+    cmd = f'"{PYTHON_EXE}" {script} {path}'
 
-    result = subprocess.run(cmd, shell=True, capture_output=True, text=True)
+    env = os.environ.copy()
+    env["POLARS_SKIP_CPU_CHECK"] = "1"
+    result = subprocess.run(cmd, shell=True, capture_output=True, text=True, env=env)
 
     if result.returncode == 0:
         return (name, True, result.stdout[-500:] if len(result.stdout) > 500 else result.stdout)
