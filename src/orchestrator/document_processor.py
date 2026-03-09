@@ -117,7 +117,7 @@ class DocumentProcessor:
         Format: {checksum_prefix}|{sanitized_base_name}.parquet
         """
         safe_name = self._sanitize_name(base_name)
-        filename = f"{self.get_checksum_prefix(checksum)}|{safe_name}.parquet"
+        filename = f"{self.get_checksum_prefix(checksum)}@{safe_name}.parquet"
         return self.cache_dir / filename
 
     def _sanitize_name(self, name: str) -> str:
