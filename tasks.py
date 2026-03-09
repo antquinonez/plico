@@ -30,13 +30,22 @@ import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
+import platform
+
 from invoke import Context, task
 
 sys.path.insert(0, str(Path(__file__).parent))
 
 from src.config import get_config
 
-VENV_ACTIVATION = "source .venv313/bin/activate && POLARS_SKIP_CPU_CHECK=1"
+IS_WINDOWS = platform.system() == "Windows"
+VENV_PYTHON = ".venv313\\Scripts\\python.exe" if IS_WINDOWS else ".venv313/bin/python"
+VENV_ACTIVATION = (
+    f"set POLARS_SKIP_CPU_CHECK=1 && {VENV_PYTHON}"
+    if IS_WINDOWS
+    else "source .venv313/bin/activate && POLARS_SKIP_CPU_CHECK=1"
+)
+PTY = not IS_WINDOWS
 
 
 def _run_cmd(ctx: Context, cmd: str, capture: bool = False) -> subprocess.CompletedProcess | None:
@@ -44,7 +53,7 @@ def _run_cmd(ctx: Context, cmd: str, capture: bool = False) -> subprocess.Comple
     full_cmd = f"{VENV_ACTIVATION} && {cmd}"
     if capture:
         return subprocess.run(full_cmd, shell=True, capture_output=True, text=True)
-    ctx.run(full_cmd, echo=False, pty=True)
+    ctx.run(full_cmd, echo=False, pty=PTY)
     return None
 
 
@@ -500,13 +509,13 @@ def config_check(c: Context) -> None:
 @task
 def lint(c: Context) -> None:
     """Run linting (ruff)."""
-    c.run("ruff check src tests", pty=True)
+    c.run("ruff check src tests", pty=PTY)
 
 
 @task
 def format(c: Context) -> None:
     """Run code formatting (ruff format)."""
-    c.run("ruff format src tests", pty=True)
+    c.run("ruff format src tests", pty=PTY)
 
 
 @task
@@ -518,13 +527,13 @@ def test(c: Context, path: str = "tests", verbose: bool = False) -> None:
         verbose: Enable verbose output
     """
     v_flag = "-v" if verbose else ""
-    c.run(f"python -m pytest {path} {v_flag} --ignore=tests/integration", pty=True)
+    c.run(f"python -m pytest {path} {v_flag} --ignore=tests/integration", pty=PTY)
 
 
 @task
 def test_all(c: Context) -> None:
     """Run all tests including integration tests."""
-    c.run("python -m pytest tests -v", pty=True)
+    c.run("python -m pytest tests -v", pty=PTY)
 
 
 # ============================================================================
