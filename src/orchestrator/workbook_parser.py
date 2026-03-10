@@ -102,6 +102,8 @@ class WorkbookParser:
         "reference_name",
         "common_name",
         "file_path",
+        "tags",
+        "chunking_strategy",
         "notes",
     ]
     CLIENTS_HEADERS = [

@@ -139,6 +139,101 @@ class TestNeedsParsing:
         with pytest.raises(FileNotFoundError):
             processor.needs_parsing(str(missing_file), "missing")
 
+    def test_needs_parsing_with_precomputed_checksum(self, processor, fixtures_dir):
+        file_path = fixtures_dir / "client_info.txt"
+        checksum = processor.compute_checksum(str(file_path))
+
+        result = processor.needs_parsing(str(file_path), "new_doc", checksum=checksum)
+
+        assert result is True
+
+    def test_needs_parsing_uses_precomputed_checksum(self, processor, fixtures_dir):
+        file_path = fixtures_dir / "client_info.txt"
+        content = "test content"
+        processor.store_document(str(file_path), "cached_doc", "Cached Doc", content)
+
+        checksum = processor.compute_checksum(str(file_path))
+        result = processor.needs_parsing(str(file_path), "cached_doc", checksum=checksum)
+
+        assert result is False
+
+
+class TestCleanupOldParquetFiles:
+    def test_cleanup_removes_old_parquet_files(self, processor, fixtures_dir, temp_cache_dir):
+        file_path = fixtures_dir / "client_info.txt"
+        reference_name = "test_doc"
+
+        old_checksum = "aaaaaaaa" + "0" * 56
+        old_parquet_path = processor.get_parquet_path(old_checksum, reference_name)
+        old_parquet_path.write_bytes(b"old parquet data")
+
+        content = "test content"
+        new_parquet_path = processor.store_document(
+            str(file_path), reference_name, "Test Doc", content
+        )
+
+        assert not old_parquet_path.exists()
+        assert Path(new_parquet_path).exists()
+
+    def test_cleanup_preserves_matching_checksum(self, processor, fixtures_dir, temp_cache_dir):
+        file_path = fixtures_dir / "client_info.txt"
+        reference_name = "test_doc"
+        content = "test content"
+
+        parquet_path = processor.store_document(str(file_path), reference_name, "Test Doc", content)
+
+        cache_files_before = list(Path(temp_cache_dir).glob("*.parquet"))
+        assert len(cache_files_before) == 1
+
+        processor._cleanup_old_parquet_files(
+            reference_name,
+            processor.get_checksum_prefix(processor.compute_checksum(str(file_path))),
+        )
+
+        cache_files_after = list(Path(temp_cache_dir).glob("*.parquet"))
+        assert len(cache_files_after) == 1
+        assert cache_files_after[0] == Path(parquet_path)
+
+    def test_cleanup_does_not_affect_other_documents(self, processor, fixtures_dir, temp_cache_dir):
+        file1 = fixtures_dir / "client_info.txt"
+        file2 = fixtures_dir / "spec_doc.md"
+
+        old_checksum = "aaaaaaaa" + "0" * 56
+        old_parquet_path = processor.get_parquet_path(old_checksum, "other_doc")
+        old_parquet_path.write_bytes(b"old parquet data")
+
+        processor.store_document(str(file1), "doc1", "Doc 1", "content1")
+        processor.store_document(str(file2), "doc2", "Doc 2", "content2")
+
+        cache_files = list(Path(temp_cache_dir).glob("*.parquet"))
+        assert len(cache_files) == 3
+        assert old_parquet_path.exists()
+
+        doc1_files = list(Path(temp_cache_dir).glob("*@doc1.parquet"))
+        doc2_files = list(Path(temp_cache_dir).glob("*@doc2.parquet"))
+        other_files = list(Path(temp_cache_dir).glob("*@other_doc.parquet"))
+        assert len(doc1_files) == 1
+        assert len(doc2_files) == 1
+        assert len(other_files) == 1
+
+    def test_cleanup_handles_multiple_old_versions(self, processor, fixtures_dir, temp_cache_dir):
+        file_path = fixtures_dir / "client_info.txt"
+        reference_name = "multi_version_doc"
+
+        for i in range(3):
+            old_checksum = chr(ord("a") + i) * 8 + "0" * 56
+            old_parquet_path = processor.get_parquet_path(old_checksum, reference_name)
+            old_parquet_path.write_bytes(f"old version {i}".encode())
+
+        cache_files_before = list(Path(temp_cache_dir).glob("*.parquet"))
+        assert len(cache_files_before) == 3
+
+        content = "new content"
+        processor.store_document(str(file_path), reference_name, "Multi Doc", content)
+
+        cache_files_after = list(Path(temp_cache_dir).glob("*@multi_version_doc.parquet"))
+        assert len(cache_files_after) == 1
+
 
 class TestParseDocument:
     def test_parse_text_file_directly(self, processor, fixtures_dir):

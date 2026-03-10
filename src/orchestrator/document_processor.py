@@ -125,7 +125,36 @@ class DocumentProcessor:
         name = Path(name).stem
         return "".join(c if c.isalnum() or c in "-_" else "_" for c in name)
 
-    def needs_parsing(self, file_path: str, reference_name: str) -> bool:
+    def _cleanup_old_parquet_files(self, reference_name: str, keep_checksum: str) -> int:
+        """Remove old parquet files for a reference_name that don't match current checksum.
+
+        Args:
+            reference_name: Reference name to clean up
+            keep_checksum: Checksum prefix of the file to keep
+
+        Returns:
+            Number of files removed
+
+        """
+        safe_name = self._sanitize_name(reference_name)
+        pattern = f"*@{safe_name}.parquet"
+        removed = 0
+
+        for old_file in self.cache_dir.glob(pattern):
+            old_prefix = old_file.stem.split("@")[0]
+            if old_prefix != keep_checksum:
+                old_file.unlink()
+                removed += 1
+                logger.debug(f"Removed orphaned cache file: {old_file.name}")
+
+        if removed > 0:
+            logger.info(f"Cleaned up {removed} orphaned cache file(s) for {reference_name}")
+
+        return removed
+
+    def needs_parsing(
+        self, file_path: str, reference_name: str, checksum: str | None = None
+    ) -> bool:
         """Check if a document needs to be (re)parsed.
 
         Returns True if:
@@ -135,6 +164,7 @@ class DocumentProcessor:
         Args:
             file_path: Path to source document
             reference_name: Reference name to look up in parquet
+            checksum: Pre-computed checksum (optional, computed if not provided)
 
         Returns:
             True if document needs parsing, False if cached version is valid
@@ -143,7 +173,7 @@ class DocumentProcessor:
         if not os.path.exists(file_path):
             raise FileNotFoundError(f"Document not found: {file_path}")
 
-        current_checksum = self.compute_checksum(file_path)
+        current_checksum = checksum or self.compute_checksum(file_path)
         parquet_path = self.get_parquet_path(current_checksum, reference_name)
 
         if not parquet_path.exists():
@@ -242,23 +272,34 @@ class DocumentProcessor:
             ) from e
 
     def store_document(
-        self, file_path: str, reference_name: str, common_name: str, content: str
+        self,
+        file_path: str,
+        reference_name: str,
+        common_name: str,
+        content: str,
+        checksum: str | None = None,
     ) -> str:
         """Store parsed document content as a parquet file.
+
+        Cleans up old parquet files with different checksums before storing.
 
         Args:
             file_path: Original file path
             reference_name: Reference name for the document
             common_name: Human-readable name
             content: Parsed content (markdown)
+            checksum: Pre-computed checksum (optional, computed if not provided)
 
         Returns:
             Path to the created parquet file
 
         """
-        checksum = self.compute_checksum(file_path)
+        checksum = checksum or self.compute_checksum(file_path)
         file_size = os.path.getsize(file_path)
         parquet_path = self.get_parquet_path(checksum, reference_name)
+
+        checksum_prefix = self.get_checksum_prefix(checksum)
+        self._cleanup_old_parquet_files(reference_name, checksum_prefix)
 
         df = pl.DataFrame(
             {
@@ -372,14 +413,14 @@ class DocumentProcessor:
         checksum = self.compute_checksum(file_path)
         parquet_path = self.get_parquet_path(checksum, reference_name)
 
-        if not self.needs_parsing(file_path, reference_name):
+        if not self.needs_parsing(file_path, reference_name, checksum=checksum):
             logger.info(f"Using cached document: {reference_name}")
             doc_data = self.load_document(str(parquet_path))
             return doc_data["content"]
 
         logger.info(f"Parsing document: {reference_name}")
         content = self.parse_document(file_path)
-        self.store_document(file_path, reference_name, common_name, content)
+        self.store_document(file_path, reference_name, common_name, content, checksum=checksum)
 
         return content
 
