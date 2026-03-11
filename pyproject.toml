@@ -14,7 +14,7 @@ authors = [
 ]
 
 dependencies = [
-    "mistralai",
+    "mistralai>=1.0.0,<2.0.0",
     "anthropic",
     "openai",
     "azure-ai-inference",
