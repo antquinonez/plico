@@ -11,29 +11,33 @@ directly for workbook paths and supports parallel execution.
 
 Usage:
     inv --list                  # Show all available tasks
-    inv create                  # Create all test workbooks
-    inv run                     # Run orchestrator on all workbooks
-    inv run -c 4                # Run with concurrency=4
-    inv validate                # Validate all workbook results
-    inv all                     # Full pipeline: clean, create, run, validate
-    inv basic                   # Create, run, and validate basic workbook
+    inv wb.create               # Create all test workbooks
+    inv wb.run                  # Run orchestrator on all workbooks
+    inv wb.run -c 4             # Run with concurrency=4
+    inv wb.validate             # Validate all workbook results
+    inv wb.all                  # Full pipeline: clean, create, run, validate
+    inv wb.basic                # Create, run, and validate basic workbook
 
 Parallel execution:
-    inv create --parallel       # Create workbooks in parallel
-    inv run --parallel          # Run workbooks in parallel
+    inv wb.create --parallel    # Create workbooks in parallel
+    inv wb.run --parallel       # Run workbooks in parallel
+
+RAG operations:
+    inv rag.status              # Show RAG indexing status
+    inv rag.clear               # Clear all RAG indexes
+    inv rag.rebuild             # Rebuild indexes from workbook
 """
 
 from __future__ import annotations
 
 import os
+import platform
 import subprocess
 import sys
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
 
-import platform
-
-from invoke import Context, task
+from invoke import Collection, Context, task
 
 sys.path.insert(0, str(Path(__file__).parent))
 
@@ -42,7 +46,6 @@ from src.config import get_config
 IS_WINDOWS = platform.system() == "Windows"
 PTY = not IS_WINDOWS
 
-# Use the current Python executable (from activated venv or system)
 PYTHON_EXE = sys.executable
 
 
@@ -166,7 +169,7 @@ def _validate_single_workbook(name: str) -> tuple[str, bool, str]:
 
 
 # ============================================================================
-# MAIN TASKS
+# MAIN TASKS (root level)
 # ============================================================================
 
 
@@ -184,21 +187,35 @@ USAGE:
     inv --list              # Show all available tasks
     inv --help <task>       # Show help for specific task
 
-MAIN TASKS:
-    inv create              # Create all test workbooks
-    inv clean               # Remove all test workbooks
-    inv run                 # Run orchestrator on all workbooks
-    inv validate            # Validate all workbook results
-    inv spot-check          # Spot check responses
-    inv all                 # Full pipeline: clean, create, run, validate
+WORKBOOK TASKS (inv wb.<task>):
+    inv wb.create           # Create all test workbooks
+    inv wb.clean            # Remove all test workbooks
+    inv wb.run              # Run orchestrator on all workbooks
+    inv wb.validate         # Validate all workbook results
+    inv wb.spot-check       # Spot check responses
+    inv wb.all              # Full pipeline: clean, create, run, validate
 
 INDIVIDUAL WORKBOOKS (create + run + validate):
-    inv basic               # Create, run, and validate basic workbook
-    inv multiclient         # Create, run, and validate multiclient workbook
-    inv conditional         # Create, run, and validate conditional workbook
-    inv documents           # Create, run, and validate documents workbook
-    inv batch               # Create, run, and validate batch workbook
-    inv max                 # Create, run, and validate max workbook
+    inv wb.basic            # Create, run, and validate basic workbook
+    inv wb.multiclient      # Create, run, and validate multiclient workbook
+    inv wb.conditional      # Create, run, and validate conditional workbook
+    inv wb.documents        # Create, run, and validate documents workbook
+    inv wb.batch            # Create, run, and validate batch workbook
+    inv wb.max              # Create, run, and validate max workbook
+
+RAG TASKS (inv rag.<task>):
+    inv rag.status          # Show RAG indexing status
+    inv rag.clear           # Clear all RAG indexes
+    inv rag.clear-strategy  # Clear specific chunking strategy
+    inv rag.rebuild         # Rebuild indexes from workbook
+    inv rag.stats           # Show detailed RAG statistics
+
+OTHER TASKS:
+    inv lint                # Run linting (ruff)
+    inv format              # Run code formatting (ruff format)
+    inv test                # Run tests (excludes integration)
+    inv test-all            # Run all tests including integration
+    inv config-check        # Display current configuration
 
 OPTIONS:
     -c, --concurrency N     # Set parallel execution concurrency (default: varies by workbook)
@@ -206,277 +223,16 @@ OPTIONS:
     -q, --quiet             # Suppress detailed output
 
 EXAMPLES:
-    inv create --parallel           # Create all workbooks in parallel
-    inv run -c 4                    # Run with concurrency=4
-    inv run --parallel              # Run all workbooks in parallel
-    inv all --parallel              # Full pipeline with parallel execution
-    inv basic -c 2                  # Run basic workbook with concurrency=2
+    inv wb.create --parallel        # Create all workbooks in parallel
+    inv wb.run -c 4                 # Run with concurrency=4
+    inv wb.run --parallel           # Run all workbooks in parallel
+    inv wb.all --parallel           # Full pipeline with parallel execution
+    inv wb.basic -c 2               # Run basic workbook with concurrency=2
 
 CONFIGURATION:
     Workbook paths and client configurations are loaded from config/test.yaml
     Access via: config.sample.workbooks.basic, config.sample.sample_clients, etc.
 """)
-
-
-@task
-def create(c: Context, parallel: bool = False, quiet: bool = False) -> None:
-    """Create all test workbooks.
-
-    Args:
-        parallel: Create workbooks in parallel (faster)
-        quiet: Suppress detailed output
-    """
-    print("Creating test workbooks...")
-
-    workbook_names = ["basic", "multiclient", "max", "documents", "conditional", "batch"]
-
-    if parallel:
-        with ThreadPoolExecutor(max_workers=6) as executor:
-            futures = {
-                executor.submit(_create_single_workbook, name): name for name in workbook_names
-            }
-
-            for future in as_completed(futures):
-                name, success, output = future.result()
-                if success:
-                    if not quiet:
-                        print(f"  ✓ {name}")
-                else:
-                    print(f"  ✗ {name}: {output}")
-    else:
-        for name in workbook_names:
-            _, success, output = _create_single_workbook(name)
-            if not quiet:
-                if success:
-                    print(f"  ✓ {name}")
-                else:
-                    print(f"  ✗ {name}: {output}")
-
-    print("All workbooks created.")
-
-
-@task
-def clean(c: Context) -> None:
-    """Remove all test workbooks."""
-    config = get_config()
-
-    paths = [
-        config.sample.workbooks.basic,
-        config.sample.workbooks.multiclient,
-        config.sample.workbooks.conditional,
-        config.sample.workbooks.documents,
-        config.sample.workbooks.batch,
-        config.sample.workbooks.max,
-    ]
-
-    print("Removing test workbooks...")
-    for path in paths:
-        if Path(path).exists():
-            Path(path).unlink()
-            print(f"  ✓ Removed {path}")
-        else:
-            print(f"  - Not found: {path}")
-    print("All workbooks removed.")
-
-
-@task(create)
-def run(
-    c: Context, concurrency: str | None = None, parallel: bool = False, quiet: bool = False
-) -> None:
-    """Run orchestrator on all workbooks.
-
-    Args:
-        concurrency: Override default concurrency for all workbooks
-        parallel: Run workbooks in parallel (experimental)
-        quiet: Suppress detailed output
-    """
-    print("Running orchestrator on all workbooks...")
-
-    configs = _get_workbook_configs()
-    workbook_names = ["basic", "multiclient", "conditional", "documents", "batch", "max"]
-
-    if parallel:
-        with ThreadPoolExecutor(max_workers=min(6, len(workbook_names))) as executor:
-            futures = {
-                executor.submit(_run_single_workbook, name, concurrency or configs[name][1]): name
-                for name in workbook_names
-            }
-
-            for future in as_completed(futures):
-                name, success, output = future.result()
-                if success:
-                    if not quiet:
-                        print(f"  ✓ {name}")
-                else:
-                    print(f"  ✗ {name}: {output}")
-    else:
-        for name in workbook_names:
-            path, default_conc = configs[name]
-            conc = concurrency or default_conc
-
-            if not quiet:
-                print(f"  Running {name}...")
-
-            _run_cmd(c, f"python scripts/run_orchestrator.py {path} -c {conc}")
-
-            if not quiet:
-                print(f"  ✓ {name}")
-
-    print("All workbooks processed.")
-
-
-@task
-def validate(c: Context, parallel: bool = False, quiet: bool = False) -> None:
-    """Validate all workbook results using individual validation scripts.
-
-    Args:
-        parallel: Validate workbooks in parallel (faster)
-        quiet: Suppress detailed output
-    """
-    print("Validating all workbooks...")
-
-    workbook_names = ["basic", "multiclient", "conditional", "documents", "batch", "max"]
-
-    if parallel:
-        with ThreadPoolExecutor(max_workers=6) as executor:
-            futures = {
-                executor.submit(_validate_single_workbook, name): name for name in workbook_names
-            }
-
-            for future in as_completed(futures):
-                name, success, output = future.result()
-                if success:
-                    if not quiet:
-                        print(f"  ✓ {name}")
-                else:
-                    print(f"  ✗ {name}: {output}")
-    else:
-        configs = _get_workbook_configs()
-        for name in workbook_names:
-            path, _ = configs[name]
-            script = _get_validate_script(name)
-
-            if not quiet:
-                print(f"  Validating {name}...")
-
-            _run_cmd(c, f"python {script} {path}")
-
-            if not quiet:
-                print(f"  ✓ {name}")
-
-    print("All workbooks validated.")
-
-
-@task
-def spot_check(c: Context) -> None:
-    """Spot check responses from key prompts."""
-    print("Spot checking responses...")
-    _run_cmd(c, "python scripts/validation/spot_check.py")
-
-
-@task(clean, create, run, validate)
-def all(c: Context, parallel: bool = False, concurrency: str | None = None) -> None:
-    """Full pipeline: clean, create, run, and validate.
-
-    Args:
-        parallel: Enable parallel execution for create/run
-        concurrency: Override default concurrency
-    """
-    print("\n" + "=" * 60)
-    print("FULL PIPELINE COMPLETE")
-    print("=" * 60)
-
-
-# ============================================================================
-# INDIVIDUAL WORKBOOK TASKS (create + run + validate)
-# ============================================================================
-
-
-@task
-def basic(c: Context, concurrency: str = "3") -> None:
-    """Create, run, and validate basic workbook."""
-    config = get_config()
-    print("Processing basic workbook...")
-    _run_cmd(c, f"python {_get_create_script('basic')}")
-    _run_cmd(
-        c, f"python scripts/run_orchestrator.py {config.sample.workbooks.basic} -c {concurrency}"
-    )
-    _run_cmd(c, f"python {_get_validate_script('basic')} {config.sample.workbooks.basic}")
-    print("Basic workbook complete!")
-
-
-@task
-def multiclient(c: Context, concurrency: str = "2") -> None:
-    """Create, run, and validate multiclient workbook."""
-    config = get_config()
-    print("Processing multiclient workbook...")
-    _run_cmd(c, f"python {_get_create_script('multiclient')}")
-    _run_cmd(
-        c,
-        f"python scripts/run_orchestrator.py {config.sample.workbooks.multiclient} -c {concurrency}",
-    )
-    _run_cmd(
-        c, f"python {_get_validate_script('multiclient')} {config.sample.workbooks.multiclient}"
-    )
-    print("Multiclient workbook complete!")
-
-
-@task
-def conditional(c: Context, concurrency: str = "3") -> None:
-    """Create, run, and validate conditional workbook."""
-    config = get_config()
-    print("Processing conditional workbook...")
-    _run_cmd(c, f"python {_get_create_script('conditional')}")
-    _run_cmd(
-        c,
-        f"python scripts/run_orchestrator.py {config.sample.workbooks.conditional} -c {concurrency}",
-    )
-    _run_cmd(
-        c, f"python {_get_validate_script('conditional')} {config.sample.workbooks.conditional}"
-    )
-    print("Conditional workbook complete!")
-
-
-@task
-def documents(c: Context) -> None:
-    """Create, run, and validate documents workbook."""
-    config = get_config()
-    print("Processing documents workbook...")
-    _run_cmd(c, f"python {_get_create_script('documents')}")
-    _run_cmd(c, f"python scripts/run_orchestrator.py {config.sample.workbooks.documents}")
-    _run_cmd(c, f"python {_get_validate_script('documents')} {config.sample.workbooks.documents}")
-    print("Documents workbook complete!")
-
-
-@task
-def batch(c: Context, concurrency: str = "3") -> None:
-    """Create, run, and validate batch workbook."""
-    config = get_config()
-    print("Processing batch workbook...")
-    _run_cmd(c, f"python {_get_create_script('batch')}")
-    _run_cmd(
-        c, f"python scripts/run_orchestrator.py {config.sample.workbooks.batch} -c {concurrency}"
-    )
-    _run_cmd(c, f"python {_get_validate_script('batch')} {config.sample.workbooks.batch}")
-    print("Batch workbook complete!")
-
-
-@task
-def max(c: Context, concurrency: str = "3") -> None:
-    """Create, run, and validate max workbook."""
-    config = get_config()
-    print("Processing max workbook...")
-    _run_cmd(c, f"python {_get_create_script('max')}")
-    _run_cmd(
-        c, f"python scripts/run_orchestrator.py {config.sample.workbooks.max} -c {concurrency}"
-    )
-    _run_cmd(c, f"python {_get_validate_script('max')} {config.sample.workbooks.max}")
-    print("Max workbook complete!")
-
-
-# ============================================================================
-# UTILITY TASKS
-# ============================================================================
 
 
 @task
@@ -521,13 +277,13 @@ def lint(c: Context) -> None:
 
 
 @task
-def format(c: Context) -> None:
+def format(c: Context):
     """Run code formatting (ruff format)."""
     c.run("ruff format src tests", pty=PTY)
 
 
 @task
-def test(c: Context, path: str = "tests", verbose: bool = False) -> None:
+def test(c: Context, path: str = "tests", verbose: bool = False):
     """Run tests.
 
     Args:
@@ -539,18 +295,277 @@ def test(c: Context, path: str = "tests", verbose: bool = False) -> None:
 
 
 @task
-def test_all(c: Context) -> None:
+def test_all(c: Context):
     """Run all tests including integration tests."""
     c.run("python -m pytest tests -v", pty=PTY)
 
 
 # ============================================================================
-# RAG INDEXING TASKS
+# WORKBOOK TASKS (wb namespace)
 # ============================================================================
 
 
 @task
-def index_status(c: Context) -> None:
+def wb_create(c: Context, parallel: bool = False, quiet: bool = False):
+    """Create all test workbooks.
+
+    Args:
+        parallel: Create workbooks in parallel (faster)
+        quiet: Suppress detailed output
+    """
+    print("Creating test workbooks...")
+
+    workbook_names = ["basic", "multiclient", "max", "documents", "conditional", "batch"]
+
+    if parallel:
+        with ThreadPoolExecutor(max_workers=6) as executor:
+            futures = {
+                executor.submit(_create_single_workbook, name): name for name in workbook_names
+            }
+
+            for future in as_completed(futures):
+                name, success, output = future.result()
+                if success:
+                    if not quiet:
+                        print(f"  ✓ {name}")
+                else:
+                    print(f"  ✗ {name}: {output}")
+    else:
+        for name in workbook_names:
+            _, success, output = _create_single_workbook(name)
+            if not quiet:
+                if success:
+                    print(f"  ✓ {name}")
+                else:
+                    print(f"  ✗ {name}: {output}")
+
+    print("All workbooks created.")
+
+
+@task
+def wb_clean(c: Context):
+    """Remove all test workbooks."""
+    config = get_config()
+
+    paths = [
+        config.sample.workbooks.basic,
+        config.sample.workbooks.multiclient,
+        config.sample.workbooks.conditional,
+        config.sample.workbooks.documents,
+        config.sample.workbooks.batch,
+        config.sample.workbooks.max,
+    ]
+
+    print("Removing test workbooks...")
+    for path in paths:
+        if Path(path).exists():
+            Path(path).unlink()
+            print(f"  ✓ Removed {path}")
+        else:
+            print(f"  - Not found: {path}")
+    print("All workbooks removed.")
+
+
+@task
+def wb_run(c: Context, concurrency: str | None = None, parallel: bool = False, quiet: bool = False):
+    """Run orchestrator on all workbooks.
+
+    Args:
+        concurrency: Override default concurrency for all workbooks
+        parallel: Run workbooks in parallel (experimental)
+        quiet: Suppress detailed output
+    """
+    print("Running orchestrator on all workbooks...")
+
+    configs = _get_workbook_configs()
+    workbook_names = ["basic", "multiclient", "conditional", "documents", "batch", "max"]
+
+    if parallel:
+        with ThreadPoolExecutor(max_workers=min(6, len(workbook_names))) as executor:
+            futures = {
+                executor.submit(_run_single_workbook, name, concurrency or configs[name][1]): name
+                for name in workbook_names
+            }
+
+            for future in as_completed(futures):
+                name, success, output = future.result()
+                if success:
+                    if not quiet:
+                        print(f"  ✓ {name}")
+                else:
+                    print(f"  ✗ {name}: {output}")
+    else:
+        for name in workbook_names:
+            path, default_conc = configs[name]
+            conc = concurrency or default_conc
+
+            if not quiet:
+                print(f"  Running {name}...")
+
+            _run_cmd(c, f"python scripts/run_orchestrator.py {path} -c {conc}")
+
+            if not quiet:
+                print(f"  ✓ {name}")
+
+    print("All workbooks processed.")
+
+
+@task
+def wb_validate(c: Context, parallel: bool = False, quiet: bool = False):
+    """Validate all workbook results using individual validation scripts.
+
+    Args:
+        parallel: Validate workbooks in parallel (faster)
+        quiet: Suppress detailed output
+    """
+    print("Validating all workbooks...")
+
+    workbook_names = ["basic", "multiclient", "conditional", "documents", "batch", "max"]
+
+    if parallel:
+        with ThreadPoolExecutor(max_workers=6) as executor:
+            futures = {
+                executor.submit(_validate_single_workbook, name): name for name in workbook_names
+            }
+
+            for future in as_completed(futures):
+                name, success, output = future.result()
+                if success:
+                    if not quiet:
+                        print(f"  ✓ {name}")
+                else:
+                    print(f"  ✗ {name}: {output}")
+    else:
+        configs = _get_workbook_configs()
+        for name in workbook_names:
+            path, _ = configs[name]
+            script = _get_validate_script(name)
+
+            if not quiet:
+                print(f"  Validating {name}...")
+
+            _run_cmd(c, f"python {script} {path}")
+
+            if not quiet:
+                print(f"  ✓ {name}")
+
+    print("All workbooks validated.")
+
+
+@task
+def wb_spot_check(c: Context):
+    """Spot check responses from key prompts."""
+    print("Spot checking responses...")
+    _run_cmd(c, "python scripts/validation/spot_check.py")
+
+
+@task
+def wb_all(c: Context, parallel: bool = False, concurrency: str | None = None):
+    """Full pipeline: clean, create, run, and validate.
+
+    Args:
+        parallel: Enable parallel execution for create/run
+        concurrency: Override default concurrency
+    """
+    wb_clean(c)
+    wb_create(c, parallel=parallel)
+    wb_run(c, concurrency=concurrency, parallel=parallel)
+    wb_validate(c, parallel=parallel)
+
+    print("\n" + "=" * 60)
+    print("FULL PIPELINE COMPLETE")
+    print("=" * 60)
+
+
+@task
+def wb_basic(c: Context, concurrency: str = "3"):
+    """Create, run, and validate basic workbook."""
+    config = get_config()
+    print("Processing basic workbook...")
+    _run_cmd(c, f"python {_get_create_script('basic')}")
+    _run_cmd(
+        c, f"python scripts/run_orchestrator.py {config.sample.workbooks.basic} -c {concurrency}"
+    )
+    _run_cmd(c, f"python {_get_validate_script('basic')} {config.sample.workbooks.basic}")
+    print("Basic workbook complete!")
+
+
+@task
+def wb_multiclient(c: Context, concurrency: str = "2"):
+    """Create, run, and validate multiclient workbook."""
+    config = get_config()
+    print("Processing multiclient workbook...")
+    _run_cmd(c, f"python {_get_create_script('multiclient')}")
+    _run_cmd(
+        c,
+        f"python scripts/run_orchestrator.py {config.sample.workbooks.multiclient} -c {concurrency}",
+    )
+    _run_cmd(
+        c, f"python {_get_validate_script('multiclient')} {config.sample.workbooks.multiclient}"
+    )
+    print("Multiclient workbook complete!")
+
+
+@task
+def wb_conditional(c: Context, concurrency: str = "3"):
+    """Create, run, and validate conditional workbook."""
+    config = get_config()
+    print("Processing conditional workbook...")
+    _run_cmd(c, f"python {_get_create_script('conditional')}")
+    _run_cmd(
+        c,
+        f"python scripts/run_orchestrator.py {config.sample.workbooks.conditional} -c {concurrency}",
+    )
+    _run_cmd(
+        c, f"python {_get_validate_script('conditional')} {config.sample.workbooks.conditional}"
+    )
+    print("Conditional workbook complete!")
+
+
+@task
+def wb_documents(c: Context):
+    """Create, run, and validate documents workbook."""
+    config = get_config()
+    print("Processing documents workbook...")
+    _run_cmd(c, f"python {_get_create_script('documents')}")
+    _run_cmd(c, f"python scripts/run_orchestrator.py {config.sample.workbooks.documents}")
+    _run_cmd(c, f"python {_get_validate_script('documents')} {config.sample.workbooks.documents}")
+    print("Documents workbook complete!")
+
+
+@task
+def wb_batch(c: Context, concurrency: str = "3"):
+    """Create, run, and validate batch workbook."""
+    config = get_config()
+    print("Processing batch workbook...")
+    _run_cmd(c, f"python {_get_create_script('batch')}")
+    _run_cmd(
+        c, f"python scripts/run_orchestrator.py {config.sample.workbooks.batch} -c {concurrency}"
+    )
+    _run_cmd(c, f"python {_get_validate_script('batch')} {config.sample.workbooks.batch}")
+    print("Batch workbook complete!")
+
+
+@task
+def wb_max(c: Context, concurrency: str = "3"):
+    """Create, run, and validate max workbook."""
+    config = get_config()
+    print("Processing max workbook...")
+    _run_cmd(c, f"python {_get_create_script('max')}")
+    _run_cmd(
+        c, f"python scripts/run_orchestrator.py {config.sample.workbooks.max} -c {concurrency}"
+    )
+    _run_cmd(c, f"python {_get_validate_script('max')} {config.sample.workbooks.max}")
+    print("Max workbook complete!")
+
+
+# ============================================================================
+# RAG TASKS (rag namespace)
+# ============================================================================
+
+
+@task
+def rag_status(c: Context):
     """Show current RAG indexing status.
 
     Displays all indexed documents grouped by chunking strategy,
@@ -598,7 +613,7 @@ def index_status(c: Context) -> None:
 
 
 @task
-def index_clear(c: Context, chunking_strategy: str = "") -> None:
+def rag_clear(c: Context, chunking_strategy: str = ""):
     """Clear RAG indexes.
 
     Args:
@@ -606,9 +621,9 @@ def index_clear(c: Context, chunking_strategy: str = "") -> None:
                     If empty, clears ALL indexes.
 
     Examples:
-        inv index-clear                          # Clear all indexes
-        inv index-clear -c recursive             # Clear only 'recursive' indexes
-        inv index-clear -c markdown              # Clear only 'markdown' indexes
+        inv rag.clear                          # Clear all indexes
+        inv rag.clear -c recursive             # Clear only 'recursive' indexes
+        inv rag.clear -c markdown              # Clear only 'markdown' indexes
     """
     from src.RAG import FFRAGClient
 
@@ -635,15 +650,15 @@ def index_clear(c: Context, chunking_strategy: str = "") -> None:
 
 
 @task
-def index_clear_strategy(c: Context, chunking_strategy: str) -> None:
+def rag_clear_strategy(c: Context, chunking_strategy: str):
     """Clear RAG indexes for a specific chunking strategy only.
 
     Args:
         chunking_strategy: The chunking strategy to clear (e.g., 'recursive', 'markdown', 'code').
 
     Examples:
-        inv index-clear-strategy recursive
-        inv index-clear-strategy markdown
+        inv rag.clear-strategy recursive
+        inv rag.clear-strategy markdown
 
     """
     from src.RAG import FFRAGClient
@@ -654,7 +669,7 @@ def index_clear_strategy(c: Context, chunking_strategy: str) -> None:
 
     if not chunking_strategy:
         print("\nError: chunking_strategy is required")
-        print("Usage: inv index-clear-strategy <chunking_strategy>")
+        print("Usage: inv rag.clear-strategy <chunking_strategy>")
         return
 
     try:
@@ -671,7 +686,7 @@ def index_clear_strategy(c: Context, chunking_strategy: str) -> None:
 
 
 @task
-def index_rebuild(c: Context, workbook: str = "") -> None:
+def rag_rebuild(c: Context, workbook: str = ""):
     """Rebuild RAG indexes from a workbook's documents.
 
     This re-indexes all documents defined in a workbook's 'documents' sheet.
@@ -680,12 +695,10 @@ def index_rebuild(c: Context, workbook: str = "") -> None:
         workbook: Path to workbook. If empty, uses default documents workbook.
 
     Examples:
-        inv index-rebuild                           # Use default documents workbook
-        inv index-rebuild -w ./my_workbook.xlsx     # Use specific workbook
+        inv rag.rebuild                           # Use default documents workbook
+        inv rag.rebuild -w ./my_workbook.xlsx     # Use specific workbook
 
     """
-    import os
-
     from dotenv import load_dotenv
 
     from src.orchestrator.document_processor import DocumentProcessor
@@ -755,7 +768,7 @@ def index_rebuild(c: Context, workbook: str = "") -> None:
 
 
 @task
-def rag_stats(c: Context) -> None:
+def rag_stats(c: Context):
     """Show detailed RAG statistics."""
     from src.RAG import FFRAGClient
 
@@ -790,29 +803,40 @@ def rag_stats(c: Context) -> None:
         print(f"\nError getting RAG stats: {e}")
 
 
-# Namespace for better help organization
-ns = {
-    "help": help,
-    "create": create,
-    "clean": clean,
-    "run": run,
-    "validate": validate,
-    "spot-check": spot_check,
-    "all": all,
-    "basic": basic,
-    "multiclient": multiclient,
-    "conditional": conditional,
-    "documents": documents,
-    "batch": batch,
-    "max": max,
-    "config-check": config_check,
-    "lint": lint,
-    "format": format,
-    "test": test,
-    "test-all": test_all,
-    "index-status": index_status,
-    "index-clear": index_clear,
-    "index-clear-strategy": index_clear_strategy,
-    "index-rebuild": index_rebuild,
-    "rag-stats": rag_stats,
-}
+# ============================================================================
+# NAMESPACES
+# ============================================================================
+
+# Workbook namespace
+wb = Collection()
+wb.add_task(wb_create, name="create")
+wb.add_task(wb_clean, name="clean")
+wb.add_task(wb_run, name="run")
+wb.add_task(wb_validate, name="validate")
+wb.add_task(wb_spot_check, name="spot-check")
+wb.add_task(wb_all, name="all")
+wb.add_task(wb_basic, name="basic")
+wb.add_task(wb_multiclient, name="multiclient")
+wb.add_task(wb_conditional, name="conditional")
+wb.add_task(wb_documents, name="documents")
+wb.add_task(wb_batch, name="batch")
+wb.add_task(wb_max, name="max")
+
+# RAG namespace
+rag = Collection()
+rag.add_task(rag_status, name="status")
+rag.add_task(rag_clear, name="clear")
+rag.add_task(rag_clear_strategy, name="clear-strategy")
+rag.add_task(rag_rebuild, name="rebuild")
+rag.add_task(rag_stats, name="stats")
+
+# Root namespace
+ns = Collection()
+ns.add_task(help)
+ns.add_task(config_check, name="config-check")
+ns.add_task(lint)
+ns.add_task(format)
+ns.add_task(test)
+ns.add_task(test_all, name="test-all")
+ns.add_collection(wb, name="wb")
+ns.add_collection(rag, name="rag")
