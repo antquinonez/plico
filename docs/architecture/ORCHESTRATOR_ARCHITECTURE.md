@@ -663,16 +663,6 @@ Documents are automatically indexed to the RAG vector store when loaded:
 
 Cached documents are indexed when loaded from parquet.
 
-#### Python 3.13 Requirement
-
-RAG functionality requires Python 3.13 due to ChromaDB's pydantic v1 dependency:
-
-```bash
-# Use Python 3.13 virtual environment
-source .venv313/bin/activate
-python scripts/run_orchestrator.py workbook.xlsx
-```
-
 ## CLI Usage
 
 ### Options
@@ -834,27 +824,27 @@ The project also includes an Invoke-based task runner (`tasks.py`) that uses the
 inv --list
 
 # Create all workbooks in parallel
-inv create --parallel
+inv wb.create --parallel
 
 # Run orchestrator on all workbooks
-inv run --parallel
+inv wb.run --parallel
 
 # Run with custom concurrency
-inv run -c 4
+inv wb.run -c 4
 
 # Validate all workbook results
-inv validate --parallel
+inv wb.validate --parallel
 
 # Full pipeline
-inv all --parallel
+inv wb.all --parallel
 
 # Individual workbooks (create + run + validate)
-inv basic
-inv multiclient
-inv conditional
-inv documents
-inv batch
-inv max
+inv wb.basic
+inv wb.multiclient
+inv wb.conditional
+inv wb.documents
+inv wb.batch
+inv wb.max
 
 # Utility tasks
 inv config-check    # Display current configuration
@@ -864,22 +854,22 @@ inv test            # Run unit tests
 
 | Task | Description |
 |------|-------------|
-| `inv create` | Create all sample workbooks |
-| `inv create --parallel` | Create workbooks in parallel |
-| `inv run` | Run orchestrator on all workbooks |
-| `inv run -c N` | Run with custom concurrency |
-| `inv run --parallel` | Run workbooks in parallel |
-| `inv validate` | Validate all workbook results |
-| `inv validate --parallel` | Validate workbooks in parallel |
-| `inv spot-check` | Spot check responses |
-| `inv all` | Full pipeline: clean → create → run → validate |
-| `inv clean` | Remove all sample workbooks |
-| `inv basic` | Create, run, and validate basic workbook |
-| `inv multiclient` | Create, run, and validate multiclient workbook |
-| `inv conditional` | Create, run, and validate conditional workbook |
-| `inv documents` | Create, run, and validate documents workbook |
-| `inv batch` | Create, run, and validate batch workbook |
-| `inv max` | Create, run, and validate max workbook |
+| `inv wb.create` | Create all sample workbooks |
+| `inv wb.create --parallel` | Create workbooks in parallel |
+| `inv wb.run` | Run orchestrator on all workbooks |
+| `inv wb.run -c N` | Run with custom concurrency |
+| `inv wb.run --parallel` | Run workbooks in parallel |
+| `inv wb.validate` | Validate all workbook results |
+| `inv wb.validate --parallel` | Validate workbooks in parallel |
+| `inv wb.spot-check` | Spot check responses |
+| `inv wb.all` | Full pipeline: clean → create → run → validate |
+| `inv wb.clean` | Remove all sample workbooks |
+| `inv wb.basic` | Create, run, and validate basic workbook |
+| `inv wb.multiclient` | Create, run, and validate multiclient workbook |
+| `inv wb.conditional` | Create, run, and validate conditional workbook |
+| `inv wb.documents` | Create, run, and validate documents workbook |
+| `inv wb.batch` | Create, run, and validate batch workbook |
+| `inv wb.max` | Create, run, and validate max workbook |
 | `inv config-check` | Display current configuration values |
 | `inv lint` | Run ruff linting |
 | `inv test` | Run unit tests |
