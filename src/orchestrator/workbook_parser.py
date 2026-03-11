@@ -545,7 +545,11 @@ class WorkbookParser:
             return "recursive"
 
     def parse_history_string(self, history_str: Any) -> list[str] | None:  # noqa: ANN401
-        """Parse history string like '["a", "b"]' into list."""
+        """Parse history string like '["a", "b"]' into list.
+
+        Handles smart quotes (curly quotes) by normalizing them to ASCII quotes
+        before parsing. This allows users to copy/paste from Word, Google Docs, etc.
+        """
         if not history_str:
             return None
 
@@ -553,6 +557,16 @@ class WorkbookParser:
             return history_str
 
         s = str(history_str).strip()
+
+        quote_map = {
+            0x201C: 0x22,
+            0x201D: 0x22,
+            0x2018: 0x27,
+            0x2019: 0x27,
+            0x201E: 0x22,
+            0x201F: 0x22,
+        }
+        s = s.translate(quote_map)
 
         if s.startswith("[") and s.endswith("]"):
             try:
