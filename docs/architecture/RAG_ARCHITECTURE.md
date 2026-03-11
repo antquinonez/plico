@@ -506,7 +506,7 @@ The following invoke tasks are available for managing RAG indexes:
 ### List Index Status
 
 ```bash
-inv index-status
+inv rag.status
 ```
 
 Shows:
@@ -518,7 +518,7 @@ Shows:
 ### Clear All Indexes
 
 ```bash
-inv index-clear
+inv rag.clear
 ```
 
 Removes all chunks from the vector store. Use with caution.
@@ -526,8 +526,8 @@ Removes all chunks from the vector store. Use with caution.
 ### Clear Specific Chunking Strategy
 
 ```bash
-inv index-clear-strategy recursive
-inv index-clear-strategy markdown
+inv rag.clear-strategy recursive
+inv rag.clear-strategy markdown
 ```
 
 Removes only chunks with the specified `chunking_strategy`. Useful when changing chunking strategies.
@@ -535,7 +535,7 @@ Removes only chunks with the specified `chunking_strategy`. Useful when changing
 ### Rebuild Indexes
 
 ```bash
-inv index-rebuild
+inv rag.rebuild
 ```
 
 Clears all indexes and reindexes all documents from the configured workbook.
@@ -543,7 +543,7 @@ Clears all indexes and reindexes all documents from the configured workbook.
 ### View RAG Statistics
 
 ```bash
-inv rag-stats
+inv rag.stats
 ```
 
 Shows detailed statistics about the RAG system configuration and current state.
@@ -552,11 +552,11 @@ Shows detailed statistics about the RAG system configuration and current state.
 
 | Task | Description |
 |------|-------------|
-| `inv index-status` | Show indexed documents and index types |
-| `inv index-clear` | Clear all indexes (destructive) |
-| `inv index-clear-type <type>` | Clear specific index type only |
-| `inv index-rebuild` | Rebuild all indexes from workbook |
-| `inv rag-stats` | Show RAG configuration and statistics |
+| `inv rag.status` | Show indexed documents and index types |
+| `inv rag.clear` | Clear all indexes (destructive) |
+| `inv rag.clear-strategy <type>` | Clear specific index type only |
+| `inv rag.rebuild` | Rebuild all indexes from workbook |
+| `inv rag.stats` | Show RAG configuration and statistics |
 
 ## MCP Tools
 
@@ -724,22 +724,6 @@ chunks = split_text(
 | Integration | 3 | DocumentRegistry integration |
 | RAG Enhancements | 27 | Query expansion, deduplication, per-prompt overrides |
 
-### Running Tests
-
-```bash
-# Activate Python 3.13 environment (required for ChromaDB)
-source .venv313/bin/activate
-
-# Run RAG tests
-pytest tests/test_rag.py -v
-
-# Run RAG enhancement tests
-pytest tests/test_rag_enhancements.py -v
-
-# Run with coverage
-pytest tests/test_rag.py --cov=src/RAG --cov-report=term-missing
-```
-
 ## Dependencies
 
 ```
@@ -760,7 +744,7 @@ RAGMCPTools
 ```toml
 dependencies = [
     # ... existing dependencies
-    "chromadb>=0.4.0",
+    "chromadb>=1.5.0,<2.0.0",
 ]
 ```
 
@@ -768,33 +752,24 @@ dependencies = [
 
 | Version | ChromaDB | Status |
 |---------|----------|--------|
-| 3.12 | Compatible | Supported |
-| 3.13 | Compatible | Recommended |
+| 3.11 | v1.x Compatible | Supported |
+| 3.12 | v1.x Compatible | Supported |
+| 3.13 | v1.x Compatible | Supported |
+| 3.14 | v1.x Compatible | Supported |
 
-The main virtual environment (`.venv/`) uses Python 3.13. For RAG functionality with ChromaDB:
+ChromaDB v1.x now supports pydantic v2, enabling compatibility with all Python versions 3.11+.
+
+### Running Tests
 
 ```bash
-# Create Python 3.13 environment
-uv venv .venv313 --python 3.13
-source .venv313/bin/activate
-uv pip install -e ".[dev]"
+# Run RAG tests
+pytest tests/test_rag.py -v
 
-# Run orchestrator with RAG
-source .venv313/bin/activate
-python scripts/run_orchestrator.py workbook.xlsx
-```
+# Run RAG enhancement tests
+pytest tests/test_rag_enhancements.py -v
 
-## Implemented Enhancements
-
-### 1. Hybrid Search (Implemented)
-
-Combine vector similarity with BM25 keyword matching using Reciprocal Rank Fusion (RRF).
-
-```yaml
-rag:
-  search:
-    mode: "hybrid"  # "vector", "bm25", or "hybrid"
-    hybrid_alpha: 0.6  # 60% vector, 40% BM25
+# Run with coverage
+pytest tests/test_rag.py --cov=src/RAG --cov-report=term-missing
 ```
 
 ```python

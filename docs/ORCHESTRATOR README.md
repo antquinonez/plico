@@ -909,24 +909,24 @@ sample_workbook_<type>_<action>_v<NNN>.py
 inv --list
 
 # Full pipeline for all workbooks: clean → create → run → validate
-inv all
+inv wb.all
 
 # Create all workbooks in parallel
-inv create --parallel
+inv wb.create --parallel
 
 # Run orchestrator on all workbooks
-inv run --parallel
+inv wb.run --parallel
 
 # Validate all workbook results
-inv validate
+inv wb.validate
 
 # Individual workbook (create + run + validate)
-inv basic
-inv multiclient
-inv conditional
-inv documents
-inv batch
-inv max
+inv wb.basic
+inv wb.multiclient
+inv wb.conditional
+inv wb.documents
+inv wb.batch
+inv wb.max
 ```
 
 ### Using Makefile
@@ -974,22 +974,22 @@ make max
 
 | Task | Description |
 |------|-------------|
-| `inv create` | Create all sample workbooks |
-| `inv create --parallel` | Create workbooks in parallel |
-| `inv run` | Run orchestrator on all workbooks |
-| `inv run -c N` | Run with custom concurrency |
-| `inv run --parallel` | Run workbooks in parallel |
-| `inv validate` | Validate all workbook results |
-| `inv validate --parallel` | Validate workbooks in parallel |
-| `inv spot-check` | Spot check responses |
-| `inv all` | Full pipeline: clean → create → run → validate |
-| `inv clean` | Remove all sample workbooks |
-| `inv basic` | Create, run, and validate basic workbook |
-| `inv multiclient` | Create, run, and validate multiclient workbook |
-| `inv conditional` | Create, run, and validate conditional workbook |
-| `inv documents` | Create, run, and validate documents workbook |
-| `inv batch` | Create, run, and validate batch workbook |
-| `inv max` | Create, run, and validate max workbook |
+| `inv wb.create` | Create all sample workbooks |
+| `inv wb.create --parallel` | Create workbooks in parallel |
+| `inv wb.run` | Run orchestrator on all workbooks |
+| `inv wb.run -c N` | Run with custom concurrency |
+| `inv wb.run --parallel` | Run workbooks in parallel |
+| `inv wb.validate` | Validate all workbook results |
+| `inv wb.validate --parallel` | Validate workbooks in parallel |
+| `inv wb.spot-check` | Spot check responses |
+| `inv wb.all` | Full pipeline: clean → create → run → validate |
+| `inv wb.clean` | Remove all sample workbooks |
+| `inv wb.basic` | Create, run, and validate basic workbook |
+| `inv wb.multiclient` | Create, run, and validate multiclient workbook |
+| `inv wb.conditional` | Create, run, and validate conditional workbook |
+| `inv wb.documents` | Create, run, and validate documents workbook |
+| `inv wb.batch` | Create, run, and validate batch workbook |
+| `inv wb.max` | Create, run, and validate max workbook |
 
 ### Options
 
