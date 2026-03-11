@@ -305,6 +305,70 @@ class TestWorkbookParserParseHistoryString:
         assert result == ["a", "b", "c"]
 
 
+class TestWorkbookParserSmartQuotes:
+    """Tests for smart quote normalization in history strings."""
+
+    def test_smart_double_quotes(self, temp_workbook):
+        """Test parsing history with smart double quotes."""
+        from src.orchestrator.workbook_parser import WorkbookParser
+
+        builder = WorkbookParser(temp_workbook)
+
+        result = builder.parse_history_string('["interesting_story"]')
+
+        assert result == ["interesting_story"]
+
+    def test_smart_single_quotes(self, temp_workbook):
+        """Test parsing history with smart single quotes."""
+        from src.orchestrator.workbook_parser import WorkbookParser
+
+        builder = WorkbookParser(temp_workbook)
+
+        result = builder.parse_history_string("['test', 'value']")
+
+        assert result == ["test", "value"]
+
+    def test_mixed_ascii_and_smart_quotes(self, temp_workbook):
+        """Test parsing history with mixed ASCII and smart quotes."""
+        from src.orchestrator.workbook_parser import WorkbookParser
+
+        builder = WorkbookParser(temp_workbook)
+
+        result = builder.parse_history_string('["ascii", "smart"]')
+
+        assert result == ["ascii", "smart"]
+
+    def test_backward_compatibility_ascii_quotes(self, temp_workbook):
+        """Test that ASCII quotes still work (backward compatibility)."""
+        from src.orchestrator.workbook_parser import WorkbookParser
+
+        builder = WorkbookParser(temp_workbook)
+
+        result = builder.parse_history_string('["item1", "item2"]')
+
+        assert result == ["item1", "item2"]
+
+    def test_sample_workbook_exact_string(self, temp_workbook):
+        """Test the exact string from sample_workbook.xlsx."""
+        from src.orchestrator.workbook_parser import WorkbookParser
+
+        builder = WorkbookParser(temp_workbook)
+
+        result = builder.parse_history_string('["interesting_story"]')
+
+        assert result == ["interesting_story"]
+
+    def test_multiple_items_smart_quotes(self, temp_workbook):
+        """Test multiple items with smart quotes."""
+        from src.orchestrator.workbook_parser import WorkbookParser
+
+        builder = WorkbookParser(temp_workbook)
+
+        result = builder.parse_history_string('["first", "second", "third"]')
+
+        assert result == ["first", "second", "third"]
+
+
 class TestWorkbookParserWriteResults:
     """Tests for writing results."""
 
