@@ -32,21 +32,36 @@ inv test -p tests/test_ffai.py  # Run specific test file
 inv test-all                  # Run all tests including integration
 inv lint                      # Run linting
 inv format                    # Run formatting
-inv create                    # Create all test workbooks
-inv run                       # Run orchestrator on all workbooks
-inv all                       # Full pipeline: clean, create, run, validate
 inv config-check              # Display current configuration
-inv spot-check                # Spot check responses from key prompts
 ```
 
-### RAG Indexing Tasks
+### Workbook Tasks (wb namespace)
 
 ```bash
-inv index-status              # Show RAG indexing status
-inv index-clear               # Clear all RAG indexes
-inv index-clear -c recursive  # Clear specific chunking strategy
-inv index-rebuild             # Rebuild indexes from documents workbook
-inv rag-stats                 # Show detailed RAG statistics
+inv wb.create                 # Create all test workbooks
+inv wb.run                    # Run orchestrator on all workbooks
+inv wb.run -c 4               # Run with concurrency=4
+inv wb.validate               # Validate all workbook results
+inv wb.clean                  # Remove all test workbooks
+inv wb.all                    # Full pipeline: clean, create, run, validate
+inv wb.spot-check             # Spot check responses from key prompts
+inv wb.basic                  # Create, run, and validate basic workbook
+inv wb.multiclient            # Create, run, and validate multiclient workbook
+inv wb.conditional            # Create, run, and validate conditional workbook
+inv wb.documents              # Create, run, and validate documents workbook
+inv wb.batch                  # Create, run, and validate batch workbook
+inv wb.max                    # Create, run, and validate max workbook
+```
+
+### RAG Tasks (rag namespace)
+
+```bash
+inv rag.status                # Show RAG indexing status
+inv rag.clear                 # Clear all RAG indexes
+inv rag.clear -c recursive    # Clear specific chunking strategy
+inv rag.clear-strategy recursive  # Clear specific chunking strategy
+inv rag.rebuild               # Rebuild indexes from documents workbook
+inv rag.stats                 # Show detailed RAG statistics
 ```
 
 ### Pre-commit
