@@ -12,3 +12,4 @@ library/*
 manifests/*
 docs/readmes/*
 manifests_test/*
+dont_track/*
