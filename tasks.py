@@ -297,7 +297,7 @@ def test(c: Context, path: str = "tests", verbose: bool = False):
 @task
 def test_all(c: Context):
     """Run all tests including integration tests."""
-    c.run("python -m pytest tests -v", pty=PTY)
+    c.run("python -m pytest tests -v -m ''", pty=PTY)
 
 
 # ============================================================================
