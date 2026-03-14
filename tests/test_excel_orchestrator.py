@@ -682,3 +682,736 @@ class TestExcelOrchestratorBatchRun:
 
         assert "batch_mode" not in summary or summary.get("batch_mode") is False
         assert summary["total_prompts"] == 3
+
+
+class TestExcelOrchestratorBoolParsing:
+    """Tests for boolean override parsing."""
+
+    def test_parse_bool_from_string_true(self, temp_workbook, mock_ffmistralsmall):
+        """Test parsing 'true', 'yes', '1' as True."""
+        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
+
+        orchestrator = ExcelOrchestrator(temp_workbook, mock_ffmistralsmall)
+
+        assert orchestrator._parse_bool_override("true") is True
+        assert orchestrator._parse_bool_override("True") is True
+        assert orchestrator._parse_bool_override("TRUE") is True
+        assert orchestrator._parse_bool_override("yes") is True
+        assert orchestrator._parse_bool_override("YES") is True
+        assert orchestrator._parse_bool_override("1") is True
+
+    def test_parse_bool_from_string_false(self, temp_workbook, mock_ffmistralsmall):
+        """Test parsing 'false', 'no', '0' as False."""
+        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
+
+        orchestrator = ExcelOrchestrator(temp_workbook, mock_ffmistralsmall)
+
+        assert orchestrator._parse_bool_override("false") is False
+        assert orchestrator._parse_bool_override("False") is False
+        assert orchestrator._parse_bool_override("FALSE") is False
+        assert orchestrator._parse_bool_override("no") is False
+        assert orchestrator._parse_bool_override("NO") is False
+        assert orchestrator._parse_bool_override("0") is False
+
+    def test_parse_bool_from_bool(self, temp_workbook, mock_ffmistralsmall):
+        """Test passthrough of boolean values."""
+        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
+
+        orchestrator = ExcelOrchestrator(temp_workbook, mock_ffmistralsmall)
+
+        assert orchestrator._parse_bool_override(True) is True
+        assert orchestrator._parse_bool_override(False) is False
+
+    def test_parse_bool_none_returns_none(self, temp_workbook, mock_ffmistralsmall):
+        """Test that None returns None."""
+        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
+
+        orchestrator = ExcelOrchestrator(temp_workbook, mock_ffmistralsmall)
+
+        assert orchestrator._parse_bool_override(None) is None
+
+    def test_parse_bool_invalid_returns_none(self, temp_workbook, mock_ffmistralsmall):
+        """Test invalid values return None."""
+        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
+
+        orchestrator = ExcelOrchestrator(temp_workbook, mock_ffmistralsmall)
+
+        assert orchestrator._parse_bool_override("invalid") is None
+        assert orchestrator._parse_bool_override("maybe") is None
+        assert orchestrator._parse_bool_override(123) is None
+
+
+class TestExcelOrchestratorConditions:
+    """Tests for conditional execution."""
+
+    def test_execute_skips_when_condition_false(self, temp_workbook, mock_ffmistralsmall):
+        """Test that prompts are skipped when condition is false."""
+        from openpyxl import Workbook
+
+        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "config"
+        ws["A1"] = "field"
+        ws["B1"] = "value"
+        ws["A2"] = "model"
+        ws["B2"] = "test-model"
+        ws["A3"] = "max_retries"
+        ws["B3"] = 1
+
+        ws = wb.create_sheet("prompts")
+        ws["A1"] = "sequence"
+        ws["B1"] = "prompt_name"
+        ws["C1"] = "prompt"
+        ws["D1"] = "history"
+        ws["E1"] = "condition"
+
+        ws["A2"] = 1
+        ws["B2"] = "first"
+        ws["C2"] = "Hello"
+        ws["D2"] = ""
+        ws["E2"] = ""
+
+        ws["A3"] = 2
+        ws["B3"] = "second"
+        ws["C3"] = "World"
+        ws["D3"] = ""
+        ws["E3"] = 'first.response == "nonexistent"'
+
+        wb.save(temp_workbook)
+
+        orchestrator = ExcelOrchestrator(temp_workbook, mock_ffmistralsmall)
+        orchestrator._init_workbook()
+        orchestrator._load_config()
+        orchestrator.prompts = orchestrator.builder.load_prompts()
+        orchestrator._init_client()
+
+        results = orchestrator.execute()
+
+        assert results[0]["status"] == "success"
+        assert results[1]["status"] == "skipped"
+        assert results[1]["condition_result"] is False
+
+    def test_condition_dependencies_in_graph(self, temp_workbook, mock_ffmistralsmall):
+        """Test that condition references are added to dependency graph."""
+        from openpyxl import Workbook
+
+        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "config"
+        ws["A1"] = "field"
+        ws["B1"] = "value"
+        ws["A2"] = "model"
+        ws["B2"] = "test-model"
+
+        ws = wb.create_sheet("prompts")
+        ws["A1"] = "sequence"
+        ws["B1"] = "prompt_name"
+        ws["C1"] = "prompt"
+        ws["D1"] = "history"
+        ws["E1"] = "condition"
+
+        ws["A2"] = 1
+        ws["B2"] = "first"
+        ws["C2"] = "Hello"
+        ws["D2"] = ""
+        ws["E2"] = ""
+
+        ws["A3"] = 2
+        ws["B3"] = "second"
+        ws["C3"] = "World"
+        ws["D3"] = ""
+        ws["E3"] = '{{first.status}} == "success"'
+
+        wb.save(temp_workbook)
+
+        orchestrator = ExcelOrchestrator(temp_workbook, mock_ffmistralsmall)
+        orchestrator._init_workbook()
+        orchestrator.prompts = orchestrator.builder.load_prompts()
+
+        nodes = orchestrator._build_execution_graph()
+
+        assert 1 in nodes[2].dependencies
+
+    def test_condition_error_captured(self, temp_workbook, mock_ffmistralsmall):
+        """Test that condition evaluation errors are captured."""
+        from openpyxl import Workbook
+
+        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "config"
+        ws["A1"] = "field"
+        ws["B1"] = "value"
+        ws["A2"] = "model"
+        ws["B2"] = "test-model"
+        ws["A3"] = "max_retries"
+        ws["B3"] = 1
+
+        ws = wb.create_sheet("prompts")
+        ws["A1"] = "sequence"
+        ws["B1"] = "prompt_name"
+        ws["C1"] = "prompt"
+        ws["D1"] = "history"
+        ws["E1"] = "condition"
+
+        ws["A2"] = 1
+        ws["B2"] = "first"
+        ws["C2"] = "Hello"
+        ws["D2"] = ""
+        ws["E2"] = ""
+
+        ws["A3"] = 2
+        ws["B3"] = "second"
+        ws["C3"] = "World"
+        ws["D3"] = ""
+        ws["E3"] = "nonexistent.invalid_method()"
+
+        wb.save(temp_workbook)
+
+        orchestrator = ExcelOrchestrator(temp_workbook, mock_ffmistralsmall)
+        orchestrator._init_workbook()
+        orchestrator._load_config()
+        orchestrator.prompts = orchestrator.builder.load_prompts()
+        orchestrator._init_client()
+
+        results = orchestrator.execute()
+
+        assert results[1]["condition_error"] is not None
+
+    def test_summary_includes_condition_count(self, temp_workbook, mock_ffmistralsmall):
+        """Test that summary includes prompts_with_conditions."""
+        from openpyxl import Workbook
+
+        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "config"
+        ws["A1"] = "field"
+        ws["B1"] = "value"
+        ws["A2"] = "model"
+        ws["B2"] = "test-model"
+        ws["A3"] = "max_retries"
+        ws["B3"] = 1
+
+        ws = wb.create_sheet("prompts")
+        ws["A1"] = "sequence"
+        ws["B1"] = "prompt_name"
+        ws["C1"] = "prompt"
+        ws["D1"] = "history"
+        ws["E1"] = "condition"
+
+        ws["A2"] = 1
+        ws["B2"] = "first"
+        ws["C2"] = "Hello"
+        ws["D2"] = ""
+        ws["E2"] = ""
+
+        ws["A3"] = 2
+        ws["B3"] = "second"
+        ws["C3"] = "World"
+        ws["D3"] = ""
+        ws["E3"] = 'first.status == "success"'
+
+        wb.save(temp_workbook)
+
+        orchestrator = ExcelOrchestrator(temp_workbook, mock_ffmistralsmall)
+        orchestrator.run()
+        summary = orchestrator.get_summary()
+
+        assert "prompts_with_conditions" in summary
+        assert summary["prompts_with_conditions"] == 1
+
+
+class TestExcelOrchestratorBatchEdgeCases:
+    """Tests for batch execution edge cases."""
+
+    def test_batch_error_stop_mode(self, temp_workbook_with_batch_data, mock_ffmistralsmall):
+        """Test that on_batch_error: stop halts execution."""
+        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
+
+        mock_ffmistralsmall.generate_response = MagicMock(side_effect=Exception("API Error"))
+        mock_ffmistralsmall.clone = MagicMock(return_value=mock_ffmistralsmall)
+
+        orchestrator = ExcelOrchestrator(
+            temp_workbook_with_batch_data,
+            mock_ffmistralsmall,
+            config_overrides={"on_batch_error": "stop"},
+        )
+        orchestrator._init_workbook()
+        orchestrator._load_config()
+        orchestrator.prompts = orchestrator.builder.load_prompts()
+        orchestrator._init_client()
+        orchestrator.batch_data = orchestrator.builder.load_data()
+
+        results = orchestrator.execute_batch()
+
+        assert len(results) < 9
+
+    def test_batch_output_separate_sheets(self, temp_workbook_with_batch_data, mock_ffmistralsmall):
+        """Test batch_output: separate_sheets creates multiple sheets."""
+        from openpyxl import load_workbook
+
+        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
+
+        orchestrator = ExcelOrchestrator(
+            temp_workbook_with_batch_data,
+            mock_ffmistralsmall,
+            config_overrides={"batch_output": "separate_sheets"},
+        )
+        sheet_names = orchestrator.run()
+
+        assert "," in sheet_names
+
+        wb = load_workbook(temp_workbook_with_batch_data)
+        sheets = [s.strip() for s in sheet_names.split(",")]
+        for sheet in sheets:
+            assert sheet in wb.sheetnames
+
+    def test_batch_summary_with_failures(self, temp_workbook_with_batch_data, mock_ffmistralsmall):
+        """Test that summary includes batches_with_failures."""
+        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
+
+        mock_ffmistralsmall.generate_response = MagicMock(side_effect=Exception("API Error"))
+        mock_ffmistralsmall.clone = MagicMock(return_value=mock_ffmistralsmall)
+
+        orchestrator = ExcelOrchestrator(
+            temp_workbook_with_batch_data,
+            mock_ffmistralsmall,
+            config_overrides={"max_retries": 1},
+        )
+        orchestrator.run()
+        summary = orchestrator.get_summary()
+
+        assert summary["failed"] > 0
+        assert "batches_with_failures" in summary
+
+
+class TestExcelOrchestratorParallelEdgeCases:
+    """Tests for parallel execution edge cases."""
+
+    def test_parallel_skipped_count(self, temp_workbook, mock_ffmistralsmall):
+        """Test that skipped prompts are counted correctly in parallel execution."""
+        from openpyxl import Workbook
+
+        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "config"
+        ws["A1"] = "field"
+        ws["B1"] = "value"
+        ws["A2"] = "model"
+        ws["B2"] = "test-model"
+        ws["A3"] = "max_retries"
+        ws["B3"] = 1
+
+        ws = wb.create_sheet("prompts")
+        ws["A1"] = "sequence"
+        ws["B1"] = "prompt_name"
+        ws["C1"] = "prompt"
+        ws["D1"] = "history"
+        ws["E1"] = "condition"
+
+        ws["A2"] = 1
+        ws["B2"] = "first"
+        ws["C2"] = "Hello"
+        ws["D2"] = ""
+        ws["E2"] = ""
+
+        ws["A3"] = 2
+        ws["B3"] = "second"
+        ws["C3"] = "World"
+        ws["D3"] = ""
+        ws["E3"] = 'first.response == "nonexistent"'
+
+        wb.save(temp_workbook)
+
+        orchestrator = ExcelOrchestrator(temp_workbook, mock_ffmistralsmall, concurrency=2)
+        orchestrator._init_workbook()
+        orchestrator._load_config()
+        orchestrator.prompts = orchestrator.builder.load_prompts()
+        orchestrator._init_client()
+
+        results = orchestrator.execute_parallel()
+
+        skipped = [r for r in results if r["status"] == "skipped"]
+        assert len(skipped) == 1
+
+    def test_parallel_exception_in_thread(self, temp_workbook, mock_ffmistralsmall):
+        """Test that exceptions in threads are captured properly."""
+        from openpyxl import Workbook
+
+        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "config"
+        ws["A1"] = "field"
+        ws["B1"] = "value"
+        ws["A2"] = "model"
+        ws["B2"] = "test-model"
+        ws["A3"] = "max_retries"
+        ws["B3"] = 1
+
+        ws = wb.create_sheet("prompts")
+        ws["A1"] = "sequence"
+        ws["B1"] = "prompt_name"
+        ws["C1"] = "prompt"
+        ws["D1"] = "history"
+
+        ws["A2"] = 1
+        ws["B2"] = "first"
+        ws["C2"] = "Hello"
+        ws["D2"] = ""
+
+        wb.save(temp_workbook)
+
+        mock_ffmistralsmall.generate_response = MagicMock(side_effect=RuntimeError("Thread error"))
+        mock_ffmistralsmall.clone = MagicMock(return_value=mock_ffmistralsmall)
+
+        orchestrator = ExcelOrchestrator(temp_workbook, mock_ffmistralsmall, concurrency=2)
+        orchestrator._init_workbook()
+        orchestrator._load_config()
+        orchestrator.prompts = orchestrator.builder.load_prompts()
+        orchestrator._init_client()
+
+        results = orchestrator.execute_parallel()
+
+        assert len(results) == 1
+        assert results[0]["status"] == "failed"
+        assert "Thread error" in results[0]["error"]
+
+
+class TestExcelOrchestratorMultiClient:
+    """Tests for multi-client registry."""
+
+    def test_init_client_registry_loads_clients(self, temp_workbook, mock_ffmistralsmall):
+        """Test that client registry is initialized from workbook."""
+        from openpyxl import Workbook
+
+        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "config"
+        ws["A1"] = "field"
+        ws["B1"] = "value"
+        ws["A2"] = "model"
+        ws["B2"] = "test-model"
+
+        ws = wb.create_sheet("prompts")
+        ws["A1"] = "sequence"
+        ws["B1"] = "prompt_name"
+        ws["C1"] = "prompt"
+        ws["D1"] = "history"
+        ws["A2"] = 1
+        ws["B2"] = "test"
+        ws["C2"] = "Hello"
+        ws["D2"] = ""
+
+        ws = wb.create_sheet("clients")
+        ws["A1"] = "name"
+        ws["B1"] = "client_type"
+        ws["C1"] = "model"
+        ws["A2"] = "fast"
+        ws["B2"] = "mistral-small"
+        ws["C2"] = "mistral-small-2503"
+
+        wb.save(temp_workbook)
+
+        orchestrator = ExcelOrchestrator(temp_workbook, mock_ffmistralsmall)
+        orchestrator._init_workbook()
+        orchestrator._load_config()
+        orchestrator._init_client_registry()
+
+        assert orchestrator.has_multi_client is True
+        assert orchestrator.client_registry is not None
+
+    def test_execute_with_named_client(self, temp_workbook, mock_ffmistralsmall):
+        """Test executing prompt with specific client from registry."""
+        from openpyxl import Workbook
+
+        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "config"
+        ws["A1"] = "field"
+        ws["B1"] = "value"
+        ws["A2"] = "model"
+        ws["B2"] = "test-model"
+        ws["A3"] = "max_retries"
+        ws["B3"] = 1
+
+        ws = wb.create_sheet("prompts")
+        ws["A1"] = "sequence"
+        ws["B1"] = "prompt_name"
+        ws["C1"] = "prompt"
+        ws["D1"] = "history"
+        ws["E1"] = "client"
+        ws["A2"] = 1
+        ws["B2"] = "test"
+        ws["C2"] = "Hello"
+        ws["D2"] = ""
+        ws["E2"] = "fast"
+
+        ws = wb.create_sheet("clients")
+        ws["A1"] = "name"
+        ws["B1"] = "client_type"
+        ws["C1"] = "model"
+        ws["A2"] = "fast"
+        ws["B2"] = "mistral-small"
+        ws["C2"] = "mistral-small-2503"
+
+        wb.save(temp_workbook)
+
+        orchestrator = ExcelOrchestrator(temp_workbook, mock_ffmistralsmall)
+        orchestrator._init_workbook()
+        orchestrator._load_config()
+        orchestrator._init_client_registry()
+        orchestrator.prompts = orchestrator.builder.load_prompts()
+        orchestrator._init_client()
+
+        results = orchestrator.execute()
+
+        assert results[0]["status"] == "success"
+        assert results[0]["client"] == "fast"
+
+    def test_client_registry_empty_when_no_clients_sheet(self, temp_workbook, mock_ffmistralsmall):
+        """Test that client registry is not initialized when no clients sheet."""
+        from openpyxl import Workbook
+
+        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "config"
+        ws["A1"] = "field"
+        ws["B1"] = "value"
+        ws["A2"] = "model"
+        ws["B2"] = "test-model"
+
+        ws = wb.create_sheet("prompts")
+        ws["A1"] = "sequence"
+        ws["B1"] = "prompt_name"
+        ws["C1"] = "prompt"
+        ws["D1"] = "history"
+        ws["A2"] = 1
+        ws["B2"] = "test"
+        ws["C2"] = "Hello"
+        ws["D2"] = ""
+
+        wb.save(temp_workbook)
+
+        orchestrator = ExcelOrchestrator(temp_workbook, mock_ffmistralsmall)
+        orchestrator._init_workbook()
+        orchestrator._load_config()
+        orchestrator._init_client_registry()
+
+        assert orchestrator.has_multi_client is False
+        assert orchestrator.client_registry is None
+
+
+class TestExcelOrchestratorDocuments:
+    """Tests for document/reference injection."""
+
+    def test_inject_references_returns_original_when_no_documents(
+        self, temp_workbook, mock_ffmistralsmall
+    ):
+        """Test that original prompt is returned when no documents configured."""
+        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
+
+        orchestrator = ExcelOrchestrator(temp_workbook, mock_ffmistralsmall)
+
+        prompt = {"prompt": "Hello world", "references": ["doc1"]}
+        result = orchestrator._inject_references(prompt)
+
+        assert result == "Hello world"
+
+    def test_inject_references_returns_original_when_no_references_field(
+        self, temp_workbook, mock_ffmistralsmall
+    ):
+        """Test that original prompt is returned when no references field."""
+        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
+
+        orchestrator = ExcelOrchestrator(temp_workbook, mock_ffmistralsmall)
+
+        prompt = {"prompt": "Hello world"}
+        result = orchestrator._inject_references(prompt)
+
+        assert result == "Hello world"
+
+    def test_inject_references_with_empty_references_list(self, temp_workbook, mock_ffmistralsmall):
+        """Test that original prompt is returned when references list is empty."""
+        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
+
+        orchestrator = ExcelOrchestrator(temp_workbook, mock_ffmistralsmall)
+
+        prompt = {"prompt": "Hello world", "references": []}
+        result = orchestrator._inject_references(prompt)
+
+        assert result == "Hello world"
+
+    def test_init_documents_no_documents_sheet(self, temp_workbook, mock_ffmistralsmall):
+        """Test that document registry is not created when no documents sheet."""
+        from openpyxl import Workbook
+
+        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "config"
+        ws["A1"] = "field"
+        ws["B1"] = "value"
+        ws["A2"] = "model"
+        ws["B2"] = "test-model"
+
+        ws = wb.create_sheet("prompts")
+        ws["A1"] = "sequence"
+        ws["B1"] = "prompt_name"
+        ws["C1"] = "prompt"
+        ws["D1"] = "history"
+        ws["A2"] = 1
+        ws["B2"] = "test"
+        ws["C2"] = "Hello"
+        ws["D2"] = ""
+
+        wb.save(temp_workbook)
+
+        orchestrator = ExcelOrchestrator(temp_workbook, mock_ffmistralsmall)
+        orchestrator._init_workbook()
+        orchestrator._load_config()
+        orchestrator._init_documents()
+
+        assert orchestrator.has_documents is False
+        assert orchestrator.document_registry is None
+
+
+class TestExcelOrchestratorIsolatedFFAI:
+    """Tests for isolated FFAI creation."""
+
+    def test_get_isolated_ffai_without_registry(self, temp_workbook, mock_ffmistralsmall):
+        """Test that FFAI is created with cloned client when no registry."""
+        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
+
+        orchestrator = ExcelOrchestrator(temp_workbook, mock_ffmistralsmall)
+        ffai = orchestrator._get_isolated_ffai()
+
+        assert ffai is not None
+        assert ffai.client is not mock_ffmistralsmall
+
+    def test_get_isolated_ffai_with_registry(self, temp_workbook, mock_ffmistralsmall):
+        """Test that FFAI is created with registry client when available."""
+        from openpyxl import Workbook
+
+        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "config"
+        ws["A1"] = "field"
+        ws["B1"] = "value"
+        ws["A2"] = "model"
+        ws["B2"] = "test-model"
+
+        ws = wb.create_sheet("prompts")
+        ws["A1"] = "sequence"
+        ws["B1"] = "prompt_name"
+        ws["C1"] = "prompt"
+        ws["D1"] = "history"
+        ws["A2"] = 1
+        ws["B2"] = "test"
+        ws["C2"] = "Hello"
+        ws["D2"] = ""
+
+        ws = wb.create_sheet("clients")
+        ws["A1"] = "name"
+        ws["B1"] = "client_type"
+        ws["C1"] = "model"
+        ws["A2"] = "fast"
+        ws["B2"] = "mistral-small"
+        ws["C2"] = "mistral-small-2503"
+
+        wb.save(temp_workbook)
+
+        orchestrator = ExcelOrchestrator(temp_workbook, mock_ffmistralsmall)
+        orchestrator._init_workbook()
+        orchestrator._load_config()
+        orchestrator._init_client_registry()
+
+        ffai = orchestrator._get_isolated_ffai("fast")
+
+        assert ffai is not None
+
+    def test_get_isolated_client_without_registry(self, temp_workbook, mock_ffmistralsmall):
+        """Test that client clone is returned when no registry."""
+        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
+
+        orchestrator = ExcelOrchestrator(temp_workbook, mock_ffmistralsmall)
+        client = orchestrator._get_isolated_client()
+
+        assert client is not mock_ffmistralsmall
+
+
+class TestExcelOrchestratorSummaryEdgeCases:
+    """Tests for summary edge cases."""
+
+    def test_summary_with_skipped_prompts(self, temp_workbook, mock_ffmistralsmall):
+        """Test that summary includes skipped count."""
+        from openpyxl import Workbook
+
+        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
+
+        wb = Workbook()
+        ws = wb.active
+        ws.title = "config"
+        ws["A1"] = "field"
+        ws["B1"] = "value"
+        ws["A2"] = "model"
+        ws["B2"] = "test-model"
+        ws["A3"] = "max_retries"
+        ws["B3"] = 1
+
+        ws = wb.create_sheet("prompts")
+        ws["A1"] = "sequence"
+        ws["B1"] = "prompt_name"
+        ws["C1"] = "prompt"
+        ws["D1"] = "history"
+        ws["E1"] = "condition"
+
+        ws["A2"] = 1
+        ws["B2"] = "first"
+        ws["C2"] = "Hello"
+        ws["D2"] = ""
+        ws["E2"] = ""
+
+        ws["A3"] = 2
+        ws["B3"] = "second"
+        ws["C3"] = "World"
+        ws["D3"] = ""
+        ws["E3"] = 'first.response == "nonexistent"'
+
+        wb.save(temp_workbook)
+
+        orchestrator = ExcelOrchestrator(temp_workbook, mock_ffmistralsmall)
+        orchestrator.run()
+        summary = orchestrator.get_summary()
+
+        assert summary["skipped"] == 1
+
+    def test_summary_total_attempts(self, temp_workbook_with_data, mock_ffmistralsmall):
+        """Test that summary includes total attempts."""
+        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
+
+        orchestrator = ExcelOrchestrator(temp_workbook_with_data, mock_ffmistralsmall)
+        orchestrator.run()
+        summary = orchestrator.get_summary()
+
+        assert "total_attempts" in summary
+        assert summary["total_attempts"] >= 3
