@@ -33,6 +33,7 @@ from .client_registry import ClientRegistry
 from .condition_evaluator import ConditionEvaluator
 from .document_processor import DocumentProcessor
 from .document_registry import DocumentRegistry
+from .results import ResultBuilder
 from .workbook_parser import WorkbookParser
 
 if TYPE_CHECKING:
@@ -348,25 +349,7 @@ class ExcelOrchestrator:
 
     def _create_result_dict(self, prompt: dict[str, Any]) -> dict[str, Any]:
         """Create a result dictionary for a prompt."""
-        return {
-            "sequence": prompt["sequence"],
-            "prompt_name": prompt.get("prompt_name"),
-            "prompt": prompt["prompt"],
-            "history": prompt.get("history"),
-            "client": prompt.get("client"),
-            "condition": prompt.get("condition"),
-            "condition_result": None,
-            "condition_error": None,
-            "response": None,
-            "status": "pending",
-            "attempts": 0,
-            "error": None,
-            "references": prompt.get("references"),
-            "semantic_query": prompt.get("semantic_query"),
-            "semantic_filter": prompt.get("semantic_filter"),
-            "query_expansion": prompt.get("query_expansion"),
-            "rerank": prompt.get("rerank"),
-        }
+        return ResultBuilder(prompt).build_dict()
 
     def _validate_dependencies(self) -> None:
         """Validate all history dependencies reference existing prompt_names."""
@@ -673,47 +656,24 @@ class ExcelOrchestrator:
         """Execute a single prompt and tag with batch info."""
         max_retries = self.config.get("max_retries", 3)
 
-        result = {
-            "batch_id": batch_id,
-            "batch_name": batch_name,
-            "sequence": prompt["sequence"],
-            "prompt_name": prompt.get("prompt_name"),
-            "prompt": prompt["prompt"],
-            "history": prompt.get("history"),
-            "client": prompt.get("client"),
-            "condition": prompt.get("condition"),
-            "condition_result": None,
-            "condition_error": None,
-            "response": None,
-            "status": "pending",
-            "attempts": 0,
-            "error": None,
-            "references": prompt.get("references"),
-            "semantic_query": prompt.get("semantic_query"),
-            "semantic_filter": prompt.get("semantic_filter"),
-            "query_expansion": prompt.get("query_expansion"),
-            "rerank": prompt.get("rerank"),
-        }
-
+        builder = ResultBuilder(prompt).with_batch(batch_id, batch_name)
         results_by_name = results_by_name or {}
 
         should_execute, cond_result, cond_error = self._evaluate_condition(prompt, results_by_name)
-        result["condition_result"] = cond_result
-        result["condition_error"] = cond_error
+        builder.with_condition_result(cond_result, cond_error)
 
         if not should_execute:
-            result["status"] = "skipped"
-            result["attempts"] = 0
+            builder.as_skipped(cond_result, cond_error)
             logger.info(
                 f"Batch {batch_id}, sequence {prompt['sequence']} skipped: condition evaluated to False"
             )
-            return result
+            return builder.build_dict()
 
         client_name = prompt.get("client")
         ffai = self._get_isolated_ffai(client_name)
 
         for attempt in range(1, max_retries + 1):
-            result["attempts"] = attempt
+            builder.with_attempts(attempt)
 
             try:
                 logger.info(
@@ -732,24 +692,22 @@ class ExcelOrchestrator:
                     max_tokens=self.config.get("max_tokens"),
                 )
 
-                result["response"] = response
-                result["status"] = "success"
+                builder.with_response(response)
                 logger.info(f"Batch {batch_id}, sequence {prompt['sequence']} succeeded")
                 break
 
             except Exception as e:
-                result["error"] = str(e)
+                builder.with_error(str(e), attempt)
                 logger.warning(
                     f"Batch {batch_id}, sequence {prompt['sequence']} failed (attempt {attempt}): {e}"
                 )
 
                 if attempt == max_retries:
-                    result["status"] = "failed"
                     logger.error(
                         f"Batch {batch_id}, sequence {prompt['sequence']} failed after {max_retries} attempts"
                     )
 
-        return result
+        return builder.build_dict()
 
     def execute(self) -> list[dict[str, Any]]:
         """Execute all prompts in sequence with dependency-aware ordering."""
@@ -857,27 +815,12 @@ class ExcelOrchestrator:
                             state.current_name = (
                                 nodes[seq].prompt.get("prompt_name") or f"seq_{seq}"
                             )
-                            state.results.append(
-                                {
-                                    "sequence": seq,
-                                    "prompt_name": nodes[seq].prompt.get("prompt_name"),
-                                    "prompt": nodes[seq].prompt["prompt"],
-                                    "history": nodes[seq].prompt.get("history"),
-                                    "client": nodes[seq].prompt.get("client"),
-                                    "condition": nodes[seq].prompt.get("condition"),
-                                    "condition_result": None,
-                                    "condition_error": None,
-                                    "response": None,
-                                    "status": "failed",
-                                    "attempts": 1,
-                                    "error": str(e),
-                                    "references": nodes[seq].prompt.get("references"),
-                                    "semantic_query": nodes[seq].prompt.get("semantic_query"),
-                                    "semantic_filter": nodes[seq].prompt.get("semantic_filter"),
-                                    "query_expansion": nodes[seq].prompt.get("query_expansion"),
-                                    "rerank": nodes[seq].prompt.get("rerank"),
-                                }
+                            result = (
+                                ResultBuilder(nodes[seq].prompt)
+                                .as_failed_exception(str(e))
+                                .build_dict()
                             )
+                            state.results.append(result)
                     finally:
                         state.in_progress.discard(seq)
                         update_progress()
@@ -953,38 +896,17 @@ class ExcelOrchestrator:
                 resolved_prompt = self._resolve_prompt_variables(prompt, data_row)
 
                 max_retries = self.config.get("max_retries", 3)
-                result = {
-                    "batch_id": batch_idx,
-                    "batch_name": batch_name,
-                    "sequence": resolved_prompt["sequence"],
-                    "prompt_name": resolved_prompt.get("prompt_name"),
-                    "prompt": resolved_prompt["prompt"],
-                    "history": resolved_prompt.get("history"),
-                    "client": resolved_prompt.get("client"),
-                    "condition": resolved_prompt.get("condition"),
-                    "condition_result": None,
-                    "condition_error": None,
-                    "response": None,
-                    "status": "pending",
-                    "attempts": 0,
-                    "error": None,
-                    "references": resolved_prompt.get("references"),
-                    "semantic_query": resolved_prompt.get("semantic_query"),
-                    "semantic_filter": resolved_prompt.get("semantic_filter"),
-                    "query_expansion": resolved_prompt.get("query_expansion"),
-                    "rerank": resolved_prompt.get("rerank"),
-                }
+                builder = ResultBuilder(resolved_prompt).with_batch(batch_idx, batch_name)
 
                 evaluator = ConditionEvaluator(batch_results_by_name)
                 should_execute, cond_error = evaluator.evaluate(
                     resolved_prompt.get("condition") or ""
                 )
-                result["condition_result"] = should_execute
-                result["condition_error"] = cond_error
+                builder.with_condition_result(should_execute, cond_error)
 
                 if not should_execute:
-                    result["status"] = "skipped"
-                    result["attempts"] = 0
+                    builder.as_skipped(should_execute, cond_error)
+                    result = builder.build_dict()
                     batch_results.append(result)
                     if result.get("prompt_name"):
                         batch_results_by_name[result["prompt_name"]] = result
@@ -993,7 +915,7 @@ class ExcelOrchestrator:
                 client_name = resolved_prompt.get("client")
 
                 for attempt in range(1, max_retries + 1):
-                    result["attempts"] = attempt
+                    builder.with_attempts(attempt)
                     try:
                         ffai = self._get_isolated_ffai(client_name)
 
@@ -1008,15 +930,15 @@ class ExcelOrchestrator:
                             max_tokens=self.config.get("max_tokens"),
                         )
 
-                        result["response"] = response
-                        result["status"] = "success"
+                        builder.with_response(response)
                         break
 
                     except Exception as e:
-                        result["error"] = str(e)
+                        builder.with_error(str(e), attempt)
                         if attempt == max_retries:
-                            result["status"] = "failed"
+                            pass
 
+                result = builder.build_dict()
                 batch_results.append(result)
                 if result["status"] == "success" and result.get("prompt_name"):
                     batch_results_by_name[result["prompt_name"]] = result
