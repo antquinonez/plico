@@ -31,13 +31,7 @@ from .client_registry import ClientRegistry
 from .condition_evaluator import ConditionEvaluator
 from .document_processor import DocumentProcessor
 from .document_registry import DocumentRegistry
-from .execution import (
-    BatchParallelStrategy,
-    BatchSequentialStrategy,
-    ParallelStrategy,
-    SequentialStrategy,
-    get_execution_strategy,
-)
+from .executor import Executor
 from .results import ResultBuilder
 from .state import ExecutionState, PromptNode
 from .workbook_parser import WorkbookParser
@@ -108,6 +102,7 @@ class ExcelOrchestrator:
         self.document_processor: DocumentProcessor | None = None
         self.document_registry: DocumentRegistry | None = None
         self.has_documents: bool = False
+        self._executor = Executor()
 
     def _get_isolated_ffai(self, client_name: str | None = None) -> FFAI:
         """Create an FFAI instance with isolated client but shared history."""
@@ -219,19 +214,7 @@ class ExcelOrchestrator:
                 logger.info(f"Indexed {indexed_count} documents for semantic search")
 
     def _inject_references(self, prompt: dict[str, Any]) -> str:
-        """Inject document references or semantic search results into a prompt.
-
-        Args:
-            prompt: Prompt dictionary with optional 'references', 'semantic_query',
-                    'semantic_filter', 'query_expansion', and/or 'rerank' fields
-
-        Returns:
-            Prompt text with references injected, or original prompt if no references
-
-        Raises:
-            ValueError: If referenced document is not found
-
-        """
+        """Inject document references or semantic search results into a prompt."""
         prompt_text = prompt.get("prompt", "")
         semantic_query = prompt.get("semantic_query")
 
@@ -282,15 +265,7 @@ class ExcelOrchestrator:
         return self.document_registry.inject_references_into_prompt(prompt_text, ref_names)
 
     def _parse_bool_override(self, value: Any) -> bool | None:
-        """Parse a boolean override value from string.
-
-        Args:
-            value: Value from prompt (string, bool, or None).
-
-        Returns:
-            True, False, or None if not specified.
-
-        """
+        """Parse a boolean override value from string."""
         if value is None:
             return None
         if isinstance(value, bool):
@@ -667,27 +642,19 @@ class ExcelOrchestrator:
 
     def execute(self) -> list[dict[str, Any]]:
         """Execute all prompts in sequence with dependency-aware ordering."""
-        strategy = SequentialStrategy()
-        self.results = strategy.execute(self)
-        return self.results
+        return self._executor.execute_sequential(self)
 
     def execute_parallel(self) -> list[dict[str, Any]]:
         """Execute prompts in parallel with dependency-aware scheduling."""
-        strategy = ParallelStrategy()
-        self.results = strategy.execute(self)
-        return self.results
+        return self._executor.execute_parallel(self)
 
     def execute_batch(self) -> list[dict[str, Any]]:
         """Execute all prompts for each batch row sequentially."""
-        strategy = BatchSequentialStrategy()
-        self.results = strategy.execute(self)
-        return self.results
+        return self._executor.execute_batch(self)
 
     def execute_batch_parallel(self) -> list[dict[str, Any]]:
-        """Execute batches in parallel, with dependency-aware prompt execution within each batch."""
-        strategy = BatchParallelStrategy()
-        self.results = strategy.execute(self)
-        return self.results
+        """Execute batches in parallel with dependency-aware prompt execution within each batch."""
+        return self._executor.execute_batch_parallel(self)
 
     def run(self) -> str:
         """Initialize, validate, execute prompts, and write results.
@@ -707,13 +674,19 @@ class ExcelOrchestrator:
         self.batch_data = self.builder.load_data()
         self.is_batch_mode = len(self.batch_data) > 0
 
-        strategy = get_execution_strategy(self.is_batch_mode, self.concurrency)
-        logger.info(f"Using {strategy.name} execution strategy")
-
         if self.is_batch_mode:
             logger.info(f"Running in batch mode with {len(self.batch_data)} batches")
-
-        self.results = strategy.execute(self)
+            if self.concurrency > 1:
+                logger.info("Using parallel batch execution")
+                self.results = self._executor.execute_batch_parallel(self)
+            else:
+                self.results = self._executor.execute_batch(self)
+        else:
+            if self.concurrency > 1:
+                logger.info("Using parallel execution")
+                self.results = self._executor.execute_parallel(self)
+            else:
+                self.results = self._executor.execute_sequential(self)
 
         batch_output = self.config.get("batch_output", "combined")
 
