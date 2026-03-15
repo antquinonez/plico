@@ -13,7 +13,3 @@ manifests/*
 docs/readmes/*
 manifests_test/*
 dont_track/*
-
-# Environment variables (never commit)
-.env
-.env.*
