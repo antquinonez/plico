@@ -1133,6 +1133,7 @@ class TestExcelOrchestratorMultiClient:
         assert orchestrator.has_multi_client is True
         assert orchestrator.client_registry is not None
 
+    @pytest.mark.integration
     def test_execute_with_named_client(self, temp_workbook, mock_ffmistralsmall):
         """Test executing prompt with specific client from registry."""
         from openpyxl import Workbook
@@ -1306,8 +1307,9 @@ class TestExcelOrchestratorIsolatedFFAI:
         assert ffai is not None
         assert ffai.client is not mock_ffmistralsmall
 
+    @pytest.mark.integration
     def test_get_isolated_ffai_with_registry(self, temp_workbook, mock_ffmistralsmall):
-        """Test that FFAI is created with registry client when available."""
+        """Test that FFAI is created with cloned client from registry."""
         from openpyxl import Workbook
 
         from src.orchestrator.excel_orchestrator import ExcelOrchestrator
