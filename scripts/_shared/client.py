@@ -36,7 +36,7 @@ def get_client_class(client_class_name: str) -> type:
         raise ImportError(f"Could not import client class '{client_class_name}': {e}")
 
 
-def get_client(client_type: str, workbook_config: dict[str, Any]) -> type:
+def get_client(client_type: str, workbook_config: dict[str, Any]) -> Any:
     """Instantiate the appropriate client from config.
 
     Args:

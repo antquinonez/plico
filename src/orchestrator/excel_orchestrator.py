@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import logging
 import os
+from collections.abc import Callable
 from datetime import datetime
 from typing import Any
 
@@ -46,7 +47,7 @@ class ExcelOrchestrator(OrchestratorBase):
         client: FFAIClientBase,
         config_overrides: dict[str, Any] | None = None,
         concurrency: int | None = None,
-        progress_callback=None,
+        progress_callback: Callable[..., None] | None = None,
     ) -> None:
         """Initialize the ExcelOrchestrator.
 

@@ -21,6 +21,7 @@ import logging
 import os
 import re
 import threading
+import time
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
@@ -92,6 +93,11 @@ class OrchestratorBase(ABC):
         self.config: dict[str, Any] = {}
         self.prompts: list[dict[str, Any]] = []
         self.results: list[dict[str, Any]] = []
+
+        # FFAI wrapper around the default client. Created by _init_client() and
+        # used as the template for cloning isolated instances. Individual prompt
+        # execution always uses _get_isolated_ffai() so that each call gets its
+        # own client state.
         self.ffai: FFAI | None = None
 
         self.shared_prompt_attr_history: list[dict[str, Any]] = []
@@ -232,30 +238,12 @@ class OrchestratorBase(ABC):
             history_lock=self.history_lock,
         )
 
-    def _get_isolated_client(self, client_name: str | None = None) -> FFAIClientBase:
-        """Get an isolated client (fresh clone) for execution.
-
-        Args:
-            client_name: Optional name of client from registry.
-
-        Returns:
-            Cloned FFAIClientBase instance.
-
-        """
-        if client_name and self.client_registry:
-            return self.client_registry.clone(client_name)
-        return self.client.clone()
-
     def _validate_dependencies(self) -> None:
         """Validate all history dependencies reference existing prompt_names."""
         prompt_names = {p["prompt_name"] for p in self.prompts if p.get("prompt_name")}
-        prompt_names_by_sequence: dict[int, str] = {}
-
-        for p in self.prompts:
-            seq = p["sequence"]
-            name = p.get("prompt_name")
-            if name:
-                prompt_names_by_sequence[seq] = name
+        name_to_sequence: dict[str, int] = {
+            p["prompt_name"]: p["sequence"] for p in self.prompts if p.get("prompt_name")
+        }
 
         errors: list[str] = []
         for prompt in self.prompts:
@@ -271,10 +259,7 @@ class OrchestratorBase(ABC):
                         f"Sequence {seq}: dependency '{dep_name}' not found in any prompt_name"
                     )
                 else:
-                    dep_sequence = next(
-                        (p["sequence"] for p in self.prompts if p.get("prompt_name") == dep_name),
-                        None,
-                    )
+                    dep_sequence = name_to_sequence.get(dep_name)
                     if dep_sequence and dep_sequence >= seq:
                         errors.append(
                             f"Sequence {seq}: dependency '{dep_name}' (seq {dep_sequence}) "
@@ -383,6 +368,9 @@ class OrchestratorBase(ABC):
         Returns:
             Dictionary mapping sequence numbers to PromptNodes.
 
+        Raises:
+            ValueError: If a dependency cycle is detected.
+
         """
         nodes: dict[int, PromptNode] = {}
         prompt_by_name: dict[str, int] = {}
@@ -406,15 +394,24 @@ class OrchestratorBase(ABC):
                 if dep_name in prompt_by_name:
                     nodes[seq].dependencies.add(prompt_by_name[dep_name])
 
-        def assign_levels(seq: int, visited: set[int]) -> int:
-            if seq in visited:
-                return 0
-            visited.add(seq)
+        # Memoization cache for computed levels
+        level_cache: dict[int, int] = {}
+
+        def assign_levels(seq: int, path: set[int]) -> int:
+            if seq in level_cache:
+                return level_cache[seq]
+            if seq in path:
+                cycle_seqs = sorted(path | {seq})
+                raise ValueError(f"Dependency cycle detected involving sequences: {cycle_seqs}")
+            path.add(seq)
             if not nodes[seq].dependencies:
                 nodes[seq].level = 0
+                level_cache[seq] = 0
                 return 0
-            max_dep_level = max(assign_levels(dep, visited) for dep in nodes[seq].dependencies)
+            max_dep_level = max(assign_levels(dep, path) for dep in nodes[seq].dependencies)
             nodes[seq].level = max_dep_level + 1
+            level_cache[seq] = nodes[seq].level
+            path.discard(seq)
             return nodes[seq].level
 
         for seq in nodes:
@@ -467,99 +464,43 @@ class OrchestratorBase(ABC):
 
         return result, result, error
 
-    def _execute_prompt_isolated(
-        self, prompt: dict[str, Any], state: ExecutionState
+    def _execute_prompt_core(
+        self,
+        prompt: dict[str, Any],
+        results_by_name: dict[str, dict[str, Any]],
+        results_lock: threading.Lock | None = None,
     ) -> dict[str, Any]:
-        """Execute a single prompt with completely isolated client clone.
+        """Execute a single prompt with retry logic and optional thread-safe condition evaluation.
+
+        This is the unified execution path for both sequential and parallel modes.
 
         Args:
             prompt: Prompt dictionary.
-            state: Execution state for tracking.
+            results_by_name: Results indexed by prompt_name for condition evaluation.
+            results_lock: Optional lock for thread-safe condition evaluation (parallel mode).
 
         Returns:
             Result dictionary.
 
         """
         max_retries = self.config.get("max_retries", 3)
+        retry_base_delay = self.config.get("retry_base_delay", 1.0)
 
         result = self._create_result_dict(prompt)
 
         client_name = prompt.get("client")
 
-        with state.results_lock:
+        # Evaluate condition (thread-safe if lock provided)
+        if results_lock:
+            with results_lock:
+                should_execute, cond_result, cond_error = self._evaluate_condition(
+                    prompt, results_by_name
+                )
+        else:
             should_execute, cond_result, cond_error = self._evaluate_condition(
-                prompt, state.results_by_name
+                prompt, results_by_name
             )
-            result["condition_result"] = cond_result
-            result["condition_error"] = cond_error
 
-        if not should_execute:
-            result["status"] = "skipped"
-            result["attempts"] = 0
-            logger.info(f"Sequence {prompt['sequence']} skipped: condition evaluated to False")
-            return result
-
-        for attempt in range(1, max_retries + 1):
-            result["attempts"] = attempt
-
-            try:
-                logger.debug(
-                    f"Executing sequence {prompt['sequence']} (attempt {attempt})"
-                    + (f" with client '{client_name}'" if client_name else "")
-                )
-
-                ffai = self._get_isolated_ffai(client_name)
-
-                injected_prompt = self._inject_references(prompt)
-
-                response = ffai.generate_response(
-                    prompt=injected_prompt,
-                    prompt_name=prompt.get("prompt_name"),
-                    history=prompt.get("history"),
-                    model=self.config.get("model"),
-                    temperature=self.config.get("temperature"),
-                    max_tokens=self.config.get("max_tokens"),
-                )
-
-                result["response"] = response
-                result["status"] = "success"
-                logger.debug(f"Sequence {prompt['sequence']} succeeded")
-                break
-
-            except Exception as e:
-                result["error"] = str(e)
-                logger.warning(f"Sequence {prompt['sequence']} failed (attempt {attempt}): {e}")
-
-                if attempt == max_retries:
-                    result["status"] = "failed"
-                    logger.error(
-                        f"Sequence {prompt['sequence']} failed after {max_retries} attempts"
-                    )
-
-        return result
-
-    def _execute_prompt(
-        self,
-        prompt: dict[str, Any],
-        results_by_name: dict[str, dict[str, Any]] | None = None,
-    ) -> dict[str, Any]:
-        """Execute a single prompt with retry logic.
-
-        Args:
-            prompt: Prompt dictionary.
-            results_by_name: Optional results indexed by prompt_name.
-
-        Returns:
-            Result dictionary.
-
-        """
-        max_retries = self.config.get("max_retries", 3)
-
-        result = self._create_result_dict(prompt)
-
-        results_by_name = results_by_name or {}
-
-        should_execute, cond_result, cond_error = self._evaluate_condition(prompt, results_by_name)
         result["condition_result"] = cond_result
         result["condition_error"] = cond_error
 
@@ -569,7 +510,7 @@ class OrchestratorBase(ABC):
             logger.info(f"Sequence {prompt['sequence']} skipped: condition evaluated to False")
             return result
 
-        client_name = prompt.get("client")
+        # Create isolated FFAI once before retry loop
         ffai = self._get_isolated_ffai(client_name)
 
         for attempt in range(1, max_retries + 1):
@@ -606,8 +547,56 @@ class OrchestratorBase(ABC):
                     logger.error(
                         f"Sequence {prompt['sequence']} failed after {max_retries} attempts"
                     )
+                else:
+                    delay = retry_base_delay * (2 ** (attempt - 1))
+                    logger.info(f"Retrying sequence {prompt['sequence']} in {delay:.1f}s")
+                    time.sleep(delay)
 
         return result
+
+    def _execute_prompt_isolated(
+        self, prompt: dict[str, Any], state: ExecutionState
+    ) -> dict[str, Any]:
+        """Execute a single prompt with completely isolated client clone.
+
+        Used by the parallel executor. Delegates to _execute_prompt_core with
+        a results lock for thread-safe condition evaluation.
+
+        Args:
+            prompt: Prompt dictionary.
+            state: Execution state for tracking.
+
+        Returns:
+            Result dictionary.
+
+        """
+        return self._execute_prompt_core(
+            prompt,
+            results_by_name=state.results_by_name,
+            results_lock=state.results_lock,
+        )
+
+    def _execute_prompt(
+        self,
+        prompt: dict[str, Any],
+        results_by_name: dict[str, dict[str, Any]] | None = None,
+    ) -> dict[str, Any]:
+        """Execute a single prompt with retry logic.
+
+        Used by the sequential executor.
+
+        Args:
+            prompt: Prompt dictionary.
+            results_by_name: Optional results indexed by prompt_name.
+
+        Returns:
+            Result dictionary.
+
+        """
+        return self._execute_prompt_core(
+            prompt,
+            results_by_name=results_by_name or {},
+        )
 
     def _resolve_variables(self, text: str, data_row: dict[str, Any]) -> str:
         """Replace {{variable}} placeholders with values from data row.
@@ -725,6 +714,7 @@ class OrchestratorBase(ABC):
 
         """
         max_retries = self.config.get("max_retries", 3)
+        retry_base_delay = self.config.get("retry_base_delay", 1.0)
 
         builder = ResultBuilder(prompt).with_batch(batch_id, batch_name)
         results_by_name = results_by_name or {}
@@ -776,6 +766,12 @@ class OrchestratorBase(ABC):
                     logger.error(
                         f"Batch {batch_id}, sequence {prompt['sequence']} failed after {max_retries} attempts"
                     )
+                else:
+                    delay = retry_base_delay * (2 ** (attempt - 1))
+                    logger.info(
+                        f"Retrying batch {batch_id}, sequence {prompt['sequence']} in {delay:.1f}s"
+                    )
+                    time.sleep(delay)
 
         return builder.build_dict()
 
@@ -840,7 +836,9 @@ class OrchestratorBase(ABC):
             else:
                 self.results = self.execute()
 
-        return self._write_results(self.results)
+        output = self._write_results(self.results)
+        logger.info(f"Orchestration complete. Results in: {output}")
+        return output
 
     def get_summary(self) -> dict[str, Any]:
         """Get execution summary.

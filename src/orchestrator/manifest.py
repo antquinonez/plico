@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -202,7 +203,7 @@ class ManifestOrchestrator(OrchestratorBase):
         client: FFAIClientBase,
         config_overrides: dict[str, Any] | None = None,
         concurrency: int | None = None,
-        progress_callback=None,
+        progress_callback: Callable[..., None] | None = None,
     ) -> None:
         """Initialize the ManifestOrchestrator.
 
