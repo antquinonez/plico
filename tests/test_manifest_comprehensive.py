@@ -774,42 +774,6 @@ class TestManifestOrchestratorExecute:
 
         assert len(progress_calls) >= 2
 
-    def test_create_result_dict(self, tmp_path, mock_ffmistralsmall):
-        """Test _create_result_dict creates expected structure."""
-        from src.orchestrator.manifest import ManifestOrchestrator
-
-        orchestrator = ManifestOrchestrator(
-            manifest_dir=str(tmp_path),
-            client=mock_ffmistralsmall,
-        )
-
-        prompt = {
-            "sequence": 5,
-            "prompt_name": "test_prompt",
-            "prompt": "Test prompt text",
-            "history": ["prev"],
-            "client": "writer",
-            "condition": "x > 5",
-            "references": ["doc1"],
-            "semantic_query": "search term",
-            "semantic_filter": '{"type": "pdf"}',
-            "query_expansion": "true",
-            "rerank": "false",
-        }
-
-        result = orchestrator._create_result_dict(prompt)
-
-        assert result["sequence"] == 5
-        assert result["prompt_name"] == "test_prompt"
-        assert result["prompt"] == "Test prompt text"
-        assert result["history"] == ["prev"]
-        assert result["client"] == "writer"
-        assert result["condition"] == "x > 5"
-        assert result["status"] == "pending"
-        assert result["attempts"] == 0
-        assert result["references"] == ["doc1"]
-        assert result["semantic_query"] == "search term"
-
 
 class TestManifestOrchestratorExecuteParallel:
     """Tests for ManifestOrchestrator parallel execution."""

@@ -920,14 +920,14 @@ class FFAI:
         df = self.history_to_dataframe()
 
         if df.is_empty() or "timestamp" not in df.columns:
-            return pl.DataFrame({"date": [], "count": []})
+            return pl.DataFrame({"date": [], "len": []})
 
         return (
             df.with_columns(
                 pl.col("timestamp").cast(pl.Float64).cast(pl.Datetime).dt.date().alias("date")
             )
             .group_by("date")
-            .count()
+            .len()
             .sort("date")
         )
 

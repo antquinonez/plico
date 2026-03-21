@@ -14,13 +14,10 @@ from __future__ import annotations
 import logging
 import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from .results import ResultBuilder
 from .state import ExecutionState, PromptNode
-
-if TYPE_CHECKING:
-    pass
 
 logger = logging.getLogger(__name__)
 

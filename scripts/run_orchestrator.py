@@ -24,203 +24,26 @@ Examples:
 """
 
 import argparse
-import importlib
 import logging
 import os
 import sys
 
-# Fix Windows console encoding for Unicode characters
 if sys.platform == "win32":
     sys.stdout.reconfigure(encoding="utf-8")
     sys.stderr.reconfigure(encoding="utf-8")
-import time
-from logging.handlers import TimedRotatingFileHandler
 
 from dotenv import load_dotenv
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from _shared import ProgressIndicator, get_client, setup_logging
 
 from src.config import get_config
 from src.orchestrator import ExcelOrchestrator
 
 load_dotenv()
 
-
-def setup_logging(quiet: bool = False, verbose: bool = False):
-    """Configure logging with file rotation and optional console suppression."""
-    config = get_config()
-    log_config = config.logging
-
-    root_logger = logging.getLogger()
-    root_logger.setLevel(logging.DEBUG if verbose else logging.INFO)
-
-    for handler in root_logger.handlers[:]:
-        root_logger.removeHandler(handler)
-
-    log_dir = os.path.join(
-        os.path.dirname(os.path.dirname(os.path.abspath(__file__))), log_config.directory
-    )
-    os.makedirs(log_dir, exist_ok=True)
-    log_file = os.path.join(log_dir, log_config.filename)
-
-    file_handler = TimedRotatingFileHandler(
-        log_file,
-        when=log_config.rotation.when,
-        interval=log_config.rotation.interval,
-        backupCount=log_config.rotation.backup_count,
-        encoding="utf-8",
-    )
-    file_handler.suffix = "%Y-%m-%d"
-    file_handler.setLevel(logging.DEBUG)
-    file_handler.setFormatter(logging.Formatter(log_config.format))
-    root_logger.addHandler(file_handler)
-
-    if not quiet:
-        console_handler = logging.StreamHandler(sys.stderr)
-        console_handler.setLevel(logging.INFO)
-        console_handler.setFormatter(logging.Formatter(log_config.format))
-        root_logger.addHandler(console_handler)
-
-    # Suppress LiteLLM's verbose logging in quiet mode
-    if quiet:
-        litellm_logger = logging.getLogger("LiteLLM")
-        litellm_logger.setLevel(logging.WARNING)
-        litellm_logger.propagate = False
-    else:
-        # In non-quiet mode, set LiteLLM to WARNING to reduce noise
-        litellm_logger = logging.getLogger("LiteLLM")
-        litellm_logger.setLevel(logging.WARNING)
-
-    return logging.getLogger(__name__)
-
-
-logger = setup_logging(quiet=False)
-
-
-def get_client_class(client_class_name: str) -> type:
-    """Dynamically import and return a client class by name."""
-    module_path = f"src.Clients.{client_class_name}"
-    try:
-        module = importlib.import_module(module_path)
-        return getattr(module, client_class_name)
-    except (ImportError, AttributeError) as e:
-        raise ImportError(f"Could not import client class '{client_class_name}': {e}")
-
-
-def get_client(client_type: str, workbook_config: dict) -> object:
-    """Instantiate the appropriate client from config.
-
-    Args:
-        client_type: Name of the client type from config
-        workbook_config: Config from workbook (can override model, api_key_env, etc.)
-
-    Returns:
-        Instantiated client object
-
-    """
-    app_config = get_config()
-    client_type_config = app_config.get_client_type_config(client_type)
-
-    if client_type_config is None:
-        available = app_config.get_available_client_types()
-        raise ValueError(f"Unknown client type: '{client_type}'. Available types: {available}")
-
-    client_class = get_client_class(client_type_config.client_class)
-
-    api_key_env = workbook_config.get("api_key_env") or client_type_config.api_key_env
-    api_key = os.getenv(api_key_env)
-
-    if not api_key:
-        raise ValueError(f"API key not found in environment variable: {api_key_env}")
-
-    model = workbook_config.get("model") or client_type_config.default_model
-    temperature = workbook_config.get("temperature")
-    max_tokens = workbook_config.get("max_tokens")
-    system_instructions = workbook_config.get("system_instructions")
-
-    if client_type_config.type == "litellm":
-        provider_prefix = client_type_config.provider_prefix
-        model_string = f"{provider_prefix}{model}" if provider_prefix else model
-
-        return client_class(
-            model_string=model_string,
-            api_key=api_key,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            system_instructions=system_instructions,
-        )
-    else:
-        return client_class(
-            api_key=api_key,
-            model=model,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            system_instructions=system_instructions,
-        )
-
-
-class ProgressIndicator:
-    def __init__(self, total: int, show_names: bool = True):
-        self.total = total
-        self.start_time = time.time()
-        self.last_update = 0
-        self.show_names = show_names
-        self.current_names: list = []
-        self.completed_names: list = []
-        self.running = 0
-
-    def update(
-        self,
-        completed: int,
-        total: int,
-        success: int,
-        failed: int,
-        current_name: str = None,
-        running: int = 0,
-    ):
-        now = time.time()
-        if now - self.last_update < 0.1 and completed < total:
-            return
-        self.last_update = now
-        self.running = running
-
-        pct = (completed / total * 100) if total > 0 else 0
-        bar_width = 20
-        filled = int(bar_width * completed / total) if total > 0 else 0
-        bar = "█" * filled + "░" * (bar_width - filled)
-
-        elapsed = now - self.start_time
-        if completed > 0 and completed < total:
-            eta = (elapsed / completed) * (total - completed)
-            if eta > 60:
-                eta_str = f"ETA: {int(eta // 60)}m {int(eta % 60)}s"
-            else:
-                eta_str = f"ETA: {int(eta)}s"
-        elif completed == total:
-            if elapsed > 60:
-                eta_str = f"Done: {int(elapsed // 60)}m {int(elapsed % 60)}s"
-            else:
-                eta_str = f"Done: {int(elapsed)}s"
-        else:
-            eta_str = "ETA: --"
-
-        status = f"\r[{bar}] {completed}/{total} ({pct:.0f}%) | ✓{success} ✗{failed}"
-
-        if self.show_names and current_name:
-            name_display = current_name[:20] if len(current_name) > 20 else current_name
-            status += f" | →{name_display}"
-
-        if running > 0:
-            status += f" | ⏳{running}"
-
-        status += f" | {eta_str}"
-
-        sys.stdout.write(status)
-        sys.stdout.flush()
-
-    def finish(self):
-        sys.stdout.write("\n")
-        sys.stdout.flush()
+logger = logging.getLogger(__name__)
 
 
 def main():

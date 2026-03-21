@@ -192,14 +192,16 @@ class FFVectorStore:
             Total number of chunks added.
 
         """
-        from .text_splitter import split_documents
+        from .text_splitters import get_chunker
 
-        chunks = split_documents(
-            documents,
-            text_key=text_key,
-            chunk_size=chunk_size,
-            chunk_overlap=chunk_overlap,
-        )
+        chunker = get_chunker("character", chunk_size=chunk_size, chunk_overlap=chunk_overlap)
+        chunks = []
+        for doc in documents:
+            text = doc.get(text_key, "")
+            if not text:
+                continue
+            metadata = {k: v for k, v in doc.items() if k != text_key}
+            chunks.extend(chunker.chunk(text, metadata=metadata))
 
         return self.add_chunks(chunks)
 
