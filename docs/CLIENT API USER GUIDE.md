@@ -103,6 +103,28 @@ client = FFLiteLLMClient(
 | `OPENAI_API_KEY` | OpenAI key |
 | `MISTRAL_API_KEY` | Mistral key |
 
+### Azure Factory (FFAzureLiteLLM)
+
+Factory function for creating Azure LiteLLM clients with environment-based configuration:
+
+```python
+from src.Clients import create_azure_client
+
+client = create_azure_client(
+    deployment_name="mistral-small-2503",
+    env_prefix="AZURE_MISTRALSMALL",  # reads AZURE_MISTRALSMALL_KEY, _ENDPOINT, _API_VERSION
+)
+
+# With optional overrides
+client = create_azure_client(
+    deployment_name="gpt-4o",
+    env_prefix="AZURE_OPENAI",
+    system_instructions="You are a helpful assistant.",
+    temperature=0.7,
+    max_tokens=4096,
+)
+```
+
 ### FFMistralSmall
 
 Optimized for Mistral Small models with extended context windows.

@@ -592,7 +592,7 @@ Condition String
 1. **No Arbitrary Code Execution** - Only whitelisted operations can run
 2. **No Module Access** - Cannot import or access Python modules
 3. **No State Modification** - Cannot assign variables or modify data
-4. **Sandboxed Functions** - 35+ safe functions available (string, math, JSON, type checking)
+4. **Sandboxed Functions** - 27+ safe functions available (string, math, JSON, type checking)
 5. **Sandboxed Methods** - Only 30+ whitelisted string/list/dict methods allowed
 6. **No Private Access** - Methods starting with `_` are blocked
 7. **Controlled Property Access** - Can only access the 5 defined properties (`status`, `response`, `attempts`, `error`, `has_response`)
@@ -666,7 +666,7 @@ Referenced prompts must have lower sequence numbers:
 | `Unknown prompt name in condition: 'xyz'` | Referenced prompt doesn't exist | Check spelling and ensure `prompt_name` column has `xyz` |
 | `Syntax error in condition` | Invalid expression syntax | Check quotes, parentheses, and operator usage |
 | `Unsupported comparison operator` | Used operator not in whitelist | Use only supported operators (see Reference) |
-| `Unknown function: 'xyz'` | Function not in whitelist | Use only the 7 allowed functions |
+| `Unknown function: 'xyz'` | Function not in whitelist | Use only the whitelisted functions |
 | `Invalid regex pattern` | Malformed regular expression | Test regex at regex101.com first |
 | `'contains' operator requires string values` | Used `in` with non-string | Ensure both operands are strings |
 

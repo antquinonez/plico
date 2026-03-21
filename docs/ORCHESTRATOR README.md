@@ -118,6 +118,10 @@ Named client configurations for per-prompt client selection.
 | `model` | Model override |
 | `temperature` | Temperature override |
 | `max_tokens` | Max tokens override |
+| `system_instructions` | System prompt override |
+| `api_base` | API base URL override (LiteLLM clients only) |
+| `api_version` | API version override (LiteLLM clients only) |
+| `fallbacks` | Fallback model configurations (LiteLLM clients only) |
 
 **Example:**
 
@@ -1017,6 +1021,17 @@ Validation scripts check:
 - Condition evaluation results
 - Client assignment (for multiclient)
 - Batch count verification (for batch mode)
+
+### Shared Workbook Infrastructure
+
+Sample workbook creation and validation scripts use shared modules in `scripts/sample_workbooks/`:
+
+| Module | Purpose |
+|--------|---------|
+| `base.py` | `PromptSpec` dataclass, `SectionDefinition`, default column headers/widths |
+| `builders.py` | Shared workbook builder functions |
+| `validators.py` | Shared validation utilities |
+| `utils.py` | Shared utility functions |
 
 ### Individual Scripts
 

@@ -196,15 +196,29 @@ rag:
     contextual_headers: true
     dedup_enabled: false
     dedup_mode: "exact"
+    markdown:
+      split_headers: ["h1", "h2", "h3"]
+      preserve_structure: true
+      max_chunk_fallback: true
+    code:
+      language: "python"
+      split_by: "function"
 
   search:
     mode: "vector"
+    n_results_default: 5
     hybrid_alpha: 0.6
     rerank: false
     rerank_model: "cross-encoder/ms-marco-MiniLM-L-6-v2"
     query_expansion: false
     query_expansion_variations: 3
     summary_boost: 1.5
+
+  hierarchical:
+    enabled: false
+    parent_context: true
+    parent_chunk_size: 1500
+    levels: 2
 ```
 
 ## Data Flow
