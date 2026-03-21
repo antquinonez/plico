@@ -2,7 +2,7 @@
 
 **Declarative AI orchestration. One manifest protocol. Three authoring paths: Excel, Python, or AI.**
 
-[![Python 3.11+](https://img.shields.io/badge/python-3.11+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 ---
@@ -196,34 +196,30 @@ pip install -e ".[dev]"
 
 ```bash
 export MISTRALSMALL_KEY="your-api-key"
-# Or other providers:
-# export ANTHROPIC_API_KEY="..."
-# export OPENAI_API_KEY="..."
 ```
 
-### Run a Sample Manifest
+For complete provider-specific key names and defaults, see `config/clients.yaml.example`.
+
+### Fastest End-to-End Run (60 seconds)
 
 ```bash
-# Run an existing manifest (if available)
-python scripts/run_manifest.py ./manifests/manifest_sample_workbook_max/ -c 4
-
-# Inspect results
-python scripts/inspect_parquet.py ./outputs/<timestamp>_sample_workbook_max.parquet
+# Creates a sample workbook, runs orchestration, and validates output
+inv wb.basic
 ```
 
-### Create a Minimal Manifest
+This is the quickest way to confirm your environment, client config, and orchestration flow are working.
+
+### Minimal Manifest Run
 
 ```bash
 mkdir -p manifests/my_first
 
-# Create config.yaml
 cat > manifests/my_first/config.yaml << 'EOF'
 model: mistral-small-2503
 temperature: 0.7
-max_tokens: 2048
+max_tokens: 512
 EOF
 
-# Create prompts.yaml
 cat > manifests/my_first/prompts.yaml << 'EOF'
 prompts:
   - sequence: 1
@@ -241,67 +237,57 @@ prompts:
     history: ["greet", "question"]
 EOF
 
-# Create manifest.yaml (minimal metadata file)
 cat > manifests/my_first/manifest.yaml << 'EOF'
 version: "1.0"
 EOF
 
-# Run it
 python scripts/run_manifest.py ./manifests/my_first/ -c 2
+
+# Inspect latest output
+python scripts/inspect_parquet.py ./outputs/<timestamp>_my_first.parquet --summary
 ```
 
-### Or, Start in Excel
-
-**Quick start with a sample workbook:**
+### Excel Workflow (Visual Authoring)
 
 ```bash
-# Create a sample workbook (e.g., sample_workbook.xlsx)
-inv basic
-
-# Create with a specific client
-inv basic --client anthropic
-
-# Run the orchestrator on it
-python scripts/run_orchestrator.py sample_workbook.xlsx -c 4
-
-# Results are written to a timestamped sheet in the workbook
-```
-
-Available samples: `inv basic`, `inv conditional`, `inv batch`, `inv multiclient`, `inv documents`, `inv max`. Run `inv --list` to see all tasks, or see [AGENTS.md](AGENTS.md) for details.
-
-**Or create your own from scratch:**
-
-```bash
-# Create workbook template (exits after creating)
+# 1) Create template workbook (exits after creating)
 python scripts/run_orchestrator.py analysis.xlsx
 
-# Edit the prompts sheet in Excel, then run again to execute
+# 2) Edit prompts in Excel, then run
 python scripts/run_orchestrator.py analysis.xlsx -c 4
 
-# Use a specific AI client
+# 3) Use a specific AI client
 python scripts/run_orchestrator.py analysis.xlsx --client anthropic
 
-# Results are written to a timestamped sheet in the workbook
+# 4) Optional: validate workbook structure only
+python scripts/run_orchestrator.py analysis.xlsx --dry-run
 
-# Optionally export to manifest for version control
+# 5) Optional: export and run as manifest
 python scripts/export_manifest.py analysis.xlsx
 python scripts/run_manifest.py ./manifests/manifest_analysis/
+
+# 6) Optional: validate manifest structure only
+python scripts/run_manifest.py ./manifests/manifest_analysis/ --dry-run
 ```
+
+Available samples: `inv wb.basic`, `inv wb.conditional`, `inv wb.batch`, `inv wb.multiclient`, `inv wb.documents`, `inv wb.max`. Run `inv --list` to see all tasks, or see [AGENTS.md](AGENTS.md) for details.
 
 ---
 
 ## The Manifest Protocol
 
+The manifest directory is the canonical, version-controllable representation of a workflow.
+
 ### Folder Structure
 
 ```
 manifest_analysis/
-├── manifest.yaml      # Metadata: name, version, source, timestamp
-├── config.yaml        # Execution settings: model, temperature, retries
-├── prompts.yaml       # Workflow definition: prompts, dependencies, conditions
-├── data.yaml          # Optional: batch variables for templating
-├── clients.yaml       # Optional: named model configurations
-└── documents.yaml     # Optional: document references for injection/RAG
+├── manifest.yaml      # Metadata (version, source, export info)
+├── config.yaml        # Runtime settings (model, temperature, retries)
+├── prompts.yaml       # Prompt graph (dependencies, conditions, routing)
+├── data.yaml          # Optional batch rows (`batches`)
+├── clients.yaml       # Optional named client configs
+└── documents.yaml     # Optional document references for injection/RAG
 ```
 
 ### prompts.yaml Schema
@@ -358,7 +344,7 @@ Wait times follow exponential backoff: 1s, 2s, 4s... (capped at `max_wait_second
 ### data.yaml Schema (Batch Mode)
 
 ```yaml
-data:
+batches:
   - id: 1
     batch_name: "north_region"
     region: "north"
@@ -368,6 +354,8 @@ data:
     region: "south"
     product: "widget_b"
 ```
+
+`export_manifest.py` writes batch rows under the `batches` key.
 
 Use `{{region}}` and `{{product}}` in prompts for variable substitution.
 
@@ -442,6 +430,8 @@ Each client type has:
 - `provider_prefix`: LiteLLM provider prefix (for `litellm` type only)
 - `default_model`: Default model identifier
 
+**Note:** Native and LiteLLM client types for the same provider may use different env var names (e.g., native Anthropic uses `ANTHROPIC_TOKEN` while LiteLLM Anthropic uses `ANTHROPIC_API_KEY`). Check `config/clients.yaml.example` for the exact variable name for each client type.
+
 ### documents.yaml Schema
 
 ```yaml
@@ -475,11 +465,6 @@ Reference in prompts: `references: ["spec", "api"]`
 | `.md` | `markdown` | Header-aware chunking |
 | `.py`, `.js`, `.ts`, etc. | `code` | Function-aware chunking |
 | Others | `recursive` | General-purpose chunking |
-
-**Note:** Chunking strategy is automatically inferred from file extension:
-- `.md` files → `markdown` chunking (header-aware)
-- `.py`, `.js`, `.ts`, etc. → `code` chunking (function-aware)
-- Other files → `recursive` chunking (general purpose)
 
 ---
 
@@ -595,7 +580,7 @@ Run the same workflow across multiple data rows:
 
 ```yaml
 # data.yaml
-data:
+batches:
   - id: 1
     region: "north"
     product: "widget_a"
@@ -717,7 +702,8 @@ python scripts/run_manifest.py ./manifests/my_workflow/ -c 4
 
 ## Excel: A Human-Friendly Authoring Surface
 
-While manifests are the protocol, Excel provides a visual interface for human authors.
+While manifests are the protocol, Excel is the visual authoring layer. The sheets map directly
+to the manifest files you export.
 
 ### Workbook Structure
 
@@ -731,6 +717,8 @@ While manifests are the protocol, Excel provides a visual interface for human au
 
 ### prompts Sheet Columns
 
+These columns map to `prompts.yaml` fields.
+
 | Column | Description |
 |--------|-------------|
 | `sequence` | Execution order |
@@ -741,68 +729,80 @@ While manifests are the protocol, Excel provides a visual interface for human au
 | `condition` | Expression for conditional execution |
 | `references` | JSON array of document reference_names |
 | `semantic_query` | RAG search query |
+| `semantic_filter` | Metadata filter for RAG search |
+| `query_expansion` | Override query expansion (`true`/`false`) |
+| `rerank` | Override reranking (`true`/`false`) |
 
 ### Workflow
 
 1. **Create template:** `python scripts/run_orchestrator.py analysis.xlsx`
    - Creates template workbook if file doesn't exist, then exits
-2. **Edit in Excel:** Define prompts, dependencies, conditions
+2. **Edit in Excel:** Define prompts, dependencies, conditions, and optional RAG/client fields
 3. **Run directly:** `python scripts/run_orchestrator.py analysis.xlsx -c 4`
-   - Results written to a timestamped sheet in the workbook
-4. **Or export to manifest:** `python scripts/export_manifest.py analysis.xlsx`
-   - Then: `python scripts/run_manifest.py ./manifests/manifest_analysis/`
+   - Writes results to a timestamped workbook sheet
+4. **Or export + run manifest:**
+   - `python scripts/export_manifest.py analysis.xlsx`
+   - `python scripts/run_manifest.py ./manifests/manifest_analysis/`
 
-**Recommendation:** The manifest workflow is preferred for version control and AI composability.
+**Recommendation:** Use the manifest workflow for version control, code review, and repeatable runs.
 
 ---
 
 ## Supported Providers
 
- ### Via LiteLLM (Recommended)
+### Via LiteLLM (Recommended)
 
-FFLiteLLMClient supports 100+ providers through a unified interface:
+`FFLiteLLMClient` gives you one interface for 100+ providers.
+
 ```python
-FFLiteLLMClient(model_string="azure/mistral-small-2503")
-FFLiteLLMClient(model_string="anthropic/claude-3-5-sonnet-20241022")
-FFLiteLLMClient(model_string="openai/gpt-4o")
-FFLiteLLMClient(model_string="mistral/mistral-small-latest")
-FFLiteLLMClient(model_string="gemini/gemini-1.5-pro")
-FFLiteLLMClient(model_string="perplexity/llama-3.1-sonar-large-128k-online")
-FFLiteLLMClient(model_string="deepseek/deepseek-chat")
-FFLiteLLMClient(model_string="deepseek/deepseek-coder")
-FFLiteLLMClient(model_string="groq/llama-3.3-70b-versatile")
-FFLiteLLMClient(model_string="cohere/command")
-FFLiteLLMClient(model_string="xai/grok-beta")
-FFLiteLLMClient(model_string="together_ai/meta-llama/Llama-3-70b-chat")
-FFLiteLLMClient(model_string="huggingface/meta-llama/Llama-2-7b-chat")
-FFLiteLLMClient(model_string="fireworks_ai/accounts/fireworks/models/llama-v3-70b-instruct")
-FFLiteLLMClient(model_string="vllm/meta-llama/Llama-3-70b")
-FFLiteLLMClient(model_string="replicate/meta-llama/llama-2-70b-chat")
-FFLiteLLMClient(model_string="openrouter/anthropic/claude-3.5-sonnet")
-FFLiteLLMClient(model_string="ollama/llama3.1")
-FFLiteLLMClient(model_string="lm_studio/local-model")
+FFLiteLLMClient(model_string='mistral/mistral-small-latest')
+FFLiteLLMClient(model_string='anthropic/claude-3-5-sonnet-20241022')
+FFLiteLLMClient(model_string='openai/gpt-4o')
+FFLiteLLMClient(model_string='gemini/gemini-1.5-pro')
+FFLiteLLMClient(model_string='azure/gpt-4o')
 ```
 
-**All clients include automatic retry** with exponential backoff.
+Common provider families include Mistral, Anthropic, OpenAI, Gemini, Azure, Perplexity,
+DeepSeek, Groq, Cohere, Together AI, OpenRouter, Ollama, and others.
+
+For the full list of configured client types, see `config/clients.yaml.example`.
+
+**Retry behavior:** native and LiteLLM clients both support automatic retries with exponential backoff.
 
 ### Native Direct-API Clients
 
-| Client | Provider | Description |
-|--------|----------|-------------|
-| `FFMistral` / `FFMistralSmall` | Mistral AI | Native SDK |
-| `FFAnthropic` / `FFAnthropicCached` | Anthropic (with prompt caching) |
-| `FFGemini` | Google Gemini | Native SDK ( OpenAI-compatible API |
-| `FFPerplexity` | Perplexity AI | Native SDK |
-| `FFNvidiaDeepSeek` | DeepSeek via Nvidia NIM |
-| `FFAzureMistral` / `FFAzureCodestral` / `FFAzurePhi` | Azure AI Inference SDK |
-| `FFOpenAIAssistant` | OpenAI Assistant API |
+| Client | Provider | SDK / Interface |
+|--------|----------|-----------------|
+| `FFMistral` / `FFMistralSmall` | Mistral AI | Mistral SDK (`mistralai`) |
+| `FFAnthropic` / `FFAnthropicCached` | Anthropic | Anthropic SDK with optional prompt caching |
+| `FFGemini` | Google Gemini | OpenAI-compatible via Vertex AI (`openai` + `google.auth`) |
+| `FFPerplexity` | Perplexity AI | OpenAI-compatible (`openai` pointed at `api.perplexity.ai`) |
+| `FFNvidiaDeepSeek` | DeepSeek via NVIDIA NIM | OpenAI-compatible (`openai` pointed at NVIDIA NIM) |
+| `FFOpenAIAssistant` | OpenAI | OpenAI Assistants API (`openai` beta) |
+| `FFAzureMistral` / `FFAzureCodestral` / `FFAzurePhi` | Azure | Azure AI Inference SDK (`azure-ai-inference`) |
+
+### Azure via LiteLLM
+
+`create_azure_client()` (from `FFAzureLiteLLM`) is a factory that returns a pre-configured `FFLiteLLMClient` for Azure deployments. It resolves API key, endpoint, and API version from environment variables using a configurable prefix.
+
+```python
+from src.Clients import create_azure_client
+
+client = create_azure_client(
+    deployment_name="mistral-small-2503",
+    env_prefix="AZURE_MISTRALSMALL",  # reads AZURE_MISTRALSMALL_KEY, _ENDPOINT, _API_VERSION
+)
+```
+
 ### Automatic Fallbacks (LiteLLM only)
+
 ```python
 client = FFLiteLLMClient(
     model_string="anthropic/claude-3-opus-20240229",
     fallbacks=["openai/gpt-4", "azure/gpt-4"],
 )
 ```
+
 ---
 
 ## How Plico Compares
@@ -892,6 +892,13 @@ client = FFLiteLLMClient(
 +--------------------------------------------------------------------------------------------------+
 ```
 
+**Execution pipeline:**
+- Parse workbook or manifest into prompt graph + runtime config
+- Build dependency DAG and evaluate conditions safely (AST sandbox)
+- Schedule prompts sequentially or in parallel with isolated client clones
+- Assemble declarative context from `history` references
+- Persist run results for analysis and iteration
+
 ### Key Design Decisions
 
 | Decision | Rationale |
@@ -973,13 +980,18 @@ Plico/
 │   ├── FFAI.py                    # Core wrapper — context assembly, history
 │   ├── FFAIClientBase.py          # Client abstract base class
 │   ├── config.py                  # Pydantic-settings configuration
+│   ├── retry_utils.py             # Retry decorators and rate-limit handling
 │   ├── Clients/                   # Provider implementations
 │   │   ├── FFLiteLLMClient.py     # Universal client (recommended)
 │   │   ├── FFMistral.py, FFAnthropic.py, FFGemini.py, ...
 │   │   └── FFAzureClientBase.py   # Azure-specific ABC
 │   ├── orchestrator/              # Orchestration engine
+│   │   ├── workbook_parser.py     # Excel/workbook parsing and validation
 │   │   ├── excel_orchestrator.py  # Excel execution
 │   │   ├── manifest.py            # Manifest export/execution
+│   │   ├── executor.py            # Shared execution engine
+│   │   ├── state/                 # Execution state and dependency nodes
+│   │   ├── results/               # Result builders and DTOs
 │   │   ├── condition_evaluator.py # AST-based expression evaluator
 │   │   ├── client_registry.py     # Client factory and routing
 │   │   ├── document_processor.py  # Document parsing and caching
@@ -991,7 +1003,18 @@ Plico/
 │       ├── indexing/              # BM25, hierarchical indexing
 │       └── search/                # Hybrid search, re-ranking
 ├── config/                        # YAML configuration files
-├── scripts/                       # CLI tools
+│   ├── main.yaml                  # Workbook, orchestrator, retry, RAG settings
+│   ├── paths.yaml                 # File system paths (outputs, manifests, etc.)
+│   ├── clients.yaml               # Client type registry (copy from .example)
+│   ├── model_defaults.yaml        # Per-model temperature, max_tokens defaults
+│   ├── logging.yaml               # Log directory, rotation, format
+│   └── sample_workbook.yaml       # Sample workbook creation defaults
+├── scripts/                       # CLI tools and workbook utilities
+│   ├── run_orchestrator.py        # Execute workbook directly
+│   ├── export_manifest.py         # Convert workbook to manifest folder
+│   ├── run_manifest.py            # Execute manifest and write parquet
+│   ├── inspect_parquet.py         # Inspect/export parquet results
+│   └── sample_workbooks/          # Shared builders and validators
 ├── tests/                         # Unit and integration tests
 ├── manifests/                     # Exported YAML manifests
 ├── outputs/                       # Parquet results
@@ -1042,7 +1065,7 @@ config.workbook.defaults.model           # "mistral-small-2503"
 config.rag.enabled                       # True
 ```
 
-Configuration priority: init arguments > environment variables > YAML files > defaults.
+Configuration priority: init arguments > environment variables > YAML files.
 
 ---
 
