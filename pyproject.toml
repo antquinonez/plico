@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "ffclients"
 version = "0.1.0"
-description = "AI Client Library for Far Finer LLC"
+description = "Declarative AI orchestration — one manifest protocol, three authoring paths"
 readme = "README.md"
 requires-python = ">=3.10"
 license = {text = "MIT"}
