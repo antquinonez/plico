@@ -17,7 +17,13 @@ Creates 50 prompts testing:
 Paired with: sample_workbook_conditional_validate_v001.py
 
 Usage:
-    python scripts/sample_workbook_conditional_create_v001.py [output_path]
+    python scripts/sample_workbook_conditional_create_v001.py [output_path] [--client CLIENT]
+
+Examples:
+    python scripts/sample_workbook_conditional_create_v001.py
+    python scripts/sample_workbook_conditional_create_v001.py ./test.xlsx
+    python scripts/sample_workbook_conditional_create_v001.py ./test.xlsx --client anthropic
+    python scripts/sample_workbook_conditional_create_v001.py -c gemini
 
 Version: 001
 """
@@ -27,7 +33,11 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from sample_workbooks import PromptSpec, WorkbookBuilder
+from sample_workbooks import (
+    PromptSpec,
+    WorkbookBuilder,
+    parse_client_args,
+)
 
 from src.config import get_config
 
@@ -504,8 +514,19 @@ def get_prompts() -> list[PromptSpec]:
     return prompts
 
 
-def create_conditional_sample_workbook(output_path: str):
-    """Create the conditional sample workbook."""
+def create_conditional_sample_workbook(
+    output_path: str,
+    config_overrides: dict | None = None,
+    sample_clients_overrides: dict | None = None,
+):
+    """Create the conditional sample workbook.
+
+    Args:
+        output_path: Path where the workbook will be saved.
+        config_overrides: Optional overrides for the config sheet (client_type, model).
+        sample_clients_overrides: Optional overrides for sample_clients in the clients sheet.
+
+    """
     prompts = get_prompts()
 
     builder = WorkbookBuilder(output_path)
@@ -517,9 +538,10 @@ def create_conditional_sample_workbook(output_path: str):
                 "For yes/no questions, respond with just 'yes' or 'no'. "
                 "Keep responses concise."
             ),
+            **(config_overrides or {}),
         }
     )
-    builder.add_clients_sheet()
+    builder.add_clients_sheet(sample_clients_overrides=sample_clients_overrides)
     builder.add_prompts_sheet(prompts, include_extra_columns=False)
     builder.save()
 
@@ -527,6 +549,9 @@ def create_conditional_sample_workbook(output_path: str):
         "conditional execution",
         {
             "Total prompts": len(prompts),
+            "Client": config_overrides.get("client_type", "default")
+            if config_overrides
+            else "default",
             "Conditional Patterns Tested": [
                 "SECTION 1 - String Methods (1-10): .startswith(), .endswith(), .lower(), .strip(), .count()",
                 "SECTION 2 - JSON Simple Access (11-18): json_get(), json_has(), json_type()",
@@ -543,5 +568,10 @@ def create_conditional_sample_workbook(output_path: str):
 
 if __name__ == "__main__":
     config = get_config()
-    output = sys.argv[1] if len(sys.argv) > 1 else config.sample.workbooks.conditional
-    create_conditional_sample_workbook(output)
+
+    args, config_overrides, sample_clients_overrides = parse_client_args(
+        script_description="Generate sample workbook for conditional execution testing.",
+        default_output=config.sample.workbooks.conditional,
+    )
+
+    create_conditional_sample_workbook(args.output, config_overrides, sample_clients_overrides)

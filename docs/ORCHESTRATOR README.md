@@ -1023,7 +1023,7 @@ Validation scripts check:
 #### Basic Sample Workbook
 
 ```bash
-python scripts/sample_workbook_basic_create_v001.py [output_path]
+python scripts/sample_workbook_basic_create_v001.py [output_path] [--client CLIENT]
 python scripts/sample_workbook_basic_validate_v001.py [workbook_path]
 ```
 
@@ -1032,7 +1032,7 @@ python scripts/sample_workbook_basic_validate_v001.py [workbook_path]
 #### Conditional Sample Workbook
 
 ```bash
-python scripts/sample_workbook_conditional_create_v001.py [output_path]
+python scripts/sample_workbook_conditional_create_v001.py [output_path] [--client CLIENT]
 python scripts/sample_workbook_conditional_validate_v001.py [workbook_path]
 ```
 
@@ -1041,7 +1041,7 @@ python scripts/sample_workbook_conditional_validate_v001.py [workbook_path]
 #### Documents Sample Workbook
 
 ```bash
-python scripts/sample_workbook_documents_create_v001.py [output_path]
+python scripts/sample_workbook_documents_create_v001.py [output_path] [--client CLIENT]
 python scripts/sample_workbook_documents_validate_v001.py [workbook_path]
 ```
 
@@ -1050,7 +1050,7 @@ python scripts/sample_workbook_documents_validate_v001.py [workbook_path]
 #### Multi-Client Sample Workbook
 
 ```bash
-python scripts/sample_workbook_multiclient_create_v001.py [output_path]
+python scripts/sample_workbook_multiclient_create_v001.py [output_path] [--client CLIENT]
 python scripts/sample_workbook_multiclient_validate_v001.py [workbook_path]
 ```
 
@@ -1059,7 +1059,7 @@ python scripts/sample_workbook_multiclient_validate_v001.py [workbook_path]
 #### Batch Sample Workbook
 
 ```bash
-python scripts/sample_workbook_batch_create_v001.py [output_path]
+python scripts/sample_workbook_batch_create_v001.py [output_path] [--client CLIENT]
 python scripts/sample_workbook_batch_validate_v001.py [workbook_path]
 ```
 
@@ -1068,7 +1068,7 @@ python scripts/sample_workbook_batch_validate_v001.py [workbook_path]
 #### Max Sample Workbook
 
 ```bash
-python scripts/sample_workbook_max_create_v001.py [output_path]
+python scripts/sample_workbook_max_create_v001.py [output_path] [--client CLIENT]
 python scripts/sample_workbook_max_validate_v001.py [workbook_path]
 ```
 

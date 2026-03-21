@@ -258,6 +258,9 @@ python scripts/run_manifest.py ./manifests/my_first/ -c 2
 # Create a sample workbook (e.g., sample_workbook.xlsx)
 inv basic
 
+# Create with a specific client
+inv basic --client anthropic
+
 # Run the orchestrator on it
 python scripts/run_orchestrator.py sample_workbook.xlsx -c 4
 
@@ -274,6 +277,9 @@ python scripts/run_orchestrator.py analysis.xlsx
 
 # Edit the prompts sheet in Excel, then run again to execute
 python scripts/run_orchestrator.py analysis.xlsx -c 4
+
+# Use a specific AI client
+python scripts/run_orchestrator.py analysis.xlsx --client anthropic
 
 # Results are written to a timestamped sheet in the workbook
 

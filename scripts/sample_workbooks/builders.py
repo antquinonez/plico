@@ -165,6 +165,7 @@ class WorkbookBuilder:
         client_names: list[str] | None = None,
         headers: list[str] | None = None,
         column_widths: dict[str, int] | None = None,
+        sample_clients_overrides: dict[str, dict[str, Any]] | None = None,
     ) -> WorkbookBuilder:
         """Add the clients sheet to the workbook.
 
@@ -173,6 +174,7 @@ class WorkbookBuilder:
             client_names: Named clients to include from config (e.g., ["default", "fast"])
             headers: Custom headers (defaults to DEFAULT_CLIENTS_HEADERS)
             column_widths: Custom column widths
+            sample_clients_overrides: Override dict for sample_clients (from build_sample_clients_overrides)
 
         Returns:
             self for method chaining
@@ -189,7 +191,21 @@ class WorkbookBuilder:
         if clients is None:
             clients = []
             names_to_use = client_names or ["default", "fast", "creative"]
-            sample_clients = self.sample_config.sample_clients
+
+            if sample_clients_overrides:
+                sample_clients = sample_clients_overrides
+            else:
+                sample_clients = {}
+                for name in names_to_use:
+                    if name in self.sample_config.sample_clients:
+                        cfg = self.sample_config.sample_clients[name]
+                        sample_clients[name] = {
+                            "client_type": cfg.client_type,
+                            "api_key_env": cfg.api_key_env,
+                            "model": cfg.model,
+                            "temperature": cfg.temperature,
+                            "max_tokens": cfg.max_tokens,
+                        }
 
             for name in names_to_use:
                 if name in sample_clients:
@@ -197,11 +213,11 @@ class WorkbookBuilder:
                     clients.append(
                         {
                             "name": name,
-                            "client_type": cfg.client_type,
-                            "api_key_env": cfg.api_key_env,
-                            "model": cfg.model,
-                            "temperature": str(cfg.temperature),
-                            "max_tokens": str(cfg.max_tokens),
+                            "client_type": cfg["client_type"],
+                            "api_key_env": cfg["api_key_env"],
+                            "model": cfg["model"],
+                            "temperature": str(cfg["temperature"]),
+                            "max_tokens": str(cfg["max_tokens"]),
                         }
                     )
 

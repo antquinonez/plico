@@ -21,7 +21,13 @@ Uses FFLiteLLMClient with LiteLLM routing for Mistral Small.
 Paired with: sample_workbook_documents_validate_v001.py
 
 Usage:
-    python scripts/sample_workbook_documents_create_v001.py [output_path]
+    python scripts/sample_workbook_documents_create_v001.py [output_path] [--client CLIENT]
+
+Examples:
+    python scripts/sample_workbook_documents_create_v001.py
+    python scripts/sample_workbook_documents_create_v001.py ./test.xlsx
+    python scripts/sample_workbook_documents_create_v001.py ./test.xlsx --client anthropic
+    python scripts/sample_workbook_documents_create_v001.py -c gemini
 
 Version: 001
 """
@@ -31,7 +37,11 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from sample_workbooks import PromptSpec, WorkbookBuilder
+from sample_workbooks import (
+    PromptSpec,
+    WorkbookBuilder,
+    parse_client_args,
+)
 
 from src.config import get_config
 
@@ -333,8 +343,14 @@ def get_prompts() -> list[PromptSpec]:
     return prompts
 
 
-def create_sample_workbook(output_path: str):
-    """Create the documents sample workbook."""
+def create_sample_workbook(output_path: str, config_overrides: dict | None = None):
+    """Create the documents sample workbook.
+
+    Args:
+        output_path: Path where the workbook will be saved.
+        config_overrides: Optional overrides for the config sheet (client_type, model).
+
+    """
     prompts = get_prompts()
     documents = get_documents()
 
@@ -343,6 +359,7 @@ def create_sample_workbook(output_path: str):
         overrides={
             "max_tokens": "1000",
             "system_instructions": "You are a helpful assistant. Analyze documents and answer questions based on their content. Be concise and accurate.",
+            **(config_overrides or {}),
         }
     )
     builder.add_documents_sheet(documents)
@@ -354,6 +371,9 @@ def create_sample_workbook(output_path: str):
         {
             "Documents defined": len(documents),
             "Prompts defined": len(prompts),
+            "Client": config_overrides.get("client_type", "default")
+            if config_overrides
+            else "default",
             "Prompt types": [
                 "6 prompts with document references (full injection)",
                 "13 prompts with semantic_query (RAG search)",
@@ -368,5 +388,10 @@ def create_sample_workbook(output_path: str):
 
 if __name__ == "__main__":
     config = get_config()
-    output = sys.argv[1] if len(sys.argv) > 1 else config.sample.workbooks.documents
-    create_sample_workbook(output)
+
+    args, config_overrides, _ = parse_client_args(
+        script_description="Generate sample workbook for document reference and RAG semantic search testing.",
+        default_output=config.sample.workbooks.documents,
+    )
+
+    create_sample_workbook(args.output, config_overrides)

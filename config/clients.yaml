@@ -99,7 +99,7 @@ client_types:
     type: "litellm"
     provider_prefix: "openai/"
     api_key_env: "OPENAI_API_KEY"
-    default_model: "gpt-4"
+    default_model: "gpt-4o-mini-2024-07-18"
 
   # ===========================================
   # LITELLM CLIENTS - AZURE

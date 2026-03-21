@@ -16,7 +16,13 @@ Uses FFLiteLLMClient with LiteLLM routing for Mistral Small.
 Paired with: sample_workbook_batch_validate_v001.py
 
 Usage:
-    python scripts/sample_workbook_batch_create_v001.py [output_path]
+    python scripts/sample_workbook_batch_create_v001.py [output_path] [--client CLIENT]
+
+Examples:
+    python scripts/sample_workbook_batch_create_v001.py
+    python scripts/sample_workbook_batch_create_v001.py ./test.xlsx
+    python scripts/sample_workbook_batch_create_v001.py ./test.xlsx --client anthropic
+    python scripts/sample_workbook_batch_create_v001.py -c gemini
 
 Version: 001
 """
@@ -26,7 +32,11 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from sample_workbooks import PromptSpec, WorkbookBuilder
+from sample_workbooks import (
+    PromptSpec,
+    WorkbookBuilder,
+    parse_client_args,
+)
 
 from src.config import get_config
 
@@ -344,8 +354,17 @@ def get_prompts() -> list[PromptSpec]:
     return prompts
 
 
-def create_batch_sample_workbook(output_path: str):
-    """Create the batch sample workbook."""
+def create_batch_sample_workbook(
+    output_path: str,
+    config_overrides: dict | None = None,
+):
+    """Create the batch sample workbook.
+
+    Args:
+        output_path: Path where the workbook will be saved.
+        config_overrides: Optional overrides for the config sheet (client_type, model).
+
+    """
     prompts = get_prompts()
     data_rows = get_data_rows()
     config = get_config()
@@ -353,11 +372,12 @@ def create_batch_sample_workbook(output_path: str):
 
     builder = WorkbookBuilder(output_path)
     builder.add_config_sheet(
+        overrides=config_overrides,
         extra_fields=[
             ("batch_mode", batch_config.mode),
             ("batch_output", batch_config.output),
             ("on_batch_error", batch_config.on_error),
-        ]
+        ],
     )
     builder.add_data_sheet(data_rows)
     builder.add_prompts_sheet(prompts, include_extra_columns=False)
@@ -368,6 +388,9 @@ def create_batch_sample_workbook(output_path: str):
         {
             "Total prompts": len(prompts),
             "Total batches": len(data_rows),
+            "Client": config_overrides.get("client_type", "default")
+            if config_overrides
+            else "default",
             "Data Variables": [
                 "region: north, south, east, west, central",
                 "product: widget_a, widget_b, widget_c",
@@ -387,5 +410,10 @@ def create_batch_sample_workbook(output_path: str):
 
 if __name__ == "__main__":
     config = get_config()
-    output = sys.argv[1] if len(sys.argv) > 1 else config.sample.workbooks.batch
-    create_batch_sample_workbook(output)
+
+    args, config_overrides, _ = parse_client_args(
+        script_description="Generate sample workbook for batch execution testing.",
+        default_output=config.sample.workbooks.batch,
+    )
+
+    create_batch_sample_workbook(args.output, config_overrides)
