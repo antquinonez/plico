@@ -184,111 +184,22 @@ prompts:
 
 ## Quick Start
 
-### Installation
+Install, configure, and run your first workflow in under 5 minutes. See [QUICKSTART.md](QUICKSTART.md) for the full guide.
 
 ```bash
 git clone https://github.com/antquinonez/plico.git
 cd plico
-
-# Create and activate virtual environment
-python -m venv .venv
-source .venv/bin/activate  # On Windows: .venv\Scripts\activate
-
-# Install (use either pip or uv)
+python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
-# or with uv: uv pip install -e ".[dev]"
+
+# Set your API key in .env:
+echo 'OPENAI_API_KEY="your-key"' > .env
+
+# Run a sample workbook to verify everything works:
+inv wb.basic --client litellm-openai
 ```
 
-### Set Your API Key
-
-```bash
-export OPENAI_API_KEY="your-api-key"
-```
-
-For complete provider-specific key names and defaults, see `config/clients.yaml.example`.
-
-### Fastest End-to-End Run (60 seconds)
-
-```bash
-# Creates a sample workbook, runs orchestration, and validates output
-inv wb.basic
-```
-
-This is the quickest way to confirm your environment, client config, and orchestration flow are working.
-
-### Minimal Manifest Run
-
-```bash
-mkdir -p manifests/my_first
-
-cat > manifests/my_first/config.yaml << 'EOF'
-model: gpt-4o-mini
-temperature: 0.7
-max_tokens: 512
-EOF
-
-cat > manifests/my_first/prompts.yaml << 'EOF'
-prompts:
-  - sequence: 1
-    prompt_name: greet
-    prompt: "Introduce yourself briefly."
-
-  - sequence: 2
-    prompt_name: question
-    prompt: "What is the most interesting thing about AI orchestration?"
-    history: ["greet"]
-
-  - sequence: 3
-    prompt_name: summarize
-    prompt: "Summarize our conversation in one sentence."
-    history: ["greet", "question"]
-EOF
-
-cat > manifests/my_first/manifest.yaml << 'EOF'
-version: "1.0"
-EOF
-
-python scripts/run_manifest.py ./manifests/my_first/ -c 2
-
-# Inspect latest output
-python scripts/inspect_parquet.py ./outputs/<timestamp>_my_first.parquet --summary
-```
-
-### Excel Workflow (Visual Authoring)
-
-```bash
-# 1) Create a minimal skeleton workbook (config + prompts sheets with headers, exits after creating)
-python scripts/run_orchestrator.py my_workbook.xlsx
-
-# 2) Open in Excel and add your prompts to the 'prompts' sheet, then run:
-python scripts/run_orchestrator.py my_workbook.xlsx -c 4
-
-# 3) Use a specific AI client
-python scripts/run_orchestrator.py my_workbook.xlsx --client litellm-openai
-
-# 4) Optional: validate workbook structure only
-python scripts/run_orchestrator.py my_workbook.xlsx --dry-run
-
-# 5) Optional: export and run as manifest
-python scripts/export_manifest.py my_workbook.xlsx
-python scripts/run_manifest.py ./manifests/manifest_my_workbook/
-
-# 6) Optional: validate manifest structure only
-python scripts/run_manifest.py ./manifests/manifest_my_workbook/ --dry-run
-```
-
-**Pre-built sample workbooks** are available with real prompts covering dependency chains, batch execution, conditional logic, multi-client routing, document injection, and RAG search:
-
-```bash
-inv wb.basic        # 31 prompts, 4 dependency levels
-inv wb.conditional  # 50 conditional expression tests
-inv wb.batch        # 35 prompts × 5 batches with variable templating
-inv wb.multiclient  # 13 prompts with per-prompt client selection
-inv wb.documents    # 23 prompts with document references and RAG
-inv wb.max          # Combined: batch + conditional + multi-client + RAG
-```
-
-Run `inv --list` to see all tasks, or see [AGENTS.md](AGENTS.md) for details.
+For provider options, Excel/manifest/Python workflows, troubleshooting, and more, see the **[Quick Start Guide](QUICKSTART.md)**.
 
 ---
 
@@ -1084,6 +995,7 @@ Plico/
 
 | Document | Description |
 |----------|-------------|
+| [QUICKSTART](QUICKSTART.md) | Installation, configuration, and first run |
 | [ORCHESTRATOR README](https://github.com/antquinonez/plico/blob/main/docs/ORCHESTRATOR%20README.md) | Excel and manifest execution guide |
 | [CLIENT API USER GUIDE](https://github.com/antquinonez/plico/blob/main/docs/CLIENT%20API%20USER%20GUIDE.md) | Python API reference |
 | [CONDITIONAL EXPRESSIONS](https://github.com/antquinonez/plico/blob/main/docs/CONDITIONAL%20EXPRESSIONS%20USER%20GUIDE.md) | Condition syntax and security |
