@@ -105,14 +105,15 @@ def _get_validate_script(name: str) -> str:
     return script_map[name]
 
 
-def _create_single_workbook(name: str) -> tuple[str, bool, str]:
+def _create_single_workbook(name: str, client: str | None = None) -> tuple[str, bool, str]:
     """Create a single workbook. Used for parallel execution.
 
     Returns:
         Tuple of (name, success, output/error message)
     """
     script = _get_create_script(name)
-    cmd = f'"{PYTHON_EXE}" {script}'
+    client_flag = f" --client {client}" if client else ""
+    cmd = f'"{PYTHON_EXE}" {script}{client_flag}'
 
     env = os.environ.copy()
     env["POLARS_SKIP_CPU_CHECK"] = "1"
@@ -220,14 +221,16 @@ OTHER TASKS:
 OPTIONS:
     -c, --concurrency N     # Set parallel execution concurrency (default: varies by workbook)
     --parallel              # Enable parallel execution for create/run tasks
+    --client CLIENT        # Client type from clients.yaml (e.g., 'anthropic', 'gemini')
     -q, --quiet             # Suppress detailed output
 
 EXAMPLES:
-    inv wb.create --parallel        # Create all workbooks in parallel
-    inv wb.run -c 4                 # Run with concurrency=4
-    inv wb.run --parallel           # Run all workbooks in parallel
-    inv wb.all --parallel           # Full pipeline with parallel execution
-    inv wb.basic -c 2               # Run basic workbook with concurrency=2
+    inv wb.create --parallel                     # Create all workbooks in parallel
+    inv wb.create --client anthropic              # Create all workbooks with anthropic
+    inv wb.run -c 4                           # Run with concurrency=4
+    inv wb.run --parallel                     # Run all workbooks in parallel
+    inv wb.all --parallel --client gemini      # Full pipeline with gemini client
+    inv wb.basic -c 2 --client anthropic     # Run basic workbook with anthropic
 
 CONFIGURATION:
     Workbook paths and client configurations are loaded from config/test.yaml
@@ -306,21 +309,31 @@ def test_all(c: Context):
 
 
 @task
-def wb_create(c: Context, parallel: bool = False, quiet: bool = False):
+def wb_create(
+    c: Context,
+    parallel: bool = False,
+    quiet: bool = False,
+    client: str | None = None,
+):
     """Create all test workbooks.
 
     Args:
         parallel: Create workbooks in parallel (faster)
         quiet: Suppress detailed output
+        client: Client type from clients.yaml (e.g., 'anthropic', 'gemini')
+
     """
     print("Creating test workbooks...")
+    if client:
+        print(f"  Using client: {client}")
 
     workbook_names = ["basic", "multiclient", "max", "documents", "conditional", "batch"]
 
     if parallel:
         with ThreadPoolExecutor(max_workers=6) as executor:
             futures = {
-                executor.submit(_create_single_workbook, name): name for name in workbook_names
+                executor.submit(_create_single_workbook, name, client): name
+                for name in workbook_names
             }
 
             for future in as_completed(futures):
@@ -332,7 +345,7 @@ def wb_create(c: Context, parallel: bool = False, quiet: bool = False):
                     print(f"  ✗ {name}: {output}")
     else:
         for name in workbook_names:
-            _, success, output = _create_single_workbook(name)
+            _, success, output = _create_single_workbook(name, client)
             if not quiet:
                 if success:
                     print(f"  ✓ {name}")
@@ -460,15 +473,22 @@ def wb_spot_check(c: Context):
 
 
 @task
-def wb_all(c: Context, parallel: bool = False, concurrency: str | None = None):
+def wb_all(
+    c: Context,
+    parallel: bool = False,
+    concurrency: str | None = None,
+    client: str | None = None,
+):
     """Full pipeline: clean, create, run, and validate.
 
     Args:
         parallel: Enable parallel execution for create/run
         concurrency: Override default concurrency
+        client: Client type from clients.yaml (e.g., 'anthropic', 'gemini')
+
     """
     wb_clean(c)
-    wb_create(c, parallel=parallel)
+    wb_create(c, parallel=parallel, client=client)
     wb_run(c, concurrency=concurrency, parallel=parallel)
     wb_validate(c, parallel=parallel)
 
@@ -478,11 +498,20 @@ def wb_all(c: Context, parallel: bool = False, concurrency: str | None = None):
 
 
 @task
-def wb_basic(c: Context, concurrency: str = "3"):
-    """Create, run, and validate basic workbook."""
+def wb_basic(c: Context, concurrency: str = "3", client: str | None = None):
+    """Create, run, and validate basic workbook.
+
+    Args:
+        concurrency: Parallel execution concurrency
+        client: Client type from clients.yaml (e.g., 'anthropic', 'gemini')
+
+    """
     config = get_config()
     print("Processing basic workbook...")
-    _run_cmd(c, f"python {_get_create_script('basic')}")
+    if client:
+        print(f"  Using client: {client}")
+    client_flag = f" --client {client}" if client else ""
+    _run_cmd(c, f"python {_get_create_script('basic')}{client_flag}")
     _run_cmd(
         c, f"python scripts/run_orchestrator.py {config.sample.workbooks.basic} -c {concurrency}"
     )
@@ -491,11 +520,20 @@ def wb_basic(c: Context, concurrency: str = "3"):
 
 
 @task
-def wb_multiclient(c: Context, concurrency: str = "2"):
-    """Create, run, and validate multiclient workbook."""
+def wb_multiclient(c: Context, concurrency: str = "2", client: str | None = None):
+    """Create, run, and validate multiclient workbook.
+
+    Args:
+        concurrency: Parallel execution concurrency
+        client: Client type from clients.yaml (e.g., 'anthropic', 'gemini')
+
+    """
     config = get_config()
     print("Processing multiclient workbook...")
-    _run_cmd(c, f"python {_get_create_script('multiclient')}")
+    if client:
+        print(f"  Using client: {client}")
+    client_flag = f" --client {client}" if client else ""
+    _run_cmd(c, f"python {_get_create_script('multiclient')}{client_flag}")
     _run_cmd(
         c,
         f"python scripts/run_orchestrator.py {config.sample.workbooks.multiclient} -c {concurrency}",
@@ -507,11 +545,20 @@ def wb_multiclient(c: Context, concurrency: str = "2"):
 
 
 @task
-def wb_conditional(c: Context, concurrency: str = "3"):
-    """Create, run, and validate conditional workbook."""
+def wb_conditional(c: Context, concurrency: str = "3", client: str | None = None):
+    """Create, run, and validate conditional workbook.
+
+    Args:
+        concurrency: Parallel execution concurrency
+        client: Client type from clients.yaml (e.g., 'anthropic', 'gemini')
+
+    """
     config = get_config()
     print("Processing conditional workbook...")
-    _run_cmd(c, f"python {_get_create_script('conditional')}")
+    if client:
+        print(f"  Using client: {client}")
+    client_flag = f" --client {client}" if client else ""
+    _run_cmd(c, f"python {_get_create_script('conditional')}{client_flag}")
     _run_cmd(
         c,
         f"python scripts/run_orchestrator.py {config.sample.workbooks.conditional} -c {concurrency}",
@@ -523,22 +570,39 @@ def wb_conditional(c: Context, concurrency: str = "3"):
 
 
 @task
-def wb_documents(c: Context):
-    """Create, run, and validate documents workbook."""
+def wb_documents(c: Context, client: str | None = None):
+    """Create, run, and validate documents workbook.
+
+    Args:
+        client: Client type from clients.yaml (e.g., 'anthropic', 'gemini')
+
+    """
     config = get_config()
     print("Processing documents workbook...")
-    _run_cmd(c, f"python {_get_create_script('documents')}")
+    if client:
+        print(f"  Using client: {client}")
+    client_flag = f" --client {client}" if client else ""
+    _run_cmd(c, f"python {_get_create_script('documents')}{client_flag}")
     _run_cmd(c, f"python scripts/run_orchestrator.py {config.sample.workbooks.documents}")
     _run_cmd(c, f"python {_get_validate_script('documents')} {config.sample.workbooks.documents}")
     print("Documents workbook complete!")
 
 
 @task
-def wb_batch(c: Context, concurrency: str = "3"):
-    """Create, run, and validate batch workbook."""
+def wb_batch(c: Context, concurrency: str = "3", client: str | None = None):
+    """Create, run, and validate batch workbook.
+
+    Args:
+        concurrency: Parallel execution concurrency
+        client: Client type from clients.yaml (e.g., 'anthropic', 'gemini')
+
+    """
     config = get_config()
     print("Processing batch workbook...")
-    _run_cmd(c, f"python {_get_create_script('batch')}")
+    if client:
+        print(f"  Using client: {client}")
+    client_flag = f" --client {client}" if client else ""
+    _run_cmd(c, f"python {_get_create_script('batch')}{client_flag}")
     _run_cmd(
         c, f"python scripts/run_orchestrator.py {config.sample.workbooks.batch} -c {concurrency}"
     )
@@ -547,11 +611,20 @@ def wb_batch(c: Context, concurrency: str = "3"):
 
 
 @task
-def wb_max(c: Context, concurrency: str = "3"):
-    """Create, run, and validate max workbook."""
+def wb_max(c: Context, concurrency: str = "3", client: str | None = None):
+    """Create, run, and validate max workbook.
+
+    Args:
+        concurrency: Parallel execution concurrency
+        client: Client type from clients.yaml (e.g., 'anthropic', 'gemini')
+
+    """
     config = get_config()
     print("Processing max workbook...")
-    _run_cmd(c, f"python {_get_create_script('max')}")
+    if client:
+        print(f"  Using client: {client}")
+    client_flag = f" --client {client}" if client else ""
+    _run_cmd(c, f"python {_get_create_script('max')}{client_flag}")
     _run_cmd(
         c, f"python scripts/run_orchestrator.py {config.sample.workbooks.max} -c {concurrency}"
     )

@@ -52,6 +52,14 @@ from .base import (
     SectionDefinition,
 )
 from .builders import WorkbookBuilder
+from .utils import (
+    build_config_overrides,
+    build_sample_clients_overrides,
+    create_client_argument_parser,
+    get_available_clients,
+    get_client_config,
+    parse_client_args,
+)
 from .validators import WorkbookValidator, create_validator
 
 __all__ = [
@@ -68,4 +76,10 @@ __all__ = [
     "DEFAULT_CLIENTS_COLUMN_WIDTHS",
     "DEFAULT_DOCUMENTS_HEADERS",
     "DEFAULT_DOCUMENTS_COLUMN_WIDTHS",
+    "get_available_clients",
+    "get_client_config",
+    "build_config_overrides",
+    "build_sample_clients_overrides",
+    "create_client_argument_parser",
+    "parse_client_args",
 ]

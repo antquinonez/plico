@@ -19,7 +19,13 @@ Creates 27 prompts across 6 sections with 5 batch data rows and 13 documents for
 Paired with: sample_workbook_max_validate_v001.py
 
 Usage:
-    python scripts/sample_workbook_max_create_v001.py [output_path]
+    python scripts/sample_workbook_max_create_v001.py [output_path] [--client CLIENT]
+
+Examples:
+    python scripts/sample_workbook_max_create_v001.py
+    python scripts/sample_workbook_max_create_v001.py ./test.xlsx
+    python scripts/sample_workbook_max_create_v001.py ./test.xlsx --client anthropic
+    python scripts/sample_workbook_max_create_v001.py -c gemini
 
 Version: 001
 """
@@ -29,7 +35,11 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from sample_workbooks import PromptSpec, WorkbookBuilder
+from sample_workbooks import (
+    PromptSpec,
+    WorkbookBuilder,
+    parse_client_args,
+)
 
 from src.config import get_config
 
@@ -448,8 +458,19 @@ def get_prompts() -> list[PromptSpec]:
     return prompts
 
 
-def create_max_sample_workbook(output_path: str):
-    """Create the max sample workbook."""
+def create_max_sample_workbook(
+    output_path: str,
+    config_overrides: dict | None = None,
+    sample_clients_overrides: dict | None = None,
+):
+    """Create the max sample workbook.
+
+    Args:
+        output_path: Path where the workbook will be saved.
+        config_overrides: Optional overrides for the config sheet (client_type, model).
+        sample_clients_overrides: Optional overrides for sample_clients in the clients sheet.
+
+    """
     prompts = get_prompts()
     documents = get_documents()
     batch_data = get_batch_data()
@@ -465,6 +486,7 @@ def create_max_sample_workbook(output_path: str):
                 "For ratings, respond with just the number. "
                 "For yes/no, respond with just 'yes' or 'no'."
             ),
+            **(config_overrides or {}),
         },
         extra_fields=[
             ("batch_mode", batch_config.mode),
@@ -472,7 +494,10 @@ def create_max_sample_workbook(output_path: str):
             ("on_batch_error", batch_config.on_error),
         ],
     )
-    builder.add_clients_sheet(client_names=["default", "fast", "creative", "analytical"])
+    builder.add_clients_sheet(
+        client_names=["default", "fast", "creative", "analytical"],
+        sample_clients_overrides=sample_clients_overrides,
+    )
     builder.add_data_sheet(batch_data)
     builder.add_documents_sheet(documents)
     builder.add_prompts_sheet(prompts, include_extra_columns=True)
@@ -487,6 +512,9 @@ def create_max_sample_workbook(output_path: str):
     builder.print_summary(
         "MAX",
         {
+            "Client": config_overrides.get("client_type", "default")
+            if config_overrides
+            else "default",
             "FEATURES COMBINED": {
                 "BATCH MODE": f"{len(batch_data)} data rows x {len(prompts)} prompts = {len(batch_data) * len(prompts)} total executions",
                 "CONDITIONAL EXECUTION": f"{cond_count} prompts with conditions",
@@ -508,5 +536,10 @@ def create_max_sample_workbook(output_path: str):
 
 if __name__ == "__main__":
     config = get_config()
-    output = sys.argv[1] if len(sys.argv) > 1 else config.sample.workbooks.max
-    create_max_sample_workbook(output)
+
+    args, config_overrides, sample_clients_overrides = parse_client_args(
+        script_description="Generate comprehensive sample workbook combining batch, conditional, multi-client, and RAG features.",
+        default_output=config.sample.workbooks.max,
+    )
+
+    create_max_sample_workbook(args.output, config_overrides, sample_clients_overrides)
