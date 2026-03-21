@@ -350,18 +350,6 @@ class OrchestratorBase(ABC):
                 return False
         return None
 
-    def _create_result_dict(self, prompt: dict[str, Any]) -> dict[str, Any]:
-        """Create a result dictionary for a prompt.
-
-        Args:
-            prompt: Prompt dictionary.
-
-        Returns:
-            Initialized result dictionary.
-
-        """
-        return ResultBuilder(prompt).build_dict()
-
     def _build_execution_graph(self) -> dict[int, PromptNode]:
         """Build dependency graph for parallel execution.
 
@@ -464,6 +452,100 @@ class OrchestratorBase(ABC):
 
         return result, result, error
 
+    def _execute_with_retry(
+        self,
+        prompt: dict[str, Any],
+        results_by_name: dict[str, dict[str, Any]],
+        results_lock: threading.Lock | None = None,
+        batch_id: int | None = None,
+        batch_name: str | None = None,
+    ) -> dict[str, Any]:
+        """Execute a prompt with retry logic, supporting both regular and batch execution.
+
+        Unified execution path for all modes (sequential, parallel, batch, batch_parallel).
+        Uses ResultBuilder for consistent result construction.
+
+        Args:
+            prompt: Prompt dictionary.
+            results_by_name: Results indexed by prompt_name for condition evaluation.
+            results_lock: Optional lock for thread-safe condition evaluation (parallel mode).
+            batch_id: Optional batch identifier.
+            batch_name: Optional batch name.
+
+        Returns:
+            Result dictionary.
+
+        """
+        max_retries = self.config.get("max_retries", 3)
+        retry_base_delay = self.config.get("retry_base_delay", 1.0)
+
+        builder = ResultBuilder(prompt)
+        if batch_id is not None and batch_name is not None:
+            builder = builder.with_batch(batch_id, batch_name)
+
+        seq_label = (
+            f"Batch {batch_id}, sequence {prompt['sequence']}"
+            if batch_id is not None
+            else f"Sequence {prompt['sequence']}"
+        )
+        client_name = prompt.get("client")
+
+        if results_lock:
+            with results_lock:
+                should_execute, cond_result, cond_error = self._evaluate_condition(
+                    prompt, results_by_name
+                )
+        else:
+            should_execute, cond_result, cond_error = self._evaluate_condition(
+                prompt, results_by_name
+            )
+
+        builder.with_condition_result(cond_result, cond_error)
+
+        if not should_execute:
+            builder.as_skipped(cond_result, cond_error)
+            logger.info(f"{seq_label} skipped: condition evaluated to False")
+            return builder.build_dict()
+
+        ffai = self._get_isolated_ffai(client_name)
+
+        for attempt in range(1, max_retries + 1):
+            builder.with_attempts(attempt)
+
+            try:
+                logger.info(
+                    f"Executing {seq_label} (attempt {attempt})"
+                    + (f" with client '{client_name}'" if client_name else "")
+                )
+
+                injected_prompt = self._inject_references(prompt)
+
+                response = ffai.generate_response(
+                    prompt=injected_prompt,
+                    prompt_name=prompt.get("prompt_name"),
+                    history=prompt.get("history"),
+                    model=self.config.get("model"),
+                    temperature=self.config.get("temperature"),
+                    max_tokens=self.config.get("max_tokens"),
+                )
+
+                builder.with_response(response)
+                logger.info(f"{seq_label} succeeded")
+                break
+
+            except Exception as e:
+                builder.with_error(str(e), attempt)
+                logger.warning(f"{seq_label} failed (attempt {attempt}): {e}")
+
+                if attempt == max_retries:
+                    logger.error(f"{seq_label} failed after {max_retries} attempts")
+                else:
+                    delay = retry_base_delay * (2 ** (attempt - 1))
+                    logger.info(f"Retrying {seq_label} in {delay:.1f}s")
+                    time.sleep(delay)
+
+        return builder.build_dict()
+
     def _execute_prompt_core(
         self,
         prompt: dict[str, Any],
@@ -483,76 +565,7 @@ class OrchestratorBase(ABC):
             Result dictionary.
 
         """
-        max_retries = self.config.get("max_retries", 3)
-        retry_base_delay = self.config.get("retry_base_delay", 1.0)
-
-        result = self._create_result_dict(prompt)
-
-        client_name = prompt.get("client")
-
-        # Evaluate condition (thread-safe if lock provided)
-        if results_lock:
-            with results_lock:
-                should_execute, cond_result, cond_error = self._evaluate_condition(
-                    prompt, results_by_name
-                )
-        else:
-            should_execute, cond_result, cond_error = self._evaluate_condition(
-                prompt, results_by_name
-            )
-
-        result["condition_result"] = cond_result
-        result["condition_error"] = cond_error
-
-        if not should_execute:
-            result["status"] = "skipped"
-            result["attempts"] = 0
-            logger.info(f"Sequence {prompt['sequence']} skipped: condition evaluated to False")
-            return result
-
-        # Create isolated FFAI once before retry loop
-        ffai = self._get_isolated_ffai(client_name)
-
-        for attempt in range(1, max_retries + 1):
-            result["attempts"] = attempt
-
-            try:
-                logger.info(
-                    f"Executing sequence {prompt['sequence']} (attempt {attempt})"
-                    + (f" with client '{client_name}'" if client_name else "")
-                )
-
-                injected_prompt = self._inject_references(prompt)
-
-                response = ffai.generate_response(
-                    prompt=injected_prompt,
-                    prompt_name=prompt.get("prompt_name"),
-                    history=prompt.get("history"),
-                    model=self.config.get("model"),
-                    temperature=self.config.get("temperature"),
-                    max_tokens=self.config.get("max_tokens"),
-                )
-
-                result["response"] = response
-                result["status"] = "success"
-                logger.info(f"Sequence {prompt['sequence']} succeeded")
-                break
-
-            except Exception as e:
-                result["error"] = str(e)
-                logger.warning(f"Sequence {prompt['sequence']} failed (attempt {attempt}): {e}")
-
-                if attempt == max_retries:
-                    result["status"] = "failed"
-                    logger.error(
-                        f"Sequence {prompt['sequence']} failed after {max_retries} attempts"
-                    )
-                else:
-                    delay = retry_base_delay * (2 ** (attempt - 1))
-                    logger.info(f"Retrying sequence {prompt['sequence']} in {delay:.1f}s")
-                    time.sleep(delay)
-
-        return result
+        return self._execute_with_retry(prompt, results_by_name, results_lock)
 
     def _execute_prompt_isolated(
         self, prompt: dict[str, Any], state: ExecutionState
@@ -713,67 +726,9 @@ class OrchestratorBase(ABC):
             Result dictionary with batch info.
 
         """
-        max_retries = self.config.get("max_retries", 3)
-        retry_base_delay = self.config.get("retry_base_delay", 1.0)
-
-        builder = ResultBuilder(prompt).with_batch(batch_id, batch_name)
-        results_by_name = results_by_name or {}
-
-        should_execute, cond_result, cond_error = self._evaluate_condition(prompt, results_by_name)
-        builder.with_condition_result(cond_result, cond_error)
-
-        if not should_execute:
-            builder.as_skipped(cond_result, cond_error)
-            logger.info(
-                f"Batch {batch_id}, sequence {prompt['sequence']} skipped: condition evaluated to False"
-            )
-            return builder.build_dict()
-
-        client_name = prompt.get("client")
-        ffai = self._get_isolated_ffai(client_name)
-
-        for attempt in range(1, max_retries + 1):
-            builder.with_attempts(attempt)
-
-            try:
-                logger.info(
-                    f"Executing batch {batch_id}, sequence {prompt['sequence']} (attempt {attempt})"
-                    + (f" with client '{client_name}'" if client_name else "")
-                )
-
-                injected_prompt = self._inject_references(prompt)
-
-                response = ffai.generate_response(
-                    prompt=injected_prompt,
-                    prompt_name=prompt.get("prompt_name"),
-                    history=prompt.get("history"),
-                    model=self.config.get("model"),
-                    temperature=self.config.get("temperature"),
-                    max_tokens=self.config.get("max_tokens"),
-                )
-
-                builder.with_response(response)
-                logger.info(f"Batch {batch_id}, sequence {prompt['sequence']} succeeded")
-                break
-
-            except Exception as e:
-                builder.with_error(str(e), attempt)
-                logger.warning(
-                    f"Batch {batch_id}, sequence {prompt['sequence']} failed (attempt {attempt}): {e}"
-                )
-
-                if attempt == max_retries:
-                    logger.error(
-                        f"Batch {batch_id}, sequence {prompt['sequence']} failed after {max_retries} attempts"
-                    )
-                else:
-                    delay = retry_base_delay * (2 ** (attempt - 1))
-                    logger.info(
-                        f"Retrying batch {batch_id}, sequence {prompt['sequence']} in {delay:.1f}s"
-                    )
-                    time.sleep(delay)
-
-        return builder.build_dict()
+        return self._execute_with_retry(
+            prompt, results_by_name or {}, batch_id=batch_id, batch_name=batch_name
+        )
 
     def execute(self) -> list[dict[str, Any]]:
         """Execute all prompts in sequence with dependency-aware ordering.

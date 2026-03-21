@@ -21,7 +21,7 @@ import logging
 from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 import polars as pl
 import yaml
@@ -30,9 +30,6 @@ from ..config import get_config
 from ..FFAIClientBase import FFAIClientBase
 from .base import OrchestratorBase
 from .workbook_parser import WorkbookParser
-
-if TYPE_CHECKING:
-    pass
 
 logger = logging.getLogger(__name__)
 

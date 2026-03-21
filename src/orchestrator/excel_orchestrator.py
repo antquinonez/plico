@@ -2,17 +2,17 @@
 # SPDX-License-Identifier: MIT
 # Contact: antquinonez@farfiner.com
 
-# """Excel-based AI prompt orchestration engine.
+"""Excel-based AI prompt orchestration engine.
 
-# This module provides the ExcelOrchestrator class for executing AI prompt
-# workflows defined in Excel workbooks with support for:
-# - Sequential and parallel execution
-# - Batch execution with variable templating
-# - Multi-client support
-# - Document reference injection
-# - Semantic search via RAG (semantic_query)
-# - Conditional execution
-# """
+This module provides the ExcelOrchestrator class for executing AI prompt
+workflows defined in Excel workbooks with support for:
+- Sequential and parallel execution
+- Batch execution with variable templating
+- Multi-client support
+- Document reference injection
+- Semantic search via RAG (semantic_query)
+- Conditional execution
+"""
 
 from __future__ import annotations
 
