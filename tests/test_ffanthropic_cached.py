@@ -82,7 +82,7 @@ class TestFFAnthropicCachedInit:
 
     def test_init_from_env(self, monkeypatch):
         """Test initialization from environment variables."""
-        monkeypatch.setenv("ANTHROPIC_TOKEN", "env-api-key")
+        monkeypatch.setenv("ANTHROPIC_API_KEY", "env-api-key")
         monkeypatch.setenv("ANTHROPIC_MODEL", "claude-3-haiku-20240307")
         monkeypatch.setenv("ANTHROPIC_TEMPERATURE", "0.6")
         monkeypatch.setenv("ANTHROPIC_MAX_TOKENS", "2000")

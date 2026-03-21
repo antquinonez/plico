@@ -8,20 +8,12 @@ Plico uses a centralized configuration system built on `pydantic-settings`. Conf
 
 ```
 config/
-├── main.yaml          # Core app settings (workbook, orchestrator, retry, document processor)
+├── main.yaml          # Core app settings (workbook, orchestrator, retry, document processor, RAG)
 ├── logging.yaml       # Logging configuration
 ├── paths.yaml         # File system paths
 ├── clients.yaml       # AI client configurations
 ├── model_defaults.yaml # Per-model default parameters
 └── sample_workbook.yaml # Test workbook defaults and paths
-```
-config/
-├── main.yaml          # Core app settings (workbook, orchestrator, document processor)
-├── logging.yaml       # Logging configuration
-├── paths.yaml         # File system paths
-├── clients.yaml       # AI client configurations
-├── model_defaults.yaml # Per-model default parameters
-└── sample_workbook.yaml          # Test workbook defaults and paths
 ```
 
 ## Usage
@@ -111,50 +103,6 @@ orchestrator:
 |-------|-------------|
 | `default_concurrency` | Default concurrency for parallel execution |
 | `max_concurrency` | Maximum concurrent threads |
- **Rate limits:** Respect API quotas ( reduce concurrency | || | )
-
-### Retry Configuration (`main.yaml`)
-
-The retry system handles transient failures like rate limits (429 errors) and service unavailability (503) errors and network timeouts with exponential backoff.
-```yaml
-retry:
-  max_attempts: 3              # Maximum retry attempts
-  min_wait_seconds: 1          # Minimum initial wait time
-  max_wait_seconds: 60         # Maximum wait time cap
-  exponential_base: 2          # Backoff multiplier (2x each retry)
-  exponential_jitter: true     # Add randomness to prevent thundering herd
-  retry_on_status_codes:       # HTTP codes to retry
-    - 429                      # Rate limit
-    - 503                      # Service unavailable
-    - 502                      # Bad gateway
-    - 504                      # Gateway timeout
-  log_level: "info"             # Logging level for retry attempts
-```
-**Retry behavior:**
-
-When a rate limit or transient error occurs:
-1. **Detection**: Client detects retryable error (429, 503, network timeout)
-2. **extraction**: Parses `retry-after` header if present
-3. **backoff**: Waits with exponential backoff + jitter
-4. **retry**: Retries the API call up to `max_attempts`
-5. **logging**: Each retry attempt is logged with delay duration
-6. **result**: If all attempts fail, the request fails gracefully
-
-**Configuration fields:**
-- `max_attempts`: Maximum retry attempts (default: 3)
-- `min_wait_seconds`: Minimum initial wait time (default: 1s)
-- `max_wait_seconds`: Maximum wait time cap (default: 60s)
-- `exponential_base`: Backoff multiplier (default: 2)
-- `exponential_jitter`: Add randomness to prevent thundering herd ( default: `true` for better rate limit handling)
-- `retry_on_status_codes`: List of HTTP codes to retry ( default: [429, 503, 502, 504])
-- `log_level`: Logging level for retry attempts ( default: `INFO`)
-
-**Tips:**
-- Start with default settings
-- For rate-limited APIs (e.g., Gemini free tier: 10-20 requests/minute), reduce concurrency
-- for free tier quotas (10-20 requests/minute), lower concurrency
-- Use LiteLLM client (has built-in retry)
-- Wait 60s between runs (resets quota)
 
 ### Paths Configuration (`paths.yaml`)
 
@@ -197,8 +145,11 @@ The RAG system supports multiple chunking strategies, hybrid search, and hierarc
 rag:
   enabled: true
   persist_dir: "./chroma_db"
-  collection_name: "plico_documents"
+  collection_name: "plico_kb"
   embedding_model: "mistral/mistral-embed"
+  local_embeddings: false
+  embedding_cache_size: 256
+  generate_summaries: false
   chunk_size: 1000
   chunk_overlap: 200
   n_results_default: 5
@@ -208,29 +159,37 @@ rag:
     strategy: "recursive"        # recursive, markdown, code, hierarchical, character
     chunk_size: 1000
     chunk_overlap: 200
+    contextual_headers: true       # Prepend document context to chunks
+    dedup_enabled: false           # Enable chunk deduplication
+    dedup_mode: "exact"             # or "similarity"
     # Strategy-specific options:
-    # markdown:
-    #   split_headers: ["h1", "h2"]
-    # code:
-    #   language: "python"
-    #   split_by: "function"
-    # hierarchical:
-    #   parent_chunk_size: 1500
+    markdown:
+      split_headers: ["h1", "h2", "h3"]
+      preserve_structure: true
+      max_chunk_fallback: true
+    code:
+      language: "python"
+      split_by: "function"
+    hierarchical:
+      parent_chunk_size: 1500
 
   # Search configuration
   search:
-    mode: "vector"               # vector, bm25, hybrid
+    mode: "vector"               # vector, hybrid
+    n_results_default: 5
     hybrid_alpha: 0.6            # Vector weight for hybrid (0.0-1.0)
     rerank: false                # Enable post-retrieval reranking
     rerank_model: "cross-encoder/ms-marco-MiniLM-L-6-v2"
-    diversity_lambda: 0.7        # Diversity weight (0.0-1.0)
+    query_expansion: false        # Enable multi-query retrieval
+    query_expansion_variations: 3 # Number of query variations
+    summary_boost: 1.5           # Boost for summary chunk matches
 
   # Hierarchical indexing
   hierarchical:
     enabled: false
     parent_context: true         # Include parent chunks in results
     parent_chunk_size: 1500
-    child_chunk_size: 400
+    levels: 2
 ```
 
 #### Chunking Strategies
@@ -271,7 +230,7 @@ client_types:
   anthropic:
     client_class: "FFAnthropic"
     type: "native"
-    api_key_env: "ANTHROPIC_TOKEN"
+    api_key_env: "ANTHROPIC_API_KEY"
     default_model: "claude-3-5-sonnet-20241022"
 
   gemini:

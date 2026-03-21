@@ -98,6 +98,7 @@ system_instructions: You are a helpful assistant.
 batch_mode: per_row
 batch_output: combined
 on_batch_error: continue
+document_cache_dir: null
 ```
 
 ### prompts.yaml
@@ -173,6 +174,12 @@ clients:
     model: claude-3-5-sonnet-20241022
     temperature: 0.7
     max_tokens: 4096
+    system_instructions: "You are a helpful assistant."
+  - name: azure-gpt
+    client_type: litellm-azure
+    api_base: "https://my-instance.openai.azure.com"
+    api_version: "2024-02-01"
+    fallbacks: ["openai/gpt-4o"]
 ```
 
 ### documents.yaml (Document References)

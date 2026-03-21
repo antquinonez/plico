@@ -33,9 +33,9 @@ class FFAnthropicCached:
         all_config = {**(config or {}), **kwargs}
 
         self.api_key = (
-            all_config.get("api_key", os.getenv("ANTHROPIC_TOKEN"))
+            all_config.get("api_key", os.getenv("ANTHROPIC_API_KEY"))
             if all_config
-            else os.getenv("ANTHROPIC_TOKEN")
+            else os.getenv("ANTHROPIC_API_KEY")
         )
         self.model = (
             all_config.get("model", default_model)

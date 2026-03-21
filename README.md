@@ -33,16 +33,16 @@ Same manifest. Same execution engine. Same audit trail.
 ## Three Paths to a Manifest
 
 ```
-+--------------------------------------------------------------------------------------------------+
-|                                        AUTHORING SURFACES                                        |
-|                                                                                                  |
-|   +---------------------+          +---------------------+          +-------------------------+  |
-|   |       Excel         |          |       Python        |          |        AI Agent         |  |
-|   |      Workbook       |          |        Script       |          |     (writes YAML)       |  |
-|   |                     |          |                     |          |                         |  |
-|   |   Human-friendly    |          |   Programmatic      |          |   Autonomous            |  |
-|   |   visual editor     |          |   generation        |          |   composition           |  |
-|   +----------+----------+          +----------+----------+          +------------+------------+  |
++-------------------------------------------------------------------------------------------------+
+|                                        AUTHORING SURFACES                                       |
+|                                                                                                 |
+|   +---------------------+          +---------------------+         +-------------------------+  |
+|   |       Excel         |          |       Python        |         |        AI Agent         |  |
+|   |      Workbook       |          |        Script       |         |     (writes YAML)       |  |
+|   |                     |          |                     |         |                         |  |
+|   |   Human-friendly    |          |   Programmatic      |         |   Autonomous            |  |
+|   |   visual editor     |          |   generation        |         |   composition           |  |
+|   +----------+----------+          +----------+----------+         +------------+------------+  |
 |              |                                |                                  |              |
 |              +--------------------------------+----------------------------------+              |
 |                                               v                                                 |
@@ -63,21 +63,21 @@ Same manifest. Same execution engine. Same audit trail.
 |                                                |                                                |
 +------------------------------------------------+------------------------------------------------+
                                                  v
-+--------------------------------------------------------------------------------------------------+
-|                                        EXECUTION LAYER                                           |
-|                                                                                                  |
-|                                        ManifestOrchestrator                                      |
-|                                               |                                                  |
-|                                               v                                                  |
-|                           +-------------------------------------+                                |
-|                           |      Timestamped Parquet            |                                |
-|                           |      (analytics-ready)              |                                |
-|                           |                                     |                                |
-|                           |  <-- AI can analyze -->             |                                |
-|                           |  <-- AI can iterate -->             |                                |
-|                           +-------------------------------------+                                |
-|                                                                                                  |
-+--------------------------------------------------------------------------------------------------+
++-------------------------------------------------------------------------------------------------+
+|                                        EXECUTION LAYER                                          |
+|                                                                                                 |
+|                                        ManifestOrchestrator                                     |
+|                                               |                                                 |
+|                                               v                                                 |
+|                           +-------------------------------------+                               |
+|                           |      Timestamped Parquet            |                               |
+|                           |      (analytics-ready)              |                               |
+|                           |                                     |                               |
+|                           |  <-- AI can analyze -->             |                               |
+|                           |  <-- AI can iterate -->             |                               |
+|                           +-------------------------------------+                               |
+|                                                                                                 |
++-------------------------------------------------------------------------------------------------+
 ```
 
 ### Path 1: Excel (Human Authoring)
@@ -184,164 +184,129 @@ prompts:
 
 ## Quick Start
 
-### Installation
+Install, configure, and run your first workflow in under 5 minutes. See [QUICKSTART.md](QUICKSTART.md) for the full guide.
 
 ```bash
 git clone https://github.com/antquinonez/plico.git
 cd plico
+python -m venv .venv && source .venv/bin/activate
 pip install -e ".[dev]"
+
+# Set your API key in .env:
+echo 'OPENAI_API_KEY="your-key"' > .env
+
+# Run a sample workbook to verify everything works:
+inv wb.basic --client litellm-openai
 ```
 
-### Set Your API Key
-
-```bash
-export MISTRALSMALL_KEY="your-api-key"
-```
-
-For complete provider-specific key names and defaults, see `config/clients.yaml.example`.
-
-### Fastest End-to-End Run (60 seconds)
-
-```bash
-# Creates a sample workbook, runs orchestration, and validates output
-inv wb.basic
-```
-
-This is the quickest way to confirm your environment, client config, and orchestration flow are working.
-
-### Minimal Manifest Run
-
-```bash
-mkdir -p manifests/my_first
-
-cat > manifests/my_first/config.yaml << 'EOF'
-model: mistral-small-2503
-temperature: 0.7
-max_tokens: 512
-EOF
-
-cat > manifests/my_first/prompts.yaml << 'EOF'
-prompts:
-  - sequence: 1
-    prompt_name: greet
-    prompt: "Introduce yourself briefly."
-
-  - sequence: 2
-    prompt_name: question
-    prompt: "What is the most interesting thing about AI orchestration?"
-    history: ["greet"]
-
-  - sequence: 3
-    prompt_name: summarize
-    prompt: "Summarize our conversation in one sentence."
-    history: ["greet", "question"]
-EOF
-
-cat > manifests/my_first/manifest.yaml << 'EOF'
-version: "1.0"
-EOF
-
-python scripts/run_manifest.py ./manifests/my_first/ -c 2
-
-# Inspect latest output
-python scripts/inspect_parquet.py ./outputs/<timestamp>_my_first.parquet --summary
-```
-
-### Excel Workflow (Visual Authoring)
-
-```bash
-# 1) Create template workbook (exits after creating)
-python scripts/run_orchestrator.py analysis.xlsx
-
-# 2) Edit prompts in Excel, then run
-python scripts/run_orchestrator.py analysis.xlsx -c 4
-
-# 3) Use a specific AI client
-python scripts/run_orchestrator.py analysis.xlsx --client anthropic
-
-# 4) Optional: validate workbook structure only
-python scripts/run_orchestrator.py analysis.xlsx --dry-run
-
-# 5) Optional: export and run as manifest
-python scripts/export_manifest.py analysis.xlsx
-python scripts/run_manifest.py ./manifests/manifest_analysis/
-
-# 6) Optional: validate manifest structure only
-python scripts/run_manifest.py ./manifests/manifest_analysis/ --dry-run
-```
-
-Available samples: `inv wb.basic`, `inv wb.conditional`, `inv wb.batch`, `inv wb.multiclient`, `inv wb.documents`, `inv wb.max`. Run `inv --list` to see all tasks, or see [AGENTS.md](AGENTS.md) for details.
+For provider options, Excel/manifest/Python workflows, troubleshooting, and more, see the **[Quick Start Guide](QUICKSTART.md)**.
 
 ---
 
 ## The Manifest Protocol
 
-The manifest directory is the canonical, version-controllable representation of a workflow.
+The manifest directory is the canonical, version-controllable representation of a workflow. A manifest is a folder of YAML files — six total, though only three are required.
 
 ### Folder Structure
 
 ```
-manifest_analysis/
-├── manifest.yaml      # Metadata (version, source, export info)
-├── config.yaml        # Runtime settings (model, temperature, retries)
-├── prompts.yaml       # Prompt graph (dependencies, conditions, routing)
-├── data.yaml          # Optional batch rows (`batches`)
-├── clients.yaml       # Optional named client configs
-└── documents.yaml     # Optional document references for injection/RAG
+manifest_my_workflow/
+├── manifest.yaml      # Required — metadata
+├── config.yaml        # Required — runtime settings
+├── prompts.yaml       # Required — prompt graph
+├── data.yaml          # Optional — batch rows
+├── clients.yaml       # Optional — named client configs
+└── documents.yaml     # Optional — document references for injection/RAG
 ```
 
-### prompts.yaml Schema
+The optional files are only created when the source workbook contains the corresponding sheet with data rows. The `manifest.yaml` flags (`has_data`, `has_clients`, `has_documents`) control which optional files are loaded at runtime.
+
+### manifest.yaml — Metadata
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `version` | `str` | Manifest format version (currently `"1.0"`) |
+| `source_workbook` | `str` | Absolute path to the original Excel workbook |
+| `exported_at` | `str` | ISO 8601 timestamp of export |
+| `has_data` | `bool` | Whether `data.yaml` exists (batch mode enabled) |
+| `has_clients` | `bool` | Whether `clients.yaml` exists (multi-client mode) |
+| `has_documents` | `bool` | Whether `documents.yaml` exists (document injection/RAG) |
+| `prompt_count` | `int` | Total number of prompts |
+
+### config.yaml — Runtime Settings
+
+Flat key-value dictionary. Keys come from the workbook's config sheet; only non-empty values are written.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `client_type` | `str` | Client type to use (overrides CLI `--client`) |
+| `model` | `str` | Model name (falls back to client-type default) |
+| `api_key_env` | `str` | Environment variable for the API key |
+| `max_retries` | `int` | Retry attempts per prompt (default: 3) |
+| `temperature` | `float` | Sampling temperature (0–2) |
+| `max_tokens` | `int` | Maximum response tokens |
+| `system_instructions` | `str` | System prompt |
+| `on_batch_error` | `str` | Batch error handling: `"continue"` or `"stop"` (default: `"continue"`) |
+| `document_cache_dir` | `str` | Override path for document cache |
+| `created_at` | `str` | Timestamp (informational only) |
+| `batch_mode` | `str` | Batch mode setting (informational; actual batch mode is determined by presence of `data.yaml`) |
+| `batch_output` | `str` | Batch output format (informational) |
+
+The orchestrator retries failed prompts up to `max_retries` times (default: 3).
+
+### prompts.yaml — Prompt Graph
+
+Each prompt entry defines a node in the execution DAG. Dependencies are declared via `history` references to `prompt_name` values.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `sequence` | `int` | Execution order (1-based). Prompts at the same level with no dependencies run in parallel. |
+| `prompt_name` | `str` | Unique identifier. Referenced by `history`, `condition` expressions, and `client` routing. |
+| `prompt` | `str` | The prompt text. Supports `{{variable}}` templating in batch mode. |
+| `history` | `list[str]` | `prompt_name` values whose responses are injected as conversation context. |
+| `client` | `str` | Name from `clients.yaml` to route this prompt to a specific client. `null` = default. |
+| `condition` | `str` | Expression evaluated at runtime. If falsy, the prompt is skipped (status: `"skipped"`). |
+| `references` | `list[str]` | `reference_name` values from `documents.yaml` for full document injection. |
+| `semantic_query` | `str` | Natural language query for RAG semantic search (retrieves relevant chunks). |
+| `semantic_filter` | `str` | JSON string for filtering RAG results (e.g., `'{"reference_name": "api_ref"}'`). |
+| `query_expansion` | `str` | Enable multi-query retrieval: `"true"`, `"yes"`, `"1"` = enabled. |
+| `rerank` | `str` | Enable cross-encoder reranking: `"true"`, `"yes"`, `"1"` = enabled. |
 
 ```yaml
 prompts:
-  - sequence: 1                    # Execution order
-    prompt_name: fetch             # Unique identifier for references
-    prompt: "Retrieve the data"    # The prompt text (supports {{variable}} templating)
-    history: []                    # Dependencies (prompt_names to include as context)
-    client: null                   # Named client or null for default
-    condition: null                # Expression for conditional execution
-    references: []                 # Document reference_names for injection
-    semantic_query: null           # RAG search query
-    semantic_filter: null          # Metadata filter for RAG search
-    query_expansion: null          # Enable query expansion (true/false)
-    rerank: null                   # Enable reranking (true/false)
+  - sequence: 1
+    prompt_name: fetch
+    prompt: "Retrieve the data"
+    history: []
+    client: fast
+    condition: null
+    references: []
+    semantic_query: null
+    semantic_filter: null
+    query_expansion: null
+    rerank: null
+  - sequence: 2
+    prompt_name: summarize
+    prompt: "Summarize the data"
+    history: ["fetch"]
+    condition: "{{fetch.response.contains.error}} == false"
+    client: null
+    references: ["spec"]
+    semantic_query: null
+    semantic_filter: null
+    query_expansion: null
+    rerank: null
 ```
 
-### config.yaml Schema
+### data.yaml — Batch Mode (Optional)
 
-```yaml
-model: mistral-small-2503
-temperature: 0.7
-max_tokens: 4096
-system_instructions: "You are a helpful assistant."
-max_retries: 3
-created_at: "2026-03-01T12:00:00"  # Auto-generated on export
-```
+Top-level key is `batches`. Entries are open-schema dicts — any column becomes a `{{variable}}` available in prompt text and `prompt_name`.
 
-**Retry Configuration** (in `config/main.yaml`):
-
-```yaml
-retry:
-  max_attempts: 3              # Maximum retry attempts
-  min_wait_seconds: 1          # Minimum initial wait time
-  max_wait_seconds: 60         # Maximum wait time cap
-  exponential_base: 2          # Backoff multiplier (2x each retry)
-  exponential_jitter: true     # Add randomness to prevent thundering herd
-  retry_on_status_codes:       # HTTP codes to retry
-    - 429                      # Rate limit
-    - 503                      # Service unavailable
-    - 502                      # Bad gateway
-    - 504                      # Gateway timeout
-  log_level: "INFO"            # Logging level for retry attempts
-```
-
-The retry system operates at two layers:
-1. **Client layer**: Up to `max_attempts` retries with exponential backoff
-2. **Orchestrator layer**: `max_retries` from workbook/manifest config
-
-Wait times follow exponential backoff: 1s, 2s, 4s... (capped at `max_wait_seconds`). APIs that provide `retry-after` headers are respected.
-
-### data.yaml Schema (Batch Mode)
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | `int` | Row identifier (conventional, not consumed by orchestrator) |
+| `batch_name` | `str` | Human-readable batch name. Falls back to `batch_<id>` if absent. |
+| (any key) | `any` | Arbitrary columns become `{{variable}}` placeholders in prompts. |
 
 ```yaml
 batches:
@@ -355,18 +320,29 @@ batches:
     product: "widget_b"
 ```
 
-`export_manifest.py` writes batch rows under the `batches` key.
+Use `{{region}}` and `{{product}}` in prompts for variable substitution. Each prompt runs once per batch row.
 
-Use `{{region}}` and `{{product}}` in prompts for variable substitution.
+### clients.yaml — Multi-Client Routing (Optional)
 
-### clients.yaml Schema (Multi-Model)
+Define named client configurations that prompts can reference via the `client` field.
 
-**Note:** This is a simplified schema for manifest workflows. For the full client type configuration used by the orchestrator, see `config/clients.yaml.example`.
+| Field | Type | Description |
+|-------|------|-------------|
+| `name` | `str` | Unique identifier. Referenced by `client` in prompts.yaml. |
+| `client_type` | `str` | Client type from `config/clients.yaml` (e.g., `"litellm-openai"`, `"anthropic"`) |
+| `api_key_env` | `str` | Environment variable for API key (falls back to client-type default) |
+| `model` | `str` | Model override (falls back to client-type default) |
+| `temperature` | `float` | Temperature override |
+| `max_tokens` | `int` | Max tokens override |
+| `system_instructions` | `str` | System prompt override |
+| `api_base` | `str` | API base URL override (LiteLLM clients only) |
+| `api_version` | `str` | API version override (LiteLLM clients only) |
+| `fallbacks` | `list` | Fallback model configurations (LiteLLM clients only) |
 
 ```yaml
 clients:
   - name: fast
-    client_type: litellm-mistral-small
+    client_type: litellm-openai
     temperature: 0.3
     max_tokens: 100
 
@@ -374,6 +350,11 @@ clients:
     client_type: litellm-anthropic
     temperature: 0.9
     max_tokens: 2000
+
+  - name: azure-gpt
+    client_type: litellm-azure
+    api_base: "https://my-instance.openai.azure.com"
+    fallbacks: ["openai/gpt-4o"]
 ```
 
 Reference by name in prompts: `client: fast`
@@ -383,7 +364,7 @@ Reference by name in prompts: `client: fast`
 The full configuration supports 50+ client types across providers:
 
 ```yaml
-default_client: "litellm-mistral-small"
+default_client: "litellm-openai"
 
 client_types:
   # Native clients (direct API)
@@ -396,7 +377,7 @@ client_types:
   anthropic:
     client_class: "FFAnthropic"
     type: "native"
-    api_key_env: "ANTHROPIC_TOKEN"
+    api_key_env: "ANTHROPIC_API_KEY"
     default_model: "claude-3-5-sonnet-20241022"
 
   gemini:
@@ -406,12 +387,12 @@ client_types:
     default_model: "gemini-1.5-pro"
 
   # LiteLLM clients (100+ providers)
-  litellm-gpt-4o:
+  litellm-openai:
     client_class: "FFLiteLLMClient"
     type: "litellm"
     provider_prefix: "openai/"
     api_key_env: "OPENAI_API_KEY"
-    default_model: "gpt-4o"
+    default_model: "gpt-4o-mini"
 
   litellm-claude-3-5-sonnet:
     client_class: "FFLiteLLMClient"
@@ -430,33 +411,20 @@ Each client type has:
 - `provider_prefix`: LiteLLM provider prefix (for `litellm` type only)
 - `default_model`: Default model identifier
 
-**Note:** Native and LiteLLM client types for the same provider may use different env var names (e.g., native Anthropic uses `ANTHROPIC_TOKEN` while LiteLLM Anthropic uses `ANTHROPIC_API_KEY`). Check `config/clients.yaml.example` for the exact variable name for each client type.
+**Note:** Check `config/clients.yaml.example` for the exact environment variable name for each client type.
 
-### documents.yaml Schema
+### documents.yaml — Document References (Optional)
 
-```yaml
-documents:
-  - reference_name: spec
-    common_name: "Product Specification"
-    file_path: "library/product_spec.md"
-    tags: "product,specification,overview"
+Documents are parsed, cached, and injected into prompts at runtime. Full documents are injected via `references`; relevant chunks are retrieved via RAG `semantic_query`.
 
-  - reference_name: api
-    common_name: "API Reference"
-    file_path: "library/api_reference.pdf"
-    tags: "api,reference,authentication"
-```
-
-Reference in prompts: `references: ["spec", "api"]`
-
-**Fields:**
-
-| Field | Description |
-|-------|-------------|
-| `reference_name` | Unique identifier for prompt references |
-| `common_name` | Human-readable name |
-| `file_path` | Path to document (relative to workbook) |
-| `tags` | Comma-separated tags for RAG filtering (optional) |
+| Field | Type | Description |
+|-------|------|-------------|
+| `reference_name` | `str` | Unique identifier for prompt references |
+| `common_name` | `str` | Human-readable name |
+| `file_path` | `str` | Path to document (resolved relative to source workbook) |
+| `tags` | `list[str]` | Tags for RAG metadata filtering (optional) |
+| `notes` | `str` | Free-text description (informational) |
+| `chunking_strategy` | `str` | Auto-inferred from file extension (see below) |
 
 **Chunking strategy is auto-inferred from file extension:**
 
@@ -755,9 +723,9 @@ These columns map to `prompts.yaml` fields.
 `FFLiteLLMClient` gives you one interface for 100+ providers.
 
 ```python
+FFLiteLLMClient(model_string='openai/gpt-4o-mini')
 FFLiteLLMClient(model_string='mistral/mistral-small-latest')
 FFLiteLLMClient(model_string='anthropic/claude-3-5-sonnet-20241022')
-FFLiteLLMClient(model_string='openai/gpt-4o')
 FFLiteLLMClient(model_string='gemini/gemini-1.5-pro')
 FFLiteLLMClient(model_string='azure/gpt-4o')
 ```
@@ -938,7 +906,7 @@ from src.FFAI import FFAI
 from src.Clients.FFLiteLLMClient import FFLiteLLMClient
 
 # Initialize
-client = FFLiteLLMClient(model_string="anthropic/claude-3-5-sonnet-20241022")
+client = FFLiteLLMClient(model_string="openai/gpt-4o-mini")
 ffai = FFAI(client)
 
 # Named prompts with declarative context
@@ -977,48 +945,48 @@ print(f"Success: {summary['successful']}, Failed: {summary['failed']}")
 ```
 Plico/
 ├── src/
-│   ├── FFAI.py                    # Core wrapper — context assembly, history
-│   ├── FFAIClientBase.py          # Client abstract base class
-│   ├── config.py                  # Pydantic-settings configuration
-│   ├── retry_utils.py             # Retry decorators and rate-limit handling
-│   ├── Clients/                   # Provider implementations
-│   │   ├── FFLiteLLMClient.py     # Universal client (recommended)
-│   │   ├── FFMistral.py, FFAnthropic.py, FFGemini.py, ...
-│   │   └── FFAzureClientBase.py   # Azure-specific ABC
-│   ├── orchestrator/              # Orchestration engine
-│   │   ├── workbook_parser.py     # Excel/workbook parsing and validation
-│   │   ├── excel_orchestrator.py  # Excel execution
-│   │   ├── manifest.py            # Manifest export/execution
-│   │   ├── executor.py            # Shared execution engine
-│   │   ├── state/                 # Execution state and dependency nodes
-│   │   ├── results/               # Result builders and DTOs
-│   │   ├── condition_evaluator.py # AST-based expression evaluator
-│   │   ├── client_registry.py     # Client factory and routing
-│   │   ├── document_processor.py  # Document parsing and caching
-│   │   └── document_registry.py   # Document lookup and injection
-│   └── RAG/                       # Retrieval-augmented generation
-│       ├── FFRAGClient.py         # High-level RAG interface
-│       ├── FFVectorStore.py       # ChromaDB operations
-│       ├── text_splitters/        # Chunking strategies
-│       ├── indexing/              # BM25, hierarchical indexing
-│       └── search/                # Hybrid search, re-ranking
-├── config/                        # YAML configuration files
-│   ├── main.yaml                  # Workbook, orchestrator, retry, RAG settings
-│   ├── paths.yaml                 # File system paths (outputs, manifests, etc.)
-│   ├── clients.yaml               # Client type registry (copy from .example)
-│   ├── model_defaults.yaml        # Per-model temperature, max_tokens defaults
-│   ├── logging.yaml               # Log directory, rotation, format
-│   └── sample_workbook.yaml       # Sample workbook creation defaults
-├── scripts/                       # CLI tools and workbook utilities
-│   ├── run_orchestrator.py        # Execute workbook directly
-│   ├── export_manifest.py         # Convert workbook to manifest folder
-│   ├── run_manifest.py            # Execute manifest and write parquet
-│   ├── inspect_parquet.py         # Inspect/export parquet results
-│   └── sample_workbooks/          # Shared builders and validators
-├── tests/                         # Unit and integration tests
-├── manifests/                     # Exported YAML manifests
-├── outputs/                       # Parquet results
-└── docs/                          # Architecture and user guides
+│   ├── FFAI.py                        # Core wrapper — context assembly, history
+│   ├── FFAIClientBase.py              # Client abstract base class
+│   ├── config.py                      # Pydantic-settings configuration
+│   ├── retry_utils.py                 # Retry decorators and rate-limit handling
+│   ├── Clients/                       # Provider implementations
+│   │   ├── FFLiteLLMClient.py         # Universal client (recommended)
+│   │   ├── FFMistral.py...
+│   │   └── FFAzureClientBase.py       # Azure-specific ABC
+│   ├── orchestrator/                  # Orchestration engine
+│   │   ├── workbook_parser.py         # Excel/workbook parsing and validation
+│   │   ├── excel_orchestrator.py      # Excel execution
+│   │   ├── manifest.py                # Manifest export/execution
+│   │   ├── executor.py                # Shared execution engine
+│   │   ├── state/                     # Execution state and dependency nodes
+│   │   ├── results/                   # Result builders and DTOs
+│   │   ├── condition_evaluator.py     # AST-based expression evaluator
+│   │   ├── client_registry.py         # Client factory and routing
+│   │   ├── document_processor.py      # Document parsing and caching
+│   │   └── document_registry.py       # Document lookup and injection
+│   └── RAG/                           # Retrieval-augmented generation
+│       ├── FFRAGClient.py             # High-level RAG interface
+│       ├── FFVectorStore.py           # ChromaDB operations
+│       ├── text_splitters/            # Chunking strategies
+│       ├── indexing/                  # BM25, hierarchical indexing
+│       └── search/                    # Hybrid search, re-ranking
+├── config/                            # YAML configuration files
+│   ├── main.yaml                      # Workbook, orchestrator, retry, RAG settings
+│   ├── paths.yaml                     # File system paths (outputs, manifests, etc.)
+│   ├── clients.yaml                   # Client type registry (copy from .example)
+│   ├── model_defaults.yaml            # Per-model temperature, max_tokens defaults
+│   ├── logging.yaml                   # Log directory, rotation, format
+│   └── sample_workbook.yaml           # Sample workbook creation defaults
+├── scripts/                           # CLI tools and workbook utilities
+│   ├── run_orchestrator.py            # Execute workbook directly
+│   ├── export_manifest.py             # Convert workbook to manifest folder
+│   ├── run_manifest.py                # Execute manifest and write parquet
+│   ├── inspect_parquet.py             # Inspect/export parquet results
+│   └── sample_workbooks/              # Shared builders and validators
+├── tests/                             # Unit and integration tests
+├── manifests/                         # Exported YAML manifests
+├── outputs/                           # Parquet results
+└── docs/                              # Architecture and user guides
 ```
 
 ---
@@ -1027,6 +995,7 @@ Plico/
 
 | Document | Description |
 |----------|-------------|
+| [QUICKSTART](QUICKSTART.md) | Installation, configuration, and first run |
 | [ORCHESTRATOR README](https://github.com/antquinonez/plico/blob/main/docs/ORCHESTRATOR%20README.md) | Excel and manifest execution guide |
 | [CLIENT API USER GUIDE](https://github.com/antquinonez/plico/blob/main/docs/CLIENT%20API%20USER%20GUIDE.md) | Python API reference |
 | [CONDITIONAL EXPRESSIONS](https://github.com/antquinonez/plico/blob/main/docs/CONDITIONAL%20EXPRESSIONS%20USER%20GUIDE.md) | Condition syntax and security |
@@ -1054,7 +1023,7 @@ pytest tests/test_manifest.py -v
 
 ## Configuration
 
-Plico uses a Pydantic-based configuration system with YAML files:
+Plico uses a Pydantic-based configuration system with YAML files. Settings are layered: workbook/manifest values override config files, which override environment variables, which override class defaults.
 
 ```python
 from src.config import get_config
@@ -1065,7 +1034,123 @@ config.workbook.defaults.model           # "mistral-small-2503"
 config.rag.enabled                       # True
 ```
 
-Configuration priority: init arguments > environment variables > YAML files.
+### Config Files
+
+| File | Purpose |
+|------|---------|
+| `config/main.yaml` | Orchestrator, workbook defaults, RAG, retry, document processing |
+| `config/clients.yaml` | Client type registry (API keys, models, provider prefixes) |
+| `config/model_defaults.yaml` | Per-model temperature, max_tokens, system instructions |
+| `config/paths.yaml` | File system paths (outputs, manifests, document cache) |
+| `config/logging.yaml` | Log directory, rotation, format |
+
+### config/main.yaml
+
+The central configuration file. Key sections:
+
+**Orchestrator** — controls parallel execution:
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `orchestrator.default_concurrency` | `2` | Concurrent API calls |
+| `orchestrator.max_concurrency` | `10` | Hard upper limit |
+
+**Workbook defaults** — used when a workbook/manifest doesn't specify a value:
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `workbook.defaults.model` | `"mistral-small-2503"` | Default model |
+| `workbook.defaults.api_key_env` | `"MISTRALSMALL_KEY"` | Default API key env var |
+| `workbook.defaults.max_retries` | `3` | Retry attempts per prompt |
+| `workbook.defaults.temperature` | `0.8` | Sampling temperature |
+| `workbook.defaults.max_tokens` | `4096` | Maximum response tokens |
+
+**RAG** — retrieval-augmented generation settings:
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `rag.enabled` | `true` | Enable/disable RAG subsystem |
+| `rag.persist_dir` | `"./chroma_db"` | ChromaDB storage location |
+| `rag.embedding_model` | `"mistral/mistral-embed"` | Embedding model for vector search |
+| `rag.chunking.strategy` | `"recursive"` | Default chunking: `recursive`, `markdown`, `code`, `character`, `hierarchical` |
+| `rag.chunking.chunk_size` | `1000` | Max characters per chunk |
+| `rag.chunking.chunk_overlap` | `200` | Overlap between chunks |
+| `rag.search.mode` | `"vector"` | Search mode: `vector`, `hybrid`, or `rerank` |
+| `rag.search.n_results_default` | `5` | Number of chunks to retrieve |
+
+**Document processor** — file handling and caching:
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `document_processor.checksum_length` | `8` | SHA256 prefix length for cache invalidation |
+| `document_processor.text_extensions` | `.txt`, `.md`, `.py`, ... | Recognized text file extensions |
+
+### config/clients.yaml
+
+Defines client types and their API connections. See the [Manifest Protocol](#the-manifest-protocol) section for the full schema and available client types. Copy from `config/clients.yaml.example` to get started.
+
+### config/model_defaults.yaml
+
+Per-model overrides for `temperature`, `max_tokens`, and `system_instructions`. When a model is instantiated, its defaults are merged: class defaults → generic defaults → model-specific defaults → workbook/manifest config → kwargs.
+
+```yaml
+model_defaults:
+  generic:
+    max_tokens: 4096
+    temperature: 0.7
+  models:
+    azure/codestral:
+      max_tokens: 32000
+      temperature: 0.3
+    anthropic/claude-3-5-sonnet-20241022:
+      max_tokens: 8192
+      temperature: 0.7
+```
+
+### config/paths.yaml
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `paths.output_dir` | `"./outputs"` | Parquet result files |
+| `paths.manifest_dir` | `"./manifests"` | Exported manifest folders |
+| `paths.doc_cache` | `"doc_cache"` | Parsed document cache |
+| `paths.library` | `"library"` | Shared document library |
+
+### config/logging.yaml
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `logging.directory` | `"logs"` | Log file directory |
+| `logging.filename` | `"orchestrator.log"` | Log file name |
+| `logging.level` | `"INFO"` | Console log level |
+| `logging.rotation.when` | `"midnight"` | Rotation interval |
+| `logging.rotation.backup_count` | `10` | Rotated files to keep |
+
+### Retry Configuration
+
+Retries operate at two layers with exponential backoff:
+
+1. **Client layer** (`config/main.yaml`): Up to `max_attempts` retries per API call
+2. **Orchestrator layer** (workbook/manifest `max_retries`): Retries the full prompt execution
+
+```yaml
+retry:
+  max_attempts: 3              # Maximum retry attempts
+  min_wait_seconds: 1          # Minimum initial wait time
+  max_wait_seconds: 60         # Maximum wait time cap
+  exponential_base: 2          # Backoff multiplier (2x each retry)
+  exponential_jitter: true     # Add randomness to prevent thundering herd
+  retry_on_status_codes:       # HTTP codes to retry
+    - 429                      # Rate limit
+    - 503                      # Service unavailable
+    - 502                      # Bad gateway
+    - 504                      # Gateway timeout
+  log_level: "INFO"            # Logging level for retry attempts
+```
+
+Wait times: 1s, 2s, 4s... (capped at `max_wait_seconds`). APIs that provide `retry-after` headers are respected.
+
+For full details, see [CONFIGURATION.md](docs/CONFIGURATION.md).
 
 ---
 

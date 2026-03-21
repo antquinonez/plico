@@ -1,8 +1,8 @@
-# Excel Orchestrator Subsystem Architecture
+# Execution Engine Architecture
 
 ## Overview
 
-The Excel Orchestrator enables non-programmers to define and execute AI prompt workflows using Excel workbooks. It provides a declarative, spreadsheet-based interface for orchestrating multi-step AI interactions.
+Plico provides a declarative execution engine for AI prompt workflows. Workflows can be authored via Excel workbooks (non-developers), Python scripts (programmatic), or AI agents (direct YAML), all converging on the same YAML manifest protocol. The execution engine handles dependency-aware scheduling, parallel execution, batch processing, conditional branching, and multi-client routing.
 
 ## Design Goals
 
@@ -26,7 +26,7 @@ The Excel Orchestrator enables non-programmers to define and execute AI prompt w
                                │
                                ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│                      ExcelOrchestrator                           │
+│               ExcelOrchestrator / ManifestOrchestrator           │
 │                                                                  │
 │   ┌─────────────────┐  ┌─────────────────┐  ┌───────────────┐  │
 │   │ _init_workbook  │  │ _load_config    │  │ _init_client  │  │
@@ -34,35 +34,38 @@ The Excel Orchestrator enables non-programmers to define and execute AI prompt w
 │                                                                  │
 │   ┌─────────────────────────────────────────────────────────┐   │
 │   │              _init_client_registry()                     │   │
-│   │  - Load clients from 'clients' sheet                     │   │
+│   │  - Load clients from 'clients' sheet or clients.yaml     │   │
 │   │  - Register named client configurations                  │   │
 │   └─────────────────────────────────────────────────────────┘   │
 │                                                                  │
 │   ┌─────────────────────────────────────────────────────────┐   │
 │   │              _init_documents()                           │   │
-│   │  - Load documents from 'documents' sheet                 │   │
+│   │  - Load documents from 'documents' sheet or documents.yaml │
 │   │  - Initialize DocumentProcessor & DocumentRegistry       │   │
-│   │  - Validate all document paths exist                     │   │
+│   │  - Validate all document paths, pre-index for RAG        │   │
 │   └─────────────────────────────────────────────────────────┘   │
 │                                                                  │
 │   ┌─────────────────────────────────────────────────────────┐   │
-│   │                    run()                                 │   │
+│   │                    Executor (shared)                       │   │
 │   │                                                          │   │
-│   │   1. Initialize workbook (create if needed)              │   │
-│   │   2. Validate structure and dependencies                 │   │
-│   │   3. Check for batch mode (data sheet)                   │   │
-│   │   4. Check for multi-client mode (client column)         │   │
-│   │   5. Check for document references (documents sheet)     │   │
-│   │   6. Execute prompts (sequential/parallel/batch)         │   │
-│   │   7. Write results to new sheet                          │   │
+│   │  ┌──────────────────┐  ┌──────────────────┐             │   │
+│   │  │ ExecutionState   │  │   PromptNode     │             │   │
+│   │  │ (thread-safe)    │  │ (dependency DAG) │             │   │
+│   │  └──────────────────┘  └──────────────────┘             │   │
+│   │  ┌──────────────────┐  ┌──────────────────┐             │   │
+│   │  │  ResultBuilder   │  │  PromptResult    │             │   │
+│   │  │ (fluent builder) │  │  (17 fields)     │             │   │
+│   │  └──────────────────┘  └──────────────────┘             │   │
 │   │                                                          │   │
+│   │  execute_sequential()  execute_parallel()                 │   │
+│   │  execute_batch()        execute_batch_parallel()          │   │
 │   └─────────────────────────────────────────────────────────┘   │
 │                                                                  │
 └──────────────────────────────┬──────────────────────────────────┘
                                │
-         ┌─────────────────────┼─────────────────────┬─────────────────┐
-         │                     │                     │                 │
-         ▼                     ▼                     ▼                 ▼
+          ┌─────────────────────┼─────────────────────┬─────────────────┐
+          │                     │                     │                 │
+          ▼                     ▼                     ▼                 ▼
 ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐  ┌─────────────────┐
 │ WorkbookParser │  │  ClientRegistry │  │ DocumentRegistry│  │      FFAI       │
 │                 │  │                 │  │                 │  │                 │
@@ -73,14 +76,14 @@ The Excel Orchestrator enables non-programmers to define and execute AI prompt w
 │ - load_documents│  └─────────────────┘  └────────┬────────┘  └─────────────────┘
 │ - write_results │                                │
 └─────────────────┘                                ▼
-                                    ┌─────────────────────────┐
-                                    │   DocumentProcessor     │
-                                    │                         │
-                                    │ - compute_checksum()    │
-                                    │ - parse_document()      │
-                                    │ - load_cached()         │
-                                    │ - save_to_parquet()     │
-                                    └─────────────────────────┘
+                                     ┌─────────────────────────┐
+                                     │   DocumentProcessor     │
+                                     │                         │
+                                     │ - compute_checksum()    │
+                                     │ - parse_document()      │
+                                     │ - load_cached()         │
+                                     │ - save_to_parquet()     │
+                                     └─────────────────────────┘
 ```
 
 ## Workbook Structure
@@ -135,7 +138,7 @@ The Excel Orchestrator enables non-programmers to define and execute AI prompt w
 | name | client_type | api_key_env | model | temperature |
 |------|-------------|-------------|-------|-------------|
 | fast | mistral-small | MISTRALSMALL_KEY | | 0.3 |
-| smart | anthropic | ANTHROPIC_TOKEN | claude-3-5-sonnet | 0.7 |
+| smart | anthropic | ANTHROPIC_API_KEY | claude-3-5-sonnet | 0.7 |
 
 ### documents Sheet (Optional)
 
@@ -882,9 +885,22 @@ inv test            # Run unit tests
 - Better error handling
 - Parallel execution support
 
-## Manifest Workflow Alternative
+### Shared Workbook Infrastructure
 
-For version control, CI/CD integration, and parquet output, consider the **Manifest Workflow** as an alternative to direct Excel orchestration:
+Sample workbook creation and validation scripts use shared modules in `scripts/sample_workbooks/`:
+
+| Module | Contents |
+|--------|----------|
+| `base.py` | `PromptSpec` dataclass, `SectionDefinition`, default column headers/widths, column index constants |
+| `builders.py` | Shared workbook builder functions (config sheet, prompts sheet, etc.) |
+| `validators.py` | Shared validation utilities (status checks, condition evaluation, batch counts) |
+| `utils.py` | Shared utility functions (file paths, config helpers) |
+
+This shared infrastructure ensures consistency across all workbook types and reduces code duplication.
+
+### Manifest Workflow (Recommended for Production)
+
+For version control, CI/CD integration, and parquet output, use the **Manifest Workflow**:
 
 - **Export**: Convert Excel workbooks to YAML manifest folders
 - **Execute**: Run from manifests with parquet output

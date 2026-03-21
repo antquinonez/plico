@@ -36,7 +36,7 @@ class FFAnthropic:
         for key, value in all_config.items():
             match key:
                 case "api_key":
-                    self.api_key = value or os.getenv("ANTHROPIC_TOKEN")
+                    self.api_key = value or os.getenv("ANTHROPIC_API_KEY")
                 case "model":
                     self.model = value
                 case "temperature":
@@ -54,7 +54,7 @@ class FFAnthropic:
                     self.system_instructions = value
 
         # Set default values if not set
-        self.api_key = getattr(self, "api_key", os.getenv("ANTHROPIC_TOKEN"))
+        self.api_key = getattr(self, "api_key", os.getenv("ANTHROPIC_API_KEY"))
         self.model = getattr(self, "model", os.getenv("ANTHROPIC_MODEL", defaults["model"]))
         self.temperature = getattr(
             self,

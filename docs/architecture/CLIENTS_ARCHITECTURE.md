@@ -140,6 +140,28 @@ client = FFLiteLLMClient(
 - `perplexity/{model}` - Perplexity API
 - `nvidia_nim/{model}` - Nvidia NIM
 
+### Manifest clients.yaml Fields
+
+When using multi-client routing via manifests (or the `clients` sheet in workbooks), these additional fields are available:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `api_base` | `str` | API base URL override (LiteLLM clients only) |
+| `api_version` | `str` | API version override (LiteLLM clients only) |
+| `fallbacks` | `list` | Fallback model configurations (LiteLLM clients only) |
+| `system_instructions` | `str` | System prompt override |
+
+Example in `clients.yaml`:
+```yaml
+clients:
+  - name: smart
+    client_type: litellm-anthropic
+    model: claude-3-5-sonnet-20241022
+    api_base: "https://my-proxy.example.com"
+    fallbacks: ["openai/gpt-4o"]
+    system_instructions: "You are a helpful assistant."
+```
+
 ### 2. Direct API Clients
 
 Connect directly to provider APIs.
@@ -181,13 +203,20 @@ client = create_azure_client(
     env_prefix="AZURE_MISTRALSMALL",  # Uses AZURE_MISTRALSMALL_KEY, AZURE_MISTRALSMALL_ENDPOINT
 )
 
-# Equivalent to:
-# FFLiteLLMClient(
-#     model_string="azure/mistral-small-2503",
-#     api_key=os.getenv("AZURE_MISTRALSMALL_KEY"),
-#     api_base=os.getenv("AZURE_MISTRALSMALL_ENDPOINT"),
-# )
+# With optional overrides
+client = create_azure_client(
+    deployment_name="gpt-4o",
+    env_prefix="AZURE_OPENAI",
+    system_instructions="You are a helpful assistant.",
+    temperature=0.7,
+    max_tokens=4096,
+)
 ```
+
+The factory reads from environment variables:
+- `{env_prefix}_KEY` - API key
+- `{env_prefix}_ENDPOINT` - API base endpoint
+- `{env_prefix}_API_VERSION` - API version (defaults to `"2024-02-01"`)
 
 ### 5. Special Clients
 
@@ -319,7 +348,7 @@ Each client follows the pattern: `{PREFIX}_{SETTING}`
 | Client | Key Env Var | Model Env Var | Temp Env Var |
 |--------|-------------|---------------|--------------|
 | FFMistral | `MISTRAL_API_KEY` | `MISTRAL_MODEL` | `MISTRAL_TEMPERATURE` |
-| FFAnthropic | `ANTHROPIC_TOKEN` | `ANTHROPIC_MODEL` | `ANTHROPIC_TEMPERATURE` |
+| FFAnthropic | `ANTHROPIC_API_KEY` | `ANTHROPIC_MODEL` | `ANTHROPIC_TEMPERATURE` |
 | FFAzureMistral | `AZURE_MISTRAL_KEY` | `AZURE_MISTRAL_MODEL` | `AZURE_MISTRAL_TEMPERATURE` |
 | FFPerplexity | `PERPLEXITY_TOKEN` | `PERPLEXITY_MODEL` | `PERPLEXITY_TEMPERATURE` |
 
@@ -358,14 +387,14 @@ def generate_response(self, prompt: str, **kwargs) -> str:
 
 import os
 import logging
-from typing import Optional, List, Dict, Any
+from typing import Any
 
 from ..FFAIClientBase import FFAIClientBase
 
 logger = logging.getLogger(__name__)
 
 class FFNewProvider(FFAIClientBase):
-    def __init__(self, config: Optional[dict] = None, **kwargs):
+    def __init__(self, config: dict[str, Any] | None = None, **kwargs):
         # 1. Define defaults
         defaults = {
             'model': "default-model",
@@ -383,7 +412,7 @@ class FFNewProvider(FFAIClientBase):
         # ... etc
 
         # 4. Initialize client
-        self.conversation_history = []
+        self.conversation_history: list[dict[str, str]] = []
         self.client = self._initialize_client()
 
     def _initialize_client(self):
@@ -418,10 +447,10 @@ class FFNewProvider(FFAIClientBase):
     def clear_conversation(self) -> None:
         self.conversation_history = []
 
-    def get_conversation_history(self) -> List[Dict]:
+    def get_conversation_history(self) -> list[dict[str, str]]:
         return self.conversation_history
 
-    def set_conversation_history(self, history: List[Dict]) -> None:
+    def set_conversation_history(self, history: list[dict[str, str]]) -> None:
         self.conversation_history = history
 
     def clone(self) -> "FFNewProvider":

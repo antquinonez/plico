@@ -2,78 +2,95 @@
 
 ## System Context
 
-Plico is a declarative context handling API wrapper for AI models with Excel-based orchestration capabilities. It enables:
+Plico is a declarative AI orchestration framework. At its center is a **YAML manifest** — a machine-readable, version-controllable specification that defines what to ask, how prompts relate, what data to use, and which models to run.
 
-1. **Unified AI Client Interface** - Abstract away provider differences behind a consistent API
-2. **Declarative Context Management** - Reference previous prompts by name for automatic context assembly
-3. **Excel-Based Orchestration** - Define and execute prompt workflows via Excel workbooks
+**The manifest is the protocol.** How you create it is up to you:
+
+1. **Excel (Human Authoring)** - Non-developers define workflows visually in spreadsheets, then export to manifest
+2. **Python (Programmatic Generation)** - Generate manifests from data, databases, or other systems
+3. **AI (Direct YAML Authoring)** - AI agents read, write, and modify manifests directly
+
+Same manifest. Same execution engine. Same audit trail.
+
+### Core Capabilities
+
+- **Unified AI Client Interface** - Abstract away provider differences behind a consistent API (100+ providers via LiteLLM)
+- **Declarative Context Management** - Reference previous prompts by name for automatic context assembly
+- **Dependency-Aware Parallel Execution** - Automatic DAG construction with concurrent scheduling
+- **Batch Processing** - Run workflows across multiple data inputs with `{{variable}}` templating
+- **Per-Prompt Client Routing** - Route different prompts to different models
+- **Conditional Execution** - AST-sandboxed expression language for branching without `eval()`
+- **Document References & RAG** - Full document injection and semantic chunk retrieval
+- **Analytics-Ready Output** - Timestamped Parquet files for downstream analysis
 
 ## High-Level Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                              USER LAYER                                  │
-│                                                                          │
-│   ┌──────────────────┐         ┌──────────────────────────┐            │
-│   │   Python Code    │         │    Excel Workbook        │            │
-│   │   (FFAI API)     │         │    (Orchestrator CLI)    │            │
-│   └────────┬─────────┘         └────────────┬─────────────┘            │
-│            │                                │                           │
-└────────────┼────────────────────────────────┼───────────────────────────┘
-             │                                │
-             ▼                                ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│                         FFAI CORE LAYER                                  │
-│                                                                          │
-│   ┌─────────────────────────────────────────────────────────────────┐   │
-│   │                         FFAI.py                                  │   │
-│   │  - Declarative context assembly (history=["name1", "name2"])    │   │
-│   │  - Named prompt management                                       │   │
-│   │  - History persistence & DataFrame export                        │   │
-│   └──────────────────────────┬──────────────────────────────────────┘   │
-│                              │                                           │
-│              ┌───────────────┴───────────────┐                          │
-│              ▼                               ▼                           │
-│   ┌─────────────────────┐       ┌─────────────────────────┐            │
-│   │ OrderedPromptHistory│       │   PermanentHistory      │            │
-│   │ (named, queryable)  │       │   (chronological turns) │            │
-│   └─────────────────────┘       └─────────────────────────┘            │
-│                                                                          │
-└─────────────────────────────────────────────────────────────────────────┘
-             │
-             ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│                         CLIENT LAYER                                     │
-│                                                                          │
-│   ┌─────────────────────────────────────────────────────────────────┐   │
-│   │                     FFAIClientBase (ABC)                        │   │
-│   │  - generate_response(prompt, **kwargs)                          │   │
-│   │  - clear_conversation()                                         │   │
-│   │  - get/set_conversation_history()                               │   │
-│   └──────────────────────────┬──────────────────────────────────────┘   │
-│                              │                                           │
-│    ┌─────────────────────────┼─────────────────────────┐                │
-│    │                         │                         │                │
-│    ▼                         ▼                         ▼                │
-│ ┌─────────────────┐   ┌─────────────┐          ┌─────────────┐         │
-│ │FFLiteLLMClient  │   │   Mistral   │          │  Anthropic  │         │
-│ │ (Universal)     │   │   Clients   │          │   Clients   │         │
-│ │ - 100+ providers│   └─────────────┘          └─────────────┘         │
-│ │ - Fallbacks     │                                                     │
-│ └─────────────────┘   ┌─────────────┐          ┌─────────────┐         │
-│                       │   Azure     │          │   Gemini    │         │
-│                       │   Clients   │          │ Perplexity  │         │
-│                       └─────────────┘          └─────────────┘         │
-│                                                                          │
-└─────────────────────────────────────────────────────────────────────────┘
-             │
-             ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│                       EXTERNAL APIS                                      │
-│                                                                          │
-│   Mistral API │ Anthropic API │ OpenAI API │ Azure AI │ Google AI │ ...│
-│                                                                          │
-└─────────────────────────────────────────────────────────────────────────┘
++--------------------------------------------------------------------------------------------------+
+|                                        AUTHORING LAYER                                           |
+|                                                                                                  |
+|   Excel Workbook              Python Script              AI Agent                                |
+|   (human visual)              (programmatic)             (autonomous)                            |
+|                                                                                                  |
++------------------------------------------------+-------------------------------------------------+
+                                                  |
+                                                  v
++--------------------------------------------------------------------------------------------------+
+|                                        MANIFEST LAYER                                            |
+|                                                                                                  |
+|   YAML Manifest (manifest.yaml, config.yaml, prompts.yaml, ...)                                  |
+|                                                                                                  |
+|   <-- Git versioned -->    <-- AI readable -->    <-- AI writable -->                            |
+|                                                                                                  |
++------------------------------------------------+-------------------------------------------------+
+                                                  |
+                                                  v
++--------------------------------------------------------------------------------------------------+
+|                                        EXECUTION LAYER                                           |
+|                                                                                                  |
+|   ManifestOrchestrator / ExcelOrchestrator                                                       |
+|   +-- Executor (shared execution engine)                                                          |
+|   +-- Dependency DAG construction (PromptNode)                                                    |
+|   +-- Parallel scheduling (ThreadPoolExecutor)                                                   |
+|   +-- Condition evaluation (AST-sandboxed)                                                       |
+|   +-- Context assembly (declarative history)                                                     |
+|   +-- Client isolation (clone pattern)                                                           |
+|   +-- ExecutionState (thread-safe shared state)                                                  |
+|   +-- ResultBuilder / PromptResult (structured results)                                          |
+|                                                                                                  |
++------------------------------------------------+-------------------------------------------------+
+                                                  |
+                                                  v
++--------------------------------------------------------------------------------------------------+
+|                                        FFAI CORE LAYER                                           |
+|                                                                                                  |
+|   FFAI.py                                                                                         |
+|   +-- Declarative context assembly (history=["name1", "name2"])                                   |
+|   +-- Named prompt management (OrderedPromptHistory)                                             |
+|   +-- History persistence & DataFrame export                                                      |
+|   +-- PermanentHistory (chronological turns)                                                     |
+|                                                                                                  |
++------------------------------------------------+-------------------------------------------------+
+                                                  |
+                                                  v
++--------------------------------------------------------------------------------------------------+
+|                                        CLIENT LAYER                                              |
+|                                                                                                  |
+|   FFAIClientBase (ABC)                                                                           |
+|   +-- FFLiteLLMClient (100+ providers via LiteLLM)                                               |
+|   +-- FFMistral, FFAnthropic, FFGemini, FFPerplexity                                             |
+|   +-- FFAzureClientBase --> FFAzureMistral, FFAzurePhi, ...                                      |
+|                                                                                                  |
++------------------------------------------------+-------------------------------------------------+
+                                                  |
+                                                  v
++--------------------------------------------------------------------------------------------------+
+|                                        OUTPUT LAYER                                              |
+|                                                                                                  |
+|   Timestamped Parquet (analytics-ready)                                                          |
+|   <-- AI can analyze -->    <-- AI can iterate -->                                               |
+|                                                                                                  |
++--------------------------------------------------------------------------------------------------+
 ```
 
 ## Subsystems
@@ -97,26 +114,32 @@ Plico is a declarative context handling API wrapper for AI models with Excel-bas
 
 **See:** [CLIENTS_ARCHITECTURE.md](./CLIENTS_ARCHITECTURE.md)
 
-### Subsystem 2: Excel Orchestrator
-**Purpose:** Enable non-programmers to define and execute AI prompt workflows.
+### Subsystem 2: Execution Engine
+**Purpose:** Orchestrate prompt execution with dependency-aware scheduling, parallel execution, and multi-modal I/O.
 
 **Key Components:**
-- `ExcelOrchestrator` - Main orchestration engine with parallel execution
+- `ExcelOrchestrator` - Workbook-based orchestration engine
+- `ManifestOrchestrator` - Manifest-based orchestration engine with parquet output
+- `Executor` - Shared execution engine for both orchestrators (sequential, parallel, batch modes)
 - `WorkbookParser` - Excel file creation, validation, and I/O
 - `ClientRegistry` - Client factory and multi-client support
 - `DocumentProcessor` - Document parsing and checksum-based caching
 - `DocumentRegistry` - Document lookup and reference injection
-- `ConditionEvaluator` - Conditional expression evaluation for prompt execution
+- `ConditionEvaluator` - AST-sandboxed conditional expression evaluation
+- `ExecutionState` - Thread-safe shared state for parallel execution
+- `PromptNode` - Dependency graph node with level assignment
+- `PromptResult` / `ResultBuilder` - Structured result DTOs with fluent builder
 
 **Features:**
-- Dependency-aware parallel execution
+- Dependency-aware parallel execution via `Executor`
 - Real-time progress indicator
 - Configurable concurrency (default: 2, max: 10)
-- Thread-safe client isolation
+- Thread-safe client isolation and shared history
 - Batch execution with variable templating
 - Per-prompt client configuration
 - Document reference injection with LlamaParse support
 - Conditional execution with expression-based prompt skipping
+- Manifest export/import workflow for version control
 
 **See:** [ORCHESTRATOR_ARCHITECTURE.md](./ORCHESTRATOR_ARCHITECTURE.md)
 
@@ -178,59 +201,71 @@ Plico is a declarative context handling API wrapper for AI models with Excel-bas
 
 **See:** [MANIFEST_ARCHITECTURE.md](./MANIFEST_ARCHITECTURE.md)
 
+### Subsystem 6: Shared Execution Engine
+**Purpose:** Provide a unified execution engine used by both `ExcelOrchestrator` and `ManifestOrchestrator`, eliminating duplicate code.
+
+**Key Components:**
+- `Executor` (`executor.py`) - Handles all four execution modes:
+  - `execute_sequential()` - Sequential with dependency-aware ordering
+  - `execute_parallel()` - Parallel via `ThreadPoolExecutor` with level-based scheduling
+  - `execute_batch()` - Sequential batch execution with variable templating
+  - `execute_batch_parallel()` - Parallel batch execution
+- `ExecutionState` (`state/execution_state.py`) - Thread-safe tracking of completed, in-progress, pending prompts; results indexed by prompt_name
+- `PromptNode` (`state/prompt_node.py`) - Dependency graph node with `is_ready()` and level assignment
+- `PromptResult` (`results/result.py`) - 17-field dataclass for structured results with `to_dict()` / `from_dict()`
+- `ResultBuilder` (`results/builder.py`) - Fluent builder for constructing `PromptResult` objects
+
+**See:** [ORCHESTRATOR_ARCHITECTURE.md](./ORCHESTRATOR_ARCHITECTURE.md) for detailed data flows.
+
 ## Subsystem Interaction
 
-### Excel Orchestrator Flow
+### Execution Flow (shared by both orchestrators)
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                   Excel Orchestrator                         │
-│                                                              │
-│   1. Load workbook (config + prompts + data + clients + docs)│
-│   2. Validate dependencies                                   │
-│   3. Resolve clients via ClientRegistry                      │
-│   4. Initialize documents via DocumentRegistry               │
-│   5. For each prompt (or batch iteration):                   │
-│      └─► Inject document references                          │
-│      └─► FFAI.generate_response(prompt, history=[...])      │
-│   6. Write results to new sheet                              │
-│                                                              │
-└──────────────────────────┬──────────────────────────────────┘
-                           │
-                           │ Uses
-                           ▼
-┌─────────────────────────────────────────────────────────────┐
-│                        FFAI                                  │
-│                                                              │
-│   - Assembles context from history names                    │
-│   - Calls underlying client                                 │
-│   - Manages ordered history                                 │
-│                                                              │
-└──────────────────────────┬──────────────────────────────────┘
-                           │
-                           │ Delegates to
-                           ▼
-┌─────────────────────────────────────────────────────────────┐
-│                    Client (e.g., FFMistralSmall)            │
-│                                                              │
-│   - Formats messages for provider API                       │
-│   - Makes API call                                          │
-│   - Returns response                                        │
-│                                                              │
-└─────────────────────────────────────────────────────────────┘
+Workbook/Manifest
+       │
+       ▼
+Orchestrator.run()
+       │
+       ├──► Parse and validate prompts
+       │
+       ├──► Resolve clients via ClientRegistry
+       │
+       ├──► Initialize documents via DocumentRegistry (with RAG pre-indexing)
+       │
+       ├──► Executor.execute_parallel() or execute_batch_parallel()
+       │    │
+       │    ├──► Build dependency DAG (PromptNode level assignment)
+       │    │
+       │    ├──► ThreadPoolExecutor (max_workers=concurrency)
+       │    │
+       │    ├──► For each ready prompt (same level):
+       │    │    │
+       │    │    ├──► Clone client for isolation
+       │    │    │
+       │    │    ├──► Inject dependency context + document references
+       │    │    │
+       │    │    ├──► Evaluate condition (AST-sandboxed)
+       │    │    │
+       │    │    ├──► FFAI.generate_response()
+       │    │    │              │
+       │    │    │              └──► Client → API
+       │    │    │
+       │    │    └──► ResultBuilder.build() → update ExecutionState
+       │    │
+       │    └──► Collect results, update progress
+       │
+       ▼
+Results → Parquet (Manifest) or Excel sheet (Workbook)
 ```
 
-### Manifest Workflow Flow
+### Three Authoring Paths
+
+All three paths produce the same YAML manifest format:
+
 ```
-┌─────────────────────────────────────────────────────────────┐
-│                    Manifest Workflow                         │
-│                                                              │
-│   1. Export workbook to YAML manifest (WorkbookManifestExporter)│
-│   2. Version control manifest folder                         │
-│   3. Run from manifest (ManifestOrchestrator)               │
-│   4. Same execution flow as Excel Orchestrator              │
-│   5. Write results to parquet file                           │
-│                                                              │
-└─────────────────────────────────────────────────────────────┘
+Excel Workbook → export_manifest.py → Manifest Folder → ManifestOrchestrator → Parquet
+Python Script                         → Manifest Folder → ManifestOrchestrator → Parquet
+AI Agent      → (writes YAML directly) → Manifest Folder → ManifestOrchestrator → Parquet
 ```
 
 **See:** [MANIFEST_ARCHITECTURE.md](./MANIFEST_ARCHITECTURE.md) for details.
@@ -266,6 +301,8 @@ Plico/
 │   ├── __init__.py                    # Package exports
 │   ├── FFAI.py                        # Core wrapper (BRIDGE between subsystems)
 │   ├── FFAIClientBase.py              # Client ABC
+│   ├── retry_utils.py                 # Retry decorators, rate-limit handling (tenacity)
+│   ├── config.py                      # Pydantic-based configuration management
 │   ├── OrderedPromptHistory.py        # Named, queryable history
 │   ├── PermanentHistory.py            # Chronological turn history
 │   ├── ConversationHistory.py         # Simple turn management
@@ -273,7 +310,7 @@ Plico/
 │   ├── Clients/                       # SUBSYSTEM 1: Client Wrappers
 │   │   ├── __init__.py
 │   │   ├── FFLiteLLMClient.py         # Universal LiteLLM client (recommended)
-│   │   ├── FFAzureLiteLLM.py          # Azure LiteLLM factory
+│   │   ├── FFAzureLiteLLM.py          # Azure LiteLLM factory (create_azure_client)
 │   │   ├── model_defaults.py          # Model-specific configuration defaults
 │   │   ├── FFAzureClientBase.py       # Azure-specific ABC
 │   │   ├── FFMistral.py
@@ -292,14 +329,22 @@ Plico/
 │   │   ├── FFAzureMSDeepSeekR1.py
 │   │   └── FFAzurePhi.py
 │   │
-│   └── orchestrator/                  # SUBSYSTEM 2: Excel Orchestrator
+│   └── orchestrator/                  # SUBSYSTEM 2: Execution Engine
 │       ├── __init__.py
-│       ├── excel_orchestrator.py      # Main orchestration engine
-│       ├── workbook_parser.py        # Excel I/O and validation
+│       ├── executor.py                # Shared execution engine (sequential/parallel/batch)
+│       ├── excel_orchestrator.py      # Workbook-based orchestration
+│       ├── manifest.py                # Manifest export/execution
+│       ├── workbook_parser.py         # Excel I/O and validation
 │       ├── client_registry.py         # Client factory and registry
 │       ├── document_processor.py      # Document parsing and caching
 │       ├── document_registry.py       # Document lookup and injection
-│       └── condition_evaluator.py     # Conditional expression evaluation
+│       ├── condition_evaluator.py     # AST-sandboxed conditional expression evaluation
+│       ├── state/                     # Execution state and dependency nodes
+│       │   ├── execution_state.py     #   Thread-safe ExecutionState dataclass
+│       │   └── prompt_node.py         #   PromptNode with is_ready() and level assignment
+│       └── results/                   # Result builders and DTOs
+│           ├── result.py              #   PromptResult dataclass (17 fields)
+│           └── builder.py             #   ResultBuilder fluent builder
 │   │
 │   └── RAG/                           # SUBSYSTEM 4: RAG (Semantic Search)
 │       ├── __init__.py
@@ -321,33 +366,42 @@ Plico/
 │       │   ├── __init__.py
 │       │   ├── bm25_index.py          # Sparse keyword index
 │       │   ├── hierarchical_index.py  # Parent-child storage
-│       │   └── contextual_embeddings.py
+│       │   ├── contextual_embeddings.py
+│       │   └── deduplication.py       # Chunk deduplication
 │       └── search/                    # Search strategies
 │           ├── __init__.py
 │           ├── hybrid_search.py       # Vector + BM25 fusion
-│           └── rerankers.py           # Cross-encoder, diversity
+│           ├── rerankers.py           # Cross-encoder, diversity
+│           └── query_expansion.py     # Multi-query retrieval
 │
 ├── scripts/
-│   ├── run_orchestrator.py            # CLI entry point for orchestrator
+│   ├── run_orchestrator.py            # Execute workbook directly
 │   ├── export_manifest.py             # Export workbook to YAML manifest
 │   ├── run_manifest.py                # Run from manifest folder
-│   ├── inspect_parquet.py             # Inspect parquet results
+│   ├── inspect_parquet.py             # Inspect/export parquet results
 │   ├── sample_workbook_*_create_v001.py    # Workbook creation scripts
 │   ├── sample_workbook_*_validate_v001.py  # Workbook validation scripts
+│   ├── sample_workbooks/              # Shared workbook infrastructure
+│   │   ├── __init__.py
+│   │   ├── base.py                    #   PromptSpec, SectionDefinition, constants
+│   │   ├── builders.py                #   Shared workbook builders
+│   │   ├── validators.py              #   Shared validation utilities
+│   │   └── utils.py                   #   Shared utility functions
 │   ├── try_ai_mistralsmall_script.py  # Example usage script
 │   └── validation/                   # Validation scripts
 │       ├── __init__.py
 │       ├── validate_all.py            # Validate all test workbook results
 │       └── spot_check.py              # Spot check responses
 │
-├── tasks.py                            # Invoke task runner (Python-based Makefile alternative)
-├── Makefile                            # GNU Make task runner
+├── tasks.py                            # Invoke task runner (recommended)
+├── Makefile                            # GNU Make task runner (fallback)
 │
 ├── config/                            # Configuration files (pydantic-settings)
 │   ├── main.yaml                      # Core app settings
 │   ├── logging.yaml                   # Logging configuration
 │   ├── paths.yaml                     # File system paths
 │   ├── clients.yaml                   # AI client configurations
+│   ├── clients.yaml.example           # Example client config (safe to commit)
 │   ├── model_defaults.yaml            # Per-model defaults
 │   └── sample_workbook.yaml           # Sample workbook settings
 │
@@ -367,6 +421,8 @@ Plico/
 │   │   ├── test_context_assembly.py
 │   │   └── test_client_isolation.py
 │   ├── test_ffai.py
+│   ├── test_config.py
+│   ├── test_manifest.py
 │   ├── test_fflitellm_client.py
 │   ├── test_ffmistral.py
 │   ├── test_ffanthropic.py
@@ -378,7 +434,7 @@ Plico/
 │   ├── test_ordered_prompt_history.py
 │   ├── test_permanent_history.py
 │   ├── test_excel_orchestrator.py
-│   ├── sample_workbook_parser.py
+│   ├── test_workbook_parser.py
 │   ├── test_client_registry.py
 │   ├── test_document_processor.py
 │   ├── test_document_registry.py
@@ -387,9 +443,11 @@ Plico/
 │   ├── test_rag_chunkers.py            # Chunking strategy tests
 │   ├── test_rag_indexing.py            # BM25, hierarchical index tests
 │   ├── test_rag_search.py              # Hybrid search, reranker tests
+│   ├── test_rag_enhancements.py        # RAG enhancement tests
 │   └── test_litellm_orchestrator_integration.py
 │
-│   ├── chroma_db/                      # RAG vector database (git-ignored)
+├── manifests/                          # Exported YAML manifests
+├── outputs/                            # Parquet results
 │
 ├── docs/
 │   ├── architecture/
@@ -405,12 +463,12 @@ Plico/
 │   ├── CLIENT API USER GUIDE.md
 │   ├── CONDITIONAL EXPRESSIONS USER GUIDE.md
 │   ├── CONFIGURATION.md
-│   └── ORCHESTRATOR README.md
+│   ├── ORCHESTRATOR README.md
+│   └── TEST_COVERAGE.md
 │
 ├── pyproject.toml
 ├── requirements.txt
-├── README.md
-└── sample_orchestrator.xlsx
+└── README.md
 ```
 
 ## Key Design Patterns
@@ -419,11 +477,12 @@ Plico/
 |---------|----------|---------|
 | Abstract Base Class | `FFAIClientBase`, `FFAzureClientBase` | Define client contract |
 | Facade | `FFAI` | Simplify client interaction, add context management |
-| Builder | `WorkbookParser` | Construct Excel workbooks |
+| Builder | `WorkbookParser`, `ResultBuilder` | Construct Excel workbooks, build result DTOs |
 | Strategy | Client implementations | Interchangeable AI providers |
 | Template Method | `FFAzureClientBase._initialize_client()` | Allow subclasses to customize |
 | Registry | `ClientRegistry` | Lazy client instantiation, name-to-factory mapping |
 | Singleton | `get_config()` | Global configuration instance |
+| Clone | All clients | Thread-safe isolated instances for parallel execution |
 
 ## Data Flow
 
@@ -449,45 +508,40 @@ Client.generate_response(prompt_with_context)
 Response returned to user
 ```
 
-### Excel Orchestrator Flow
+### Orchestrator Data Flow
 ```
-Excel Workbook
+Workbook or Manifest
     │
     ▼
-WorkbookParser.load_prompts()
+WorkbookParser.load_prompts() or ManifestOrchestrator._load_manifest()
     │
     ▼
-ExcelOrchestrator.run()
+Orchestrator.run()
     │
-    ├──► _build_execution_graph() ← Assign dependency levels
-    │
-    ├──► If concurrency > 1:
+    ├──► Executor.execute_parallel() or execute_batch_parallel()
     │    │
-    │    └──► execute_parallel()
-    │         │
-    │         ├──► ThreadPoolExecutor (max_workers=concurrency)
-    │         │
-    │         ├──► For each ready prompt (same level):
-    │         │    │
-    │         │    ├──► Clone client for isolation
-    │         │    │
-    │         │    ├──► Inject dependency context
-    │         │    │
-    │         │    └──► FFAI.generate_response()
-    │         │              │
-    │         │              └──► Client → API
-    │         │
-    │         └──► Collect results, update progress
-    │
-    ├──► Else (concurrency = 1):
+    │    ├──► _build_execution_graph() ← PromptNode level assignment
     │    │
-    │    └──► execute() ← Sequential execution
+    │    ├──► ThreadPoolExecutor (max_workers=concurrency)
+    │    │
+    │    ├──► For each ready prompt (same level):
+    │    │    │
+    │    │    ├──► Clone client for isolation
+    │    │    │
+    │    │    ├──► Inject dependency context + document references
+    │    │    │
+    │    │    ├──► Evaluate condition (if present)
+    │    │    │
+    │    │    ├──► FFAI.generate_response()
+    │    │    │              │
+    │    │    │              └──► Client → API
+    │    │    │
+    │    │    └──► ResultBuilder.build() → update ExecutionState
+    │    │
+    │    └──► Collect results, update progress
     │
     ▼
-WorkbookParser.write_results()
-    │
-    ▼
-Excel Workbook (with results sheet)
+Parquet (Manifest) or Excel sheet (Workbook)
 ```
 
 ### Parallel Execution Data Flow
@@ -544,12 +598,28 @@ FFAI
   ├── PermanentHistory
   └── FFAIClientBase (protocol)
 
+Executor (shared by both orchestrators)
+  ├── ExecutionState
+  ├── PromptNode
+  ├── ResultBuilder
+  ├── PromptResult
+  └── ConditionEvaluator (for condition evaluation)
+
 ExcelOrchestrator
   ├── FFAI (uses)
+  ├── Executor (delegates to)
   ├── WorkbookParser
   ├── ClientRegistry
   ├── DocumentProcessor
   └── DocumentRegistry
+
+ManifestOrchestrator
+  ├── FFAI (uses)
+  ├── Executor (delegates to)
+  ├── ClientRegistry
+  ├── DocumentProcessor
+  ├── DocumentRegistry
+  └── polars (external, parquet output)
 
 ClientRegistry
   └── Client classes (imports lazily)
