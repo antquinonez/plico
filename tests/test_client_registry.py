@@ -135,7 +135,7 @@ class TestClientRegistryClassMethods:
         assert env == "MISTRALSMALL_KEY"
 
         env = ClientRegistry.get_default_api_key_env("anthropic")
-        assert env == "ANTHROPIC_TOKEN"
+        assert env == "ANTHROPIC_API_KEY"
 
 
 class TestClientRegistryHasClient:

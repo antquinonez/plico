@@ -319,7 +319,7 @@ Each client follows the pattern: `{PREFIX}_{SETTING}`
 | Client | Key Env Var | Model Env Var | Temp Env Var |
 |--------|-------------|---------------|--------------|
 | FFMistral | `MISTRAL_API_KEY` | `MISTRAL_MODEL` | `MISTRAL_TEMPERATURE` |
-| FFAnthropic | `ANTHROPIC_TOKEN` | `ANTHROPIC_MODEL` | `ANTHROPIC_TEMPERATURE` |
+| FFAnthropic | `ANTHROPIC_API_KEY` | `ANTHROPIC_MODEL` | `ANTHROPIC_TEMPERATURE` |
 | FFAzureMistral | `AZURE_MISTRAL_KEY` | `AZURE_MISTRAL_MODEL` | `AZURE_MISTRAL_TEMPERATURE` |
 | FFPerplexity | `PERPLEXITY_TOKEN` | `PERPLEXITY_MODEL` | `PERPLEXITY_TEMPERATURE` |
 

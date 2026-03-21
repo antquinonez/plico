@@ -271,7 +271,7 @@ client_types:
   anthropic:
     client_class: "FFAnthropic"
     type: "native"
-    api_key_env: "ANTHROPIC_TOKEN"
+    api_key_env: "ANTHROPIC_API_KEY"
     default_model: "claude-3-5-sonnet-20241022"
 
   gemini:

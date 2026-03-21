@@ -675,7 +675,7 @@ class TestWorkbookParserClientsSheet:
 
         ws_clients.cell(row=3, column=1, value="smart")
         ws_clients.cell(row=3, column=2, value="anthropic")
-        ws_clients.cell(row=3, column=3, value="ANTHROPIC_TOKEN")
+        ws_clients.cell(row=3, column=3, value="ANTHROPIC_API_KEY")
 
         del wb["Sheet"]
         wb.save(temp_workbook)

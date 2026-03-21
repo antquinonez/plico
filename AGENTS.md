@@ -539,7 +539,7 @@ python scripts/sample_workbook_basic_validate_v001.py ./test.xlsx --json
 
 ### Python Version and Type Hints
 
-- Target Python 3.10+
+- Target Python 3.10+ (Python 3.14 recommended)
 - Use modern union syntax: `str | None` instead of `Optional[str]`
 - Use `list[str]` instead of `List[str]`
 - Always include return type hints for functions/methods
@@ -703,8 +703,8 @@ Logging configuration: log directory, file rotation, format.
 
 ## Environment
 
-- Virtual environment: `.venv313/` (Python 3.13)
-  - Activate: `source .venv313/bin/activate`
+- Virtual environment: `.venv/` (Python 3.14)
+  - Activate: `source .venv/bin/activate`
   - Install: `uv pip install -e ".[dev]"`
 - Environment variables: Load via `python-dotenv` (`load_dotenv()`)
 - Set `POLARS_SKIP_CPU_CHECK=1` for Polars compatibility
@@ -715,7 +715,7 @@ Logging configuration: log directory, file rotation, format.
 # At least one API key required
 MISTRALSMALL_KEY=your-key-here
 MISTRAL_KEY=your-key-here
-ANTHROPIC_KEY=your-key-here
+ANTHROPIC_API_KEY=your-key-here
 GEMINI_KEY=your-key-here
 PERPLEXITY_KEY=your-key-here
 NVIDIA_KEY=your-key-here

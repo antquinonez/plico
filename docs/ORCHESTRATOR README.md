@@ -124,7 +124,7 @@ Named client configurations for per-prompt client selection.
 | name | client_type | api_key_env | model | temperature | max_tokens |
 |------|-------------|-------------|-------|-------------|------------|
 | fast | mistral-small | MISTRALSMALL_KEY | mistral-small-2503 | 0.3 | 100 |
-| smart | anthropic | ANTHROPIC_TOKEN | claude-3-5-sonnet | 0.7 | 4096 |
+| smart | anthropic | ANTHROPIC_API_KEY | claude-3-5-sonnet | 0.7 | 4096 |
 | creative | mistral-small | MISTRALSMALL_KEY | | 0.9 | 500 |
 
 ### documents Sheet (Optional)

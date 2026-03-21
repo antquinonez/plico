@@ -135,7 +135,7 @@ The Excel Orchestrator enables non-programmers to define and execute AI prompt w
 | name | client_type | api_key_env | model | temperature |
 |------|-------------|-------------|-------|-------------|
 | fast | mistral-small | MISTRALSMALL_KEY | | 0.3 |
-| smart | anthropic | ANTHROPIC_TOKEN | claude-3-5-sonnet | 0.7 |
+| smart | anthropic | ANTHROPIC_API_KEY | claude-3-5-sonnet | 0.7 |
 
 ### documents Sheet (Optional)
 
