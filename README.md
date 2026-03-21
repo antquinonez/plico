@@ -33,16 +33,16 @@ Same manifest. Same execution engine. Same audit trail.
 ## Three Paths to a Manifest
 
 ```
-+--------------------------------------------------------------------------------------------------+
-|                                        AUTHORING SURFACES                                        |
-|                                                                                                  |
-|   +---------------------+          +---------------------+          +-------------------------+  |
-|   |       Excel         |          |       Python        |          |        AI Agent         |  |
-|   |      Workbook       |          |        Script       |          |     (writes YAML)       |  |
-|   |                     |          |                     |          |                         |  |
-|   |   Human-friendly    |          |   Programmatic      |          |   Autonomous            |  |
-|   |   visual editor     |          |   generation        |          |   composition           |  |
-|   +----------+----------+          +----------+----------+          +------------+------------+  |
++-------------------------------------------------------------------------------------------------+
+|                                        AUTHORING SURFACES                                       |
+|                                                                                                 |
+|   +---------------------+          +---------------------+         +-------------------------+  |
+|   |       Excel         |          |       Python        |         |        AI Agent         |  |
+|   |      Workbook       |          |        Script       |         |     (writes YAML)       |  |
+|   |                     |          |                     |         |                         |  |
+|   |   Human-friendly    |          |   Programmatic      |         |   Autonomous            |  |
+|   |   visual editor     |          |   generation        |         |   composition           |  |
+|   +----------+----------+          +----------+----------+         +------------+------------+  |
 |              |                                |                                  |              |
 |              +--------------------------------+----------------------------------+              |
 |                                               v                                                 |
@@ -63,21 +63,21 @@ Same manifest. Same execution engine. Same audit trail.
 |                                                |                                                |
 +------------------------------------------------+------------------------------------------------+
                                                  v
-+--------------------------------------------------------------------------------------------------+
-|                                        EXECUTION LAYER                                           |
-|                                                                                                  |
-|                                        ManifestOrchestrator                                      |
-|                                               |                                                  |
-|                                               v                                                  |
-|                           +-------------------------------------+                                |
-|                           |      Timestamped Parquet            |                                |
-|                           |      (analytics-ready)              |                                |
-|                           |                                     |                                |
-|                           |  <-- AI can analyze -->             |                                |
-|                           |  <-- AI can iterate -->             |                                |
-|                           +-------------------------------------+                                |
-|                                                                                                  |
-+--------------------------------------------------------------------------------------------------+
++-------------------------------------------------------------------------------------------------+
+|                                        EXECUTION LAYER                                          |
+|                                                                                                 |
+|                                        ManifestOrchestrator                                     |
+|                                               |                                                 |
+|                                               v                                                 |
+|                           +-------------------------------------+                               |
+|                           |      Timestamped Parquet            |                               |
+|                           |      (analytics-ready)              |                               |
+|                           |                                     |                               |
+|                           |  <-- AI can analyze -->             |                               |
+|                           |  <-- AI can iterate -->             |                               |
+|                           +-------------------------------------+                               |
+|                                                                                                 |
++-------------------------------------------------------------------------------------------------+
 ```
 
 ### Path 1: Excel (Human Authoring)
@@ -945,48 +945,48 @@ print(f"Success: {summary['successful']}, Failed: {summary['failed']}")
 ```
 Plico/
 ├── src/
-│   ├── FFAI.py                    # Core wrapper — context assembly, history
-│   ├── FFAIClientBase.py          # Client abstract base class
-│   ├── config.py                  # Pydantic-settings configuration
-│   ├── retry_utils.py             # Retry decorators and rate-limit handling
-│   ├── Clients/                   # Provider implementations
-│   │   ├── FFLiteLLMClient.py     # Universal client (recommended)
-│   │   ├── FFMistral.py, FFAnthropic.py, FFGemini.py, ...
-│   │   └── FFAzureClientBase.py   # Azure-specific ABC
-│   ├── orchestrator/              # Orchestration engine
-│   │   ├── workbook_parser.py     # Excel/workbook parsing and validation
-│   │   ├── excel_orchestrator.py  # Excel execution
-│   │   ├── manifest.py            # Manifest export/execution
-│   │   ├── executor.py            # Shared execution engine
-│   │   ├── state/                 # Execution state and dependency nodes
-│   │   ├── results/               # Result builders and DTOs
-│   │   ├── condition_evaluator.py # AST-based expression evaluator
-│   │   ├── client_registry.py     # Client factory and routing
-│   │   ├── document_processor.py  # Document parsing and caching
-│   │   └── document_registry.py   # Document lookup and injection
-│   └── RAG/                       # Retrieval-augmented generation
-│       ├── FFRAGClient.py         # High-level RAG interface
-│       ├── FFVectorStore.py       # ChromaDB operations
-│       ├── text_splitters/        # Chunking strategies
-│       ├── indexing/              # BM25, hierarchical indexing
-│       └── search/                # Hybrid search, re-ranking
-├── config/                        # YAML configuration files
-│   ├── main.yaml                  # Workbook, orchestrator, retry, RAG settings
-│   ├── paths.yaml                 # File system paths (outputs, manifests, etc.)
-│   ├── clients.yaml               # Client type registry (copy from .example)
-│   ├── model_defaults.yaml        # Per-model temperature, max_tokens defaults
-│   ├── logging.yaml               # Log directory, rotation, format
-│   └── sample_workbook.yaml       # Sample workbook creation defaults
-├── scripts/                       # CLI tools and workbook utilities
-│   ├── run_orchestrator.py        # Execute workbook directly
-│   ├── export_manifest.py         # Convert workbook to manifest folder
-│   ├── run_manifest.py            # Execute manifest and write parquet
-│   ├── inspect_parquet.py         # Inspect/export parquet results
-│   └── sample_workbooks/          # Shared builders and validators
-├── tests/                         # Unit and integration tests
-├── manifests/                     # Exported YAML manifests
-├── outputs/                       # Parquet results
-└── docs/                          # Architecture and user guides
+│   ├── FFAI.py                        # Core wrapper — context assembly, history
+│   ├── FFAIClientBase.py              # Client abstract base class
+│   ├── config.py                      # Pydantic-settings configuration
+│   ├── retry_utils.py                 # Retry decorators and rate-limit handling
+│   ├── Clients/                       # Provider implementations
+│   │   ├── FFLiteLLMClient.py         # Universal client (recommended)
+│   │   ├── FFMistral.py...
+│   │   └── FFAzureClientBase.py       # Azure-specific ABC
+│   ├── orchestrator/                  # Orchestration engine
+│   │   ├── workbook_parser.py         # Excel/workbook parsing and validation
+│   │   ├── excel_orchestrator.py      # Excel execution
+│   │   ├── manifest.py                # Manifest export/execution
+│   │   ├── executor.py                # Shared execution engine
+│   │   ├── state/                     # Execution state and dependency nodes
+│   │   ├── results/                   # Result builders and DTOs
+│   │   ├── condition_evaluator.py     # AST-based expression evaluator
+│   │   ├── client_registry.py         # Client factory and routing
+│   │   ├── document_processor.py      # Document parsing and caching
+│   │   └── document_registry.py       # Document lookup and injection
+│   └── RAG/                           # Retrieval-augmented generation
+│       ├── FFRAGClient.py             # High-level RAG interface
+│       ├── FFVectorStore.py           # ChromaDB operations
+│       ├── text_splitters/            # Chunking strategies
+│       ├── indexing/                  # BM25, hierarchical indexing
+│       └── search/                    # Hybrid search, re-ranking
+├── config/                            # YAML configuration files
+│   ├── main.yaml                      # Workbook, orchestrator, retry, RAG settings
+│   ├── paths.yaml                     # File system paths (outputs, manifests, etc.)
+│   ├── clients.yaml                   # Client type registry (copy from .example)
+│   ├── model_defaults.yaml            # Per-model temperature, max_tokens defaults
+│   ├── logging.yaml                   # Log directory, rotation, format
+│   └── sample_workbook.yaml           # Sample workbook creation defaults
+├── scripts/                           # CLI tools and workbook utilities
+│   ├── run_orchestrator.py            # Execute workbook directly
+│   ├── export_manifest.py             # Convert workbook to manifest folder
+│   ├── run_manifest.py                # Execute manifest and write parquet
+│   ├── inspect_parquet.py             # Inspect/export parquet results
+│   └── sample_workbooks/              # Shared builders and validators
+├── tests/                             # Unit and integration tests
+├── manifests/                         # Exported YAML manifests
+├── outputs/                           # Parquet results
+└── docs/                              # Architecture and user guides
 ```
 
 ---
