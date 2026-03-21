@@ -420,16 +420,6 @@ class ConditionEvaluator:
         if isinstance(node, ast.Constant):
             return node.value
 
-        # Python < 3.8 compatibility (deprecated in 3.8, removed in 3.14)
-        if hasattr(ast, "Str") and isinstance(node, ast.Str):
-            return node.s
-
-        if hasattr(ast, "Num") and isinstance(node, ast.Num):
-            return node.n
-
-        if hasattr(ast, "NameConstant") and isinstance(node, ast.NameConstant):
-            return node.value
-
         if isinstance(node, ast.Name):
             name = node.id
             if name in ("True", "true"):

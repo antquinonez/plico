@@ -1156,7 +1156,7 @@ class TestFFAIDataFrameExtended:
 
         assert not df.is_empty()
         assert "date" in df.columns
-        assert "count" in df.columns
+        assert "len" in df.columns
 
     def test_interaction_counts_by_date_empty(self, mock_ffmistralsmall):
         """Test getting interaction counts with empty history."""

@@ -31,15 +31,12 @@ from openpyxl.worksheet.worksheet import Worksheet
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from src.config import get_config
+from src.orchestrator.workbook_formatter import WorkbookFormatter
 
 from .base import (
-    DEFAULT_CLIENTS_COLUMN_WIDTHS,
     DEFAULT_CLIENTS_HEADERS,
-    DEFAULT_CONFIG_COLUMN_WIDTHS,
     DEFAULT_CONFIG_FIELDS,
-    DEFAULT_DOCUMENTS_COLUMN_WIDTHS,
     DEFAULT_DOCUMENTS_HEADERS,
-    DEFAULT_PROMPT_COLUMN_WIDTHS,
     DEFAULT_PROMPT_HEADERS,
     PromptSpec,
 )
@@ -60,18 +57,12 @@ class WorkbookBuilder:
     """
 
     def __init__(self, output_path: str, config: Any = None):
-        """Initialize the workbook builder.
-
-        Args:
-            output_path: Path where the workbook will be saved
-            config: Optional config object (defaults to get_config())
-
-        """
         self.output_path = output_path
         self.config = config or get_config()
         self.sample_config = self.config.sample
         self.wb = Workbook()
         self._prompts_count = 0
+        self.formatter = WorkbookFormatter(self.config)
 
     def add_config_sheet(
         self,
@@ -111,8 +102,7 @@ class WorkbookBuilder:
             ws[f"A{idx}"] = field
             ws[f"B{idx}"] = value
 
-        for col, width in DEFAULT_CONFIG_COLUMN_WIDTHS.items():
-            ws.column_dimensions[col].width = width
+        self.formatter.apply_formatting(ws, "config")
 
         return self
 
@@ -152,9 +142,7 @@ class WorkbookBuilder:
                 value = row_data.get(header, "")
                 ws.cell(row=row_idx, column=col_idx, value=value)
 
-        widths = column_widths or DEFAULT_PROMPT_COLUMN_WIDTHS
-        for col, width in widths.items():
-            ws.column_dimensions[col].width = width
+        self.formatter.apply_formatting(ws, "prompts")
 
         self._prompts_count = len(prompts)
         return self
@@ -225,9 +213,7 @@ class WorkbookBuilder:
             for col_idx, header in enumerate(headers, start=1):
                 ws.cell(row=row_idx, column=col_idx, value=client.get(header, ""))
 
-        widths = column_widths or DEFAULT_CLIENTS_COLUMN_WIDTHS
-        for col, width in widths.items():
-            ws.column_dimensions[col].width = width
+        self.formatter.apply_formatting(ws, "clients")
 
         return self
 
@@ -260,9 +246,7 @@ class WorkbookBuilder:
             for col_idx, header in enumerate(headers, start=1):
                 ws.cell(row=row_idx, column=col_idx, value=doc.get(header, ""))
 
-        widths = column_widths or DEFAULT_DOCUMENTS_COLUMN_WIDTHS
-        for col, width in widths.items():
-            ws.column_dimensions[col].width = width
+        self.formatter.apply_formatting(ws, "documents")
 
         return self
 
@@ -295,6 +279,8 @@ class WorkbookBuilder:
         for row_idx, row_data in enumerate(data, start=2):
             for col_idx, header in enumerate(headers, start=1):
                 ws.cell(row=row_idx, column=col_idx, value=row_data.get(header, ""))
+
+        self.formatter.apply_formatting(ws, "data")
 
         return self
 

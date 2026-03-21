@@ -18,9 +18,9 @@ from datetime import datetime
 from typing import Any
 
 from openpyxl import Workbook, load_workbook
-from openpyxl.utils import get_column_letter
 
 from ..config import get_config
+from .workbook_formatter import WorkbookFormatter
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +40,7 @@ class WorkbookParser:
         self._has_clients_sheet: bool | None = None
         self._has_documents_sheet: bool | None = None
         self._config = get_config()
+        self.formatter = WorkbookFormatter(self._config)
 
     @property
     def CONFIG_SHEET(self) -> str:
@@ -203,47 +204,31 @@ class WorkbookParser:
             else:
                 ws_config[f"B{idx}"] = default
 
-        ws_config.column_dimensions["A"].width = 20
-        ws_config.column_dimensions["B"].width = 60
+        self.formatter.apply_formatting(ws_config, "config")
 
         ws_prompts = wb.create_sheet(title=self.PROMPTS_SHEET)
         for col_idx, header in enumerate(self.PROMPTS_HEADERS, start=1):
             ws_prompts.cell(row=1, column=col_idx, value=header)
-            ws_prompts.column_dimensions[get_column_letter(col_idx)].width = max(
-                15, len(header) + 5
-            )
 
-        ws_prompts.column_dimensions["C"].width = 50
-        ws_prompts.column_dimensions["D"].width = 30
-        ws_prompts.column_dimensions["E"].width = 15
-        ws_prompts.column_dimensions["F"].width = 40
-        ws_prompts.column_dimensions["G"].width = 30
-        ws_prompts.column_dimensions["H"].width = 30
+        self.formatter.apply_formatting(ws_prompts, "prompts")
 
         if with_data_sheet:
             ws_data = wb.create_sheet(title=self.DATA_SHEET)
             ws_data["A1"] = "id"
             ws_data["B1"] = "batch_name"
-            ws_data.column_dimensions["A"].width = 10
-            ws_data.column_dimensions["B"].width = 30
+            self.formatter.apply_formatting(ws_data, "data")
 
         if with_clients_sheet:
             ws_clients = wb.create_sheet(title=self.CLIENTS_SHEET)
             for col_idx, header in enumerate(self.CLIENTS_HEADERS, start=1):
                 ws_clients.cell(row=1, column=col_idx, value=header)
-                ws_clients.column_dimensions[get_column_letter(col_idx)].width = max(
-                    15, len(header) + 5
-                )
+            self.formatter.apply_formatting(ws_clients, "clients")
 
         if with_documents_sheet:
             ws_documents = wb.create_sheet(title=self.DOCUMENTS_SHEET)
             for col_idx, header in enumerate(self.DOCUMENTS_HEADERS, start=1):
                 ws_documents.cell(row=1, column=col_idx, value=header)
-                ws_documents.column_dimensions[get_column_letter(col_idx)].width = max(
-                    15, len(header) + 5
-                )
-            ws_documents.column_dimensions["C"].width = 50
-            ws_documents.column_dimensions["D"].width = 40
+            self.formatter.apply_formatting(ws_documents, "documents")
 
         wb.save(self.workbook_path)
         logger.info(f"Template workbook created: {self.workbook_path}")
@@ -639,25 +624,7 @@ class WorkbookParser:
             rerank = result.get("rerank")
             ws.cell(row=row_idx, column=19, value=rerank if rerank else "")
 
-        ws.column_dimensions["A"].width = 10
-        ws.column_dimensions["B"].width = 25
-        ws.column_dimensions["C"].width = 10
-        ws.column_dimensions["D"].width = 18
-        ws.column_dimensions["E"].width = 50
-        ws.column_dimensions["F"].width = 30
-        ws.column_dimensions["G"].width = 15
-        ws.column_dimensions["H"].width = 40
-        ws.column_dimensions["I"].width = 15
-        ws.column_dimensions["J"].width = 25
-        ws.column_dimensions["K"].width = 60
-        ws.column_dimensions["L"].width = 10
-        ws.column_dimensions["M"].width = 10
-        ws.column_dimensions["N"].width = 40
-        ws.column_dimensions["O"].width = 30
-        ws.column_dimensions["P"].width = 30
-        ws.column_dimensions["Q"].width = 15
-        ws.column_dimensions["R"].width = 18
-        ws.column_dimensions["S"].width = 10
+        self.formatter.apply_formatting(ws, "results")
 
         wb.save(self.workbook_path)
         logger.info(f"Results written to sheet: {sheet_name}")

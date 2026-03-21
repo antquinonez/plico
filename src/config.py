@@ -139,12 +139,35 @@ class WorkbookBatchConfig(BaseSettings):
     on_error: str = "continue"
 
 
+class WorkbookFormattingFeaturesConfig(BaseSettings):
+    """Excel features configuration."""
+
+    freeze_panes: dict[str, Any] = Field(default_factory=lambda: {"enabled": True, "rows": 1})
+    auto_filter: dict[str, Any] = Field(
+        default_factory=lambda: {"enabled": True, "all_sheets": True}
+    )
+
+
+class WorkbookFormattingConfig(BaseSettings):
+    """Workbook formatting configuration."""
+
+    column_widths: dict[str, dict[str, int] | str] = Field(default_factory=dict)
+    word_wrap: dict[str, Any] = Field(default_factory=dict)
+    rows: dict[str, Any] = Field(
+        default_factory=lambda: {"auto_fit_height": True, "wrap_text_height_multiplier": 15}
+    )
+    features: WorkbookFormattingFeaturesConfig = Field(
+        default_factory=WorkbookFormattingFeaturesConfig
+    )
+
+
 class WorkbookConfig(BaseSettings):
     """Workbook configuration."""
 
     sheet_names: WorkbookSheetNamesConfig = Field(default_factory=WorkbookSheetNamesConfig)
     defaults: WorkbookDefaultsConfig = Field(default_factory=WorkbookDefaultsConfig)
     batch: WorkbookBatchConfig = Field(default_factory=WorkbookBatchConfig)
+    formatting: WorkbookFormattingConfig = Field(default_factory=WorkbookFormattingConfig)
 
 
 class OrchestratorConfig(BaseSettings):

@@ -21,6 +21,91 @@ workbook:
     mode: "per_row"
     output: "combined"
     on_error: "continue"
+  formatting:
+    column_widths:
+      config:
+        field: 22
+        value: 60
+      prompts:
+        sequence: 10
+        prompt_name: 24
+        prompt: 60
+        history: 40
+        client: 12
+        condition: 80
+        references: 40
+        semantic_query: 45
+        semantic_filter: 50
+        query_expansion: 18
+        rerank: 12
+      clients:
+        name: 14
+        client_type: 22
+        api_key_env: 18
+        model: 28
+        temperature: 14
+        max_tokens: 14
+      documents:
+        reference_name: 22
+        common_name: 30
+        file_path: 55
+        tags: 45
+        chunking_strategy: 18
+        notes: 50
+      data: auto
+      results:
+        batch_id: 10
+        batch_name: 15
+        sequence: 10
+        prompt_name: 18
+        prompt: 60
+        history: 40
+        client: 12
+        condition: 60
+        condition_result: 18
+        condition_error: 30
+        response: 60
+        status: 12
+        attempts: 12
+        error: 50
+        references: 40
+        semantic_query: 45
+        semantic_filter: 50
+        query_expansion: 18
+        rerank: 12
+    word_wrap:
+      enabled: true
+      columns:
+        config:
+          - value
+        prompts:
+          - prompt
+          - history
+          - condition
+          - semantic_query
+          - semantic_filter
+        clients: []
+        documents:
+          - tags
+          - notes
+        data: auto
+        results:
+          - prompt
+          - condition
+          - response
+          - error
+          - semantic_query
+          - semantic_filter
+    rows:
+      auto_fit_height: true
+      wrap_text_height_multiplier: 15
+    features:
+      freeze_panes:
+        enabled: true
+        rows: 1
+      auto_filter:
+        enabled: true
+        all_sheets: true
 
 orchestrator:
   default_concurrency: 2

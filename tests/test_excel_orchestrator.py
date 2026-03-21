@@ -1351,14 +1351,16 @@ class TestExcelOrchestratorIsolatedFFAI:
 
         assert ffai is not None
 
-    def test_get_isolated_client_without_registry(self, temp_workbook, mock_ffmistralsmall):
-        """Test that client clone is returned when no registry."""
+    def test_get_isolated_ffai_creates_distinct_instances(self, temp_workbook, mock_ffmistralsmall):
+        """Test that each call to _get_isolated_ffai returns a distinct instance."""
         from src.orchestrator.excel_orchestrator import ExcelOrchestrator
 
         orchestrator = ExcelOrchestrator(temp_workbook, mock_ffmistralsmall)
-        client = orchestrator._get_isolated_client()
+        ffai1 = orchestrator._get_isolated_ffai()
+        ffai2 = orchestrator._get_isolated_ffai()
 
-        assert client is not mock_ffmistralsmall
+        assert ffai1 is not ffai2
+        assert ffai1.client is not ffai2.client
 
 
 class TestExcelOrchestratorSummaryEdgeCases:

@@ -16,8 +16,8 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from src.RAG import CHROMADB_AVAILABLE, FFEmbeddings, RAGMCPTools, split_text
-from src.RAG.text_splitter import TextChunk, split_documents
+from src.RAG import CHROMADB_AVAILABLE, FFEmbeddings, RAGMCPTools
+from src.RAG.text_splitters import TextChunk, get_chunker
 
 if CHROMADB_AVAILABLE:
     from src.RAG import FFRAGClient, FFVectorStore
@@ -34,7 +34,8 @@ class TestTextSplitter:
     def test_split_text_basic(self):
         """Test basic text splitting."""
         text = "This is a test. " * 100
-        chunks = split_text(text, chunk_size=50, chunk_overlap=10)
+        chunker = get_chunker("character", chunk_size=50, chunk_overlap=10)
+        chunks = chunker.chunk(text)
 
         assert len(chunks) > 1
         assert all(isinstance(c, TextChunk) for c in chunks)
@@ -42,35 +43,36 @@ class TestTextSplitter:
 
     def test_split_text_empty(self):
         """Test splitting empty text."""
-        chunks = split_text("", chunk_size=100, chunk_overlap=20)
+        chunker = get_chunker("character", chunk_size=100, chunk_overlap=20)
+        chunks = chunker.chunk("")
         assert chunks == []
 
     def test_split_text_single_chunk(self):
         """Test text shorter than chunk size."""
         text = "Short text"
-        chunks = split_text(text, chunk_size=100, chunk_overlap=20)
+        chunker = get_chunker("character", chunk_size=100, chunk_overlap=20)
+        chunks = chunker.chunk(text)
 
         assert len(chunks) == 1
         assert chunks[0].content == text
 
     def test_split_text_invalid_params(self):
         """Test invalid parameters raise errors."""
-        text = "Some text"
-
         with pytest.raises(ValueError, match="chunk_size must be positive"):
-            split_text(text, chunk_size=0)
+            get_chunker("character", chunk_size=0)
 
         with pytest.raises(ValueError, match="chunk_overlap cannot be negative"):
-            split_text(text, chunk_size=100, chunk_overlap=-1)
+            get_chunker("character", chunk_size=100, chunk_overlap=-1)
 
         with pytest.raises(ValueError, match="chunk_overlap must be less than chunk_size"):
-            split_text(text, chunk_size=50, chunk_overlap=50)
+            get_chunker("character", chunk_size=50, chunk_overlap=50)
 
     def test_split_text_metadata(self):
         """Test metadata is attached to chunks."""
         text = "Test content"
         metadata = {"source": "test.txt", "author": "test"}
-        chunks = split_text(text, chunk_size=100, chunk_overlap=20, metadata=metadata)
+        chunker = get_chunker("character", chunk_size=100, chunk_overlap=20)
+        chunks = chunker.chunk(text, metadata=metadata)
 
         assert len(chunks) == 1
         assert chunks[0].metadata == metadata
@@ -78,7 +80,8 @@ class TestTextSplitter:
     def test_split_text_overlap(self):
         """Test that overlap works correctly."""
         text = "A" * 50 + "B" * 50 + "C" * 50
-        chunks = split_text(text, chunk_size=60, chunk_overlap=20)
+        chunker = get_chunker("character", chunk_size=60, chunk_overlap=20)
+        chunks = chunker.chunk(text)
 
         assert len(chunks) > 1
         # Check that consecutive chunks have overlapping content
@@ -94,7 +97,11 @@ class TestTextSplitter:
             {"content": "Doc 1 content", "source": "doc1.txt"},
             {"content": "Doc 2 content", "source": "doc2.txt"},
         ]
-        chunks = split_documents(documents, chunk_size=50, chunk_overlap=10)
+        chunker = get_chunker("character", chunk_size=50, chunk_overlap=10)
+        chunks = []
+        for doc in documents:
+            metadata = {k: v for k, v in doc.items() if k != "content"}
+            chunks.extend(chunker.chunk(doc["content"], metadata=metadata))
 
         assert len(chunks) == 2
         assert chunks[0].metadata == {"source": "doc1.txt"}
