@@ -116,21 +116,38 @@ DEFAULT_PROMPT_HEADERS = [
 
 DEFAULT_PROMPT_COLUMN_WIDTHS = {
     "A": 10,
-    "B": 20,
-    "C": 60,
-    "D": 30,
-    "E": 10,
-    "F": 60,
-    "G": 35,
+    "B": 24,
+    "C": 80,
+    "D": 40,
+    "E": 12,
+    "F": 80,
+    "G": 40,
     "H": 30,
-    "I": 40,
+    "I": 45,
     "J": 15,
     "K": 10,
 }
 
 DEFAULT_CONFIG_COLUMN_WIDTHS = {
-    "A": 20,
-    "B": 70,
+    "A": 22,
+    "B": 80,
+}
+
+DEFAULT_CLIENTS_COLUMN_WIDTHS = {
+    "A": 14,
+    "B": 22,
+    "C": 18,
+    "D": 28,
+    "E": 14,
+    "F": 14,
+}
+
+DEFAULT_DOCUMENTS_COLUMN_WIDTHS = {
+    "A": 22,
+    "B": 30,
+    "C": 55,
+    "D": 45,
+    "E": 50,
 }
 
 DEFAULT_CLIENTS_HEADERS = [
@@ -141,15 +158,6 @@ DEFAULT_CLIENTS_HEADERS = [
     "temperature",
     "max_tokens",
 ]
-
-DEFAULT_CLIENTS_COLUMN_WIDTHS = {
-    "A": 12,
-    "B": 15,
-    "C": 18,
-    "D": 20,
-    "E": 12,
-    "F": 12,
-}
 
 DEFAULT_DOCUMENTS_HEADERS = [
     "reference_name",
