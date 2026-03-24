@@ -23,12 +23,13 @@ from __future__ import annotations
 import os
 import sys
 from datetime import datetime
+from pathlib import Path
 from typing import Any
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from openpyxl import Workbook
 from openpyxl.worksheet.worksheet import Worksheet
-
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from src.config import get_config
 from src.orchestrator.workbook_formatter import WorkbookFormatter
@@ -67,13 +68,15 @@ class WorkbookBuilder:
     def add_config_sheet(
         self,
         overrides: dict[str, Any] | None = None,
-        extra_fields: list[tuple[str, str]] | None = None,
+        extra_fields: list[tuple[str, str, str]] | None = None,
+        include_notes: bool = True,
     ) -> WorkbookBuilder:
         """Add the config sheet to the workbook.
 
         Args:
             overrides: Dict of field -> value to override defaults
-            extra_fields: Additional (field, value) tuples to append
+            extra_fields: Additional (field, value, notes) tuples to append
+            include_notes: Whether to include the notes column (default True)
 
         Returns:
             self for method chaining
@@ -81,26 +84,44 @@ class WorkbookBuilder:
         """
         ws = self.wb.active
         ws.title = "config"
-        ws["A1"] = "field"
-        ws["B1"] = "value"
 
-        config_data = []
+        workbook_name = Path(self.output_path).stem
+
+        if include_notes:
+            ws["A1"] = "field"
+            ws["B1"] = "value"
+            ws["C1"] = "notes"
+        else:
+            ws["A1"] = "field"
+            ws["B1"] = "value"
+
+        config_data: list[tuple[str, str, str]] = []
         overrides = overrides or {}
-        for field_name, config_attr in DEFAULT_CONFIG_FIELDS:
-            if config_attr is None:
-                value = datetime.now().isoformat() if field_name == "created_at" else ""
+
+        for field_name, config_attr, notes in DEFAULT_CONFIG_FIELDS:
+            if field_name == "name":
+                value = overrides.get("name", workbook_name)
+            elif field_name == "description":
+                value = overrides.get("description", "")
+            elif field_name == "created_at":
+                value = datetime.now().isoformat()
+            elif config_attr is None:
+                value = overrides.get(field_name, "")
             else:
                 value = overrides.get(field_name, getattr(self.sample_config, config_attr, ""))
                 if not isinstance(value, str):
                     value = str(value)
-            config_data.append((field_name, value))
+            config_data.append((field_name, value, notes))
 
         if extra_fields:
-            config_data.extend(extra_fields)
+            for field, value, notes in extra_fields:
+                config_data.append((field, str(value), notes))
 
-        for idx, (field, value) in enumerate(config_data, start=2):
+        for idx, (field, value, notes) in enumerate(config_data, start=2):
             ws[f"A{idx}"] = field
             ws[f"B{idx}"] = value
+            if include_notes:
+                ws[f"C{idx}"] = notes
 
         self.formatter.apply_formatting(ws, "config")
 

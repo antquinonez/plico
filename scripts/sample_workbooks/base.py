@@ -90,14 +90,31 @@ class SectionDefinition:
     extra_fields: list[str] = field(default_factory=list)
 
 
-DEFAULT_CONFIG_FIELDS = [
-    ("client_type", "default_client_type"),
-    ("model", "default_model"),
-    ("max_retries", "default_retries"),
-    ("temperature", "default_temperature"),
-    ("max_tokens", "default_max_tokens"),
-    ("system_instructions", "default_system_instructions"),
-    ("created_at", None),
+DEFAULT_CONFIG_FIELDS: list[tuple[str, str | None, str]] = [
+    ("name", None, "Human-readable name for this process/workbook"),
+    ("description", None, "Brief description of what this process does"),
+    ("client_type", "default_client_type", "AI client type from config/clients.yaml client_types"),
+    ("model", "default_model", "Model identifier (e.g., mistral-small-latest, claude-3-5-sonnet)"),
+    ("api_key_env", None, "Environment variable name containing the API key"),
+    ("max_retries", "default_retries", "Maximum retry attempts on transient failures (1-10)"),
+    (
+        "temperature",
+        "default_temperature",
+        "Sampling temperature for response randomness (0.0-2.0)",
+    ),
+    ("max_tokens", "default_max_tokens", "Maximum tokens in the response"),
+    ("system_instructions", "default_system_instructions", "System prompt/instructions for the AI"),
+    ("created_at", None, "ISO timestamp when workbook was created (auto-generated)"),
+]
+
+DEFAULT_BATCH_CONFIG_FIELDS: list[tuple[str, str, str]] = [
+    ("batch_mode", "mode", "Batch execution mode: 'per_row' (execute for each data row)"),
+    ("batch_output", "output", "Output format: 'combined' (single sheet) or 'separate_sheets'"),
+    (
+        "on_batch_error",
+        "on_error",
+        "Error handling: 'continue' (skip failed) or 'stop' (halt on error)",
+    ),
 ]
 
 DEFAULT_PROMPT_HEADERS = [
@@ -130,7 +147,8 @@ DEFAULT_PROMPT_COLUMN_WIDTHS = {
 
 DEFAULT_CONFIG_COLUMN_WIDTHS = {
     "A": 22,
-    "B": 80,
+    "B": 60,
+    "C": 60,
 }
 
 DEFAULT_CLIENTS_COLUMN_WIDTHS = {

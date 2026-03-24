@@ -63,26 +63,40 @@ class WorkbookParser:
         return self._config.workbook.sheet_names.documents
 
     @property
-    def CONFIG_FIELDS(self) -> list[tuple[str, str]]:
+    def CONFIG_FIELDS(self) -> list[tuple[str, str, str]]:
         defaults = self._config.workbook.defaults
         return [
-            ("client_type", ""),
-            ("model", defaults.model),
-            ("api_key_env", defaults.api_key_env),
-            ("max_retries", str(defaults.max_retries)),
-            ("temperature", str(defaults.temperature)),
-            ("max_tokens", str(defaults.max_tokens)),
-            ("system_instructions", defaults.system_instructions),
-            ("created_at", ""),
+            ("name", "", "Human-readable name for this process/workbook"),
+            ("description", "", "Brief description of what this process does"),
+            ("client_type", "", "AI client type from config/clients.yaml client_types"),
+            ("model", defaults.model, "Model identifier (e.g., mistral-small-latest)"),
+            ("api_key_env", defaults.api_key_env, "Environment variable name for API key"),
+            ("max_retries", str(defaults.max_retries), "Maximum retry attempts (1-10)"),
+            ("temperature", str(defaults.temperature), "Sampling temperature (0.0-2.0)"),
+            ("max_tokens", str(defaults.max_tokens), "Maximum response tokens"),
+            ("system_instructions", defaults.system_instructions, "System prompt for AI"),
+            ("created_at", "", "ISO timestamp when created"),
         ]
 
     @property
-    def BATCH_CONFIG_FIELDS(self) -> list[tuple[str, str]]:
+    def BATCH_CONFIG_FIELDS(self) -> list[tuple[str, str, str]]:
         batch = self._config.workbook.batch
         return [
-            ("batch_mode", batch.mode),
-            ("batch_output", batch.output),
-            ("on_batch_error", batch.on_error),
+            (
+                "batch_mode",
+                batch.mode,
+                "Batch execution mode: 'per_row' (execute for each data row)",
+            ),
+            (
+                "batch_output",
+                batch.output,
+                "Output format: 'combined' (single sheet) or 'separate_sheets'",
+            ),
+            (
+                "on_batch_error",
+                batch.on_error,
+                "Error handling: 'continue' (skip failed) or 'stop' (halt on error)",
+            ),
         ]
 
     PROMPTS_HEADERS = [
@@ -192,17 +206,19 @@ class WorkbookParser:
         ws_config.title = self.CONFIG_SHEET
         ws_config["A1"] = "field"
         ws_config["B1"] = "value"
+        ws_config["C1"] = "notes"
 
         all_config = list(self.CONFIG_FIELDS)
         if with_data_sheet:
             all_config.extend(self.BATCH_CONFIG_FIELDS)
 
-        for idx, (field, default) in enumerate(all_config, start=2):
+        for idx, (field, default, notes) in enumerate(all_config, start=2):
             ws_config[f"A{idx}"] = field
             if field == "created_at":
                 ws_config[f"B{idx}"] = datetime.now().isoformat()
             else:
                 ws_config[f"B{idx}"] = default
+            ws_config[f"C{idx}"] = notes
 
         self.formatter.apply_formatting(ws_config, "config")
 
@@ -264,27 +280,90 @@ class WorkbookParser:
         return True
 
     def load_config(self) -> dict[str, Any]:
-        """Load configuration from config sheet."""
+        """Load configuration from config sheet.
+
+        Handles both 2-column format (field, value) and 3-column format
+        (field, value, notes). The notes column is ignored if present.
+
+        Returns:
+            Dict of config field -> value pairs.
+
+        """
         wb = load_workbook(self.workbook_path)
         ws = wb[self.CONFIG_SHEET]
 
         config = {}
         for row in ws.iter_rows(min_row=2, values_only=True):
-            if row[0] and row[1] is not None:
-                key = str(row[0]).strip()
-                value = row[1]
+            if not row or not row[0]:
+                continue
 
-                if key == "max_retries":
-                    value = int(value)
-                elif key == "temperature":
-                    value = float(value)
-                elif key == "max_tokens":
-                    value = int(value)
+            key = str(row[0]).strip()
+            value = row[1] if len(row) > 1 else None
 
-                config[key] = value
+            if value is None:
+                continue
+
+            if key == "max_retries" or key == "max_tokens":
+                value = int(value)
+            elif key == "temperature":
+                value = float(value)
+
+            config[key] = value
 
         logger.debug(f"Loaded config: {config}")
         return config
+
+    def validate_config(self, config: dict[str, Any]) -> list[str]:
+        """Validate config values and return list of error messages.
+
+        Args:
+            config: Configuration dictionary from load_config().
+
+        Returns:
+            List of error message strings. Empty list if valid.
+
+        """
+        errors: list[str] = []
+
+        client_type = config.get("client_type")
+        if client_type:
+            available = self._config.get_available_client_types()
+            if client_type not in available:
+                errors.append(
+                    f"Unknown client_type '{client_type}'. Available: {', '.join(sorted(available))}"
+                )
+
+        temperature = config.get("temperature")
+        if temperature is not None:
+            try:
+                temp_float = float(temperature)
+                if not (0.0 <= temp_float <= 2.0):
+                    errors.append(f"temperature {temperature} out of range [0.0, 2.0]")
+            except (TypeError, ValueError):
+                errors.append(f"temperature '{temperature}' is not a valid number")
+
+        max_retries = config.get("max_retries")
+        if max_retries is not None:
+            try:
+                retries_int = int(max_retries)
+                if not (1 <= retries_int <= 10):
+                    errors.append(f"max_retries {max_retries} out of range [1, 10]")
+            except (TypeError, ValueError):
+                errors.append(f"max_retries '{max_retries}' is not a valid integer")
+
+        batch_mode = config.get("batch_mode")
+        if batch_mode and batch_mode not in ["per_row"]:
+            errors.append(f"batch_mode '{batch_mode}' not supported. Use: per_row")
+
+        batch_output = config.get("batch_output")
+        if batch_output and batch_output not in ["combined", "separate_sheets"]:
+            errors.append("batch_output must be 'combined' or 'separate_sheets'")
+
+        on_batch_error = config.get("on_batch_error")
+        if on_batch_error and on_batch_error not in ["continue", "stop"]:
+            errors.append("on_batch_error must be 'continue' or 'stop'")
+
+        return errors
 
     def load_prompts(self) -> list[dict[str, Any]]:
         """Load prompts from prompts sheet."""

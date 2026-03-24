@@ -489,9 +489,21 @@ def create_max_sample_workbook(
             **(config_overrides or {}),
         },
         extra_fields=[
-            ("batch_mode", batch_config.mode),
-            ("batch_output", batch_config.output),
-            ("on_batch_error", batch_config.on_error),
+            (
+                "batch_mode",
+                batch_config.mode,
+                "Batch execution mode: 'per_row' (execute for each data row)",
+            ),
+            (
+                "batch_output",
+                batch_config.output,
+                "Output format: 'combined' (single sheet) or 'separate_sheets'",
+            ),
+            (
+                "on_batch_error",
+                batch_config.on_error,
+                "Error handling: 'continue' (skip failed) or 'stop' (halt on error)",
+            ),
         ],
     )
     builder.add_clients_sheet(

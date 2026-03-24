@@ -85,8 +85,13 @@ class WorkbookManifestExporter:
         clients = self.builder.load_clients()
         documents = self.builder.load_documents()
 
+        manifest_name_value = config.get("name", workbook_name)
+        manifest_description = config.get("description", "")
+
         self._write_manifest_yaml(
             manifest_path,
+            name=manifest_name_value,
+            description=manifest_description,
             has_data=len(data) > 0,
             has_clients=len(clients) > 0,
             has_documents=len(documents) > 0,
@@ -107,6 +112,8 @@ class WorkbookManifestExporter:
     def _write_manifest_yaml(
         self,
         manifest_path: Path,
+        name: str,
+        description: str,
         has_data: bool,
         has_clients: bool,
         has_documents: bool,
@@ -114,6 +121,8 @@ class WorkbookManifestExporter:
     ) -> None:
         """Write the main manifest metadata file."""
         manifest_data = {
+            "name": name,
+            "description": description,
             "version": MANIFEST_VERSION,
             "source_workbook": str(Path(self.workbook_path).resolve()),
             "exported_at": datetime.now().isoformat(),
