@@ -26,6 +26,7 @@ workbook:
       config:
         field: 22
         value: 60
+        notes: 60
       prompts:
         sequence: 10
         prompt_name: 24
@@ -78,6 +79,7 @@ workbook:
       columns:
         config:
           - value
+          - notes
         prompts:
           - prompt
           - history

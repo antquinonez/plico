@@ -114,8 +114,15 @@ class ExcelOrchestrator(OrchestratorBase):
         """Load config from workbook builder (backward compatibility)."""
         self.config = self.builder.load_config()
         self.config.update(self.config_overrides)
+
+        validation_errors = self.builder.validate_config(self.config)
+        if validation_errors:
+            error_msg = "; ".join(validation_errors)
+            raise ValueError(f"Config validation failed: {error_msg}")
+
         logger.info(
-            f"Configuration loaded: model={self.config.get('model')}, "
+            f"Configuration loaded: name={self.config.get('name', 'unnamed')}, "
+            f"model={self.config.get('model')}, "
             f"max_retries={self.config.get('max_retries')}"
         )
 

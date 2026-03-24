@@ -468,6 +468,62 @@ python scripts/run_manifest.py ./manifests/manifest_my_prompts --dry-run
 python scripts/inspect_parquet.py ./outputs/20250301120000_my_prompts.parquet
 ```
 
+## Config Worksheet Reference
+
+The config worksheet defines process-level settings for the orchestrator. The worksheet has three columns:
+
+### Column Structure
+
+| Column | Header | Description |
+|--------|--------|-------------|
+| A | field | Config field name |
+| B | value | Current value for this field |
+| C | notes | Documentation for the field (acceptable values, source) |
+
+### Standard Config Fields
+        | Field | Required | Default | Source | Acceptable Values |
+        |-------|----------|---------|--------|-------------------|
+        | `name` | No | (filename) | User | Any string - human-readable name for this process |
+        | `description` | No | empty | User | Any string - brief description of the process |
+        | `client_type` | No | (from config) | `config/clients.yaml` | Keys from `client_types` section |
+        | `model` | No | (provider default) | Provider-specific | See `model_defaults.yaml` for examples |
+        | `api_key_env` | No | (from config) | `.env` file | Environment variable name |
+        | `max_retries` | No | 3 | - | `1` to `10` |
+        | `temperature` | No | 0.7 | - | `0.0` to `2.0` |
+        | `max_tokens` | No | 4096 | - | Positive integer |
+        | `system_instructions` | No | (from config) | User | System prompt for AI |
+        | `created_at` | No | (auto-generated) | - | ISO timestamp when workbook was created |
+
+### Batch Mode Fields (only for workbooks with data sheet)
+        | Field | Required | Default | Acceptable Values |
+        |-------|----------|---------|-------------------|
+        | `batch_mode` | No | per_row | `per_row` (execute for each data row) |
+        | `batch_output` | No | combined | `combined`, `separate_sheets` |
+        | `on_batch_error` | No | continue | `continue`, `stop` |
+
+### Field Value Sources
+        | Field | Where to Get Valid Values |
+        |-------|----------------------------|
+        | `client_type` | `config/clients.yaml` → `client_types` keys |
+        | `model` | `config/model_defaults.yaml` → `models` keys |
+        | `api_key_env` | `.env` file - must be set in environment |
+
+### Example Config Sheet
+        ```text
+        | field            | value                           | notes                                         |
+        |------------------|--------------------------------|-----------------------------------------------|
+        | name             | My Analysis Process           | Human-readable name for this process          |
+        | description     | Analyzes sales data by region | Brief description of what this process does    |
+        | client_type      | litellm-mistral-small           | AI client type from config/clients.yaml       |
+        | model            | mistral-small-latest           | Model identifier                               |
+        | api_key_env      | MISTRAL_API_KEY               | Environment variable name for API key         |
+        | max_retries      | 3                              | Maximum retry attempts (1-10)                |
+        | temperature      | 0.7                            | Sampling temperature (0.0-2.0)               |
+        | max_tokens        | 4096                           | Maximum response tokens                       |
+        | system_instructions | You are a helpful assistant | System prompt for AI                    |
+        | created_at        | 2025-03-22T10:30:00           | ISO timestamp when created                  |
+        ```
+
 ## Workbook Scripts Naming Convention
 
 Scripts that create or validate sample workbooks follow this naming pattern:
