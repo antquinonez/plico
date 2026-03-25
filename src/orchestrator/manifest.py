@@ -369,17 +369,46 @@ class ManifestOrchestrator(OrchestratorBase):
         with open(filepath, encoding="utf-8") as f:
             return yaml.safe_load(f) or {}
 
+    def _get_manifest_name(self) -> str:
+        """Get manifest name from manifest.yaml or directory name.
+
+        Returns:
+            Manifest name for use in output paths.
+
+        """
+        manifest_data = self._load_yaml_file("manifest.yaml")
+        if manifest_data.get("name"):
+            name = manifest_data["name"]
+            # Sanitize for filesystem
+            return name.lower().replace(" ", "_").replace("-", "_")
+
+        # Fall back to directory name (remove manifest_ prefix if present)
+        dir_name = self._manifest_dir.name
+        if dir_name.startswith("manifest_"):
+            return dir_name[9:]
+        return dir_name
+
     def _get_output_path(self) -> Path:
-        """Generate the output parquet file path."""
+        """Generate output path: outputs/<manifest_name>/<timestamp>.parquet"""
         config = get_config()
-        output_dir = Path(config.paths.output_dir)
+        base_output_dir = Path(config.paths.output_dir)
+
+        manifest_name = self._get_manifest_name()
+        output_dir = base_output_dir / manifest_name
         output_dir.mkdir(parents=True, exist_ok=True)
 
         timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-        workbook_name = Path(self._source_workbook).stem if self._source_workbook else "results"
-        output_name = f"{timestamp}_{workbook_name}.parquet"
+        return output_dir / f"{timestamp}.parquet"
 
-        return output_dir / output_name
+    def _get_output_prompts(self) -> list[str]:
+        """Get list of prompts to extract from manifest.yaml.
+
+        Returns:
+            List of prompt names to extract, or empty list for auto-detection.
+
+        """
+        manifest_data = self._load_yaml_file("manifest.yaml")
+        return manifest_data.get("output_prompts", [])
 
     def _write_results(self, results: list[dict[str, Any]]) -> str:
         """Write results to a parquet file.
@@ -392,6 +421,8 @@ class ManifestOrchestrator(OrchestratorBase):
 
         """
         output_path = self._get_output_path()
+        manifest_name = self._get_manifest_name()
+        output_prompts = self._get_output_prompts()
 
         rows = []
         for r in results:
@@ -419,7 +450,23 @@ class ManifestOrchestrator(OrchestratorBase):
             rows.append(row)
 
         df = pl.DataFrame(rows)
-        df.write_parquet(output_path)
+
+        import pyarrow.parquet as pq
+
+        # Add manifest metadata as parquet key-value metadata
+        manifest_meta = {
+            b"manifest_name": manifest_name.encode("utf-8"),
+            b"output_prompts": json.dumps(output_prompts).encode("utf-8"),
+            b"source_workbook": (self._source_workbook or "").encode("utf-8"),
+        }
+
+        # Convert to Arrow table and add metadata
+        table = df.to_arrow()
+        existing_meta = dict(table.schema.metadata or {})
+        existing_meta.update(manifest_meta)
+        table = table.replace_schema_metadata(existing_meta)
+
+        pq.write_table(table, output_path)
 
         logger.info(f"Results written to parquet: {output_path}")
         return str(output_path)
@@ -446,5 +493,29 @@ class ManifestOrchestrator(OrchestratorBase):
         summary = super().get_summary()
         if summary.get("status") != "not_run":
             summary["manifest_dir"] = str(self._manifest_dir)
+            summary["manifest_name"] = self._get_manifest_name()
             summary["source_workbook"] = self._source_workbook
+            summary["output_prompts"] = self._get_output_prompts()
         return summary
+
+    @staticmethod
+    def get_manifest_metadata(parquet_path: str) -> dict[str, Any]:
+        """Extract manifest metadata from a parquet file.
+
+        Args:
+            parquet_path: Path to the parquet file.
+
+        Returns:
+            Dictionary with manifest metadata (manifest_name, output_prompts, etc.)
+
+        """
+        import pyarrow.parquet as pq
+
+        parquet_file = pq.ParquetFile(parquet_path)
+        metadata = parquet_file.schema_arrow.metadata or {}
+
+        return {
+            "manifest_name": metadata.get(b"manifest_name", b"").decode("utf-8"),
+            "output_prompts": json.loads(metadata.get(b"output_prompts", b"[]")),
+            "source_workbook": metadata.get(b"source_workbook", b"").decode("utf-8"),
+        }

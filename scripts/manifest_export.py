@@ -7,14 +7,14 @@
 Export Excel Workbook to Manifest Folder
 
 Usage:
-    python scripts/export_manifest.py <workbook_path> [--output <manifest_dir>]
+    python scripts/manifest_export.py <workbook_path> [--output <manifest_dir>]
 
 Examples:
     # Export to default manifest directory
-    python scripts/export_manifest.py ./workbooks/my_prompts.xlsx
+    python scripts/manifest_export.py ./workbooks/my_prompts.xlsx
 
     # Export to custom directory
-    python scripts/export_manifest.py ./workbook.xlsx --output ./custom_manifest/
+    python scripts/manifest_export.py ./workbook.xlsx --output ./custom_manifest/
 
 The manifest folder will contain:
     - manifest.yaml   (metadata)

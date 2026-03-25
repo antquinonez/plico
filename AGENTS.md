@@ -429,16 +429,18 @@ retry:
 
 ## Manifest Workflow
 
+**For comprehensive manifest documentation, see [MANIFEST_README.md](./MANIFEST_README.md)**
+
 The manifest workflow separates workbook parsing from execution, enabling version control of prompts.
 
 ### Export Workbook to Manifest
 
 ```bash
 # Export to default manifest directory
-python scripts/export_manifest.py ./workbooks/my_prompts.xlsx
+python scripts/manifest_export.py ./workbooks/my_prompts.xlsx
 
 # Export to custom directory
-python scripts/export_manifest.py ./workbook.xlsx --output ./custom_manifest/
+python scripts/manifest_export.py ./workbook.xlsx --output ./custom_manifest/
 ```
 
 Creates a folder with:
@@ -453,19 +455,25 @@ Creates a folder with:
 
 ```bash
 # Run with default settings
-python scripts/run_manifest.py ./manifests/manifest_my_prompts
+python scripts/manifest_run.py ./manifests/manifest_my_prompts
 
 # Run with specific client and concurrency
-python scripts/run_manifest.py ./manifests/manifest_my_prompts --client mistral-small -c 4
+python scripts/manifest_run.py ./manifests/manifest_my_prompts --client mistral-small -c 4
 
 # Dry run to validate
-python scripts/run_manifest.py ./manifests/manifest_my_prompts --dry-run
+python scripts/manifest_run.py ./manifests/manifest_my_prompts --dry-run
 ```
 
 ### Inspect Results
 
 ```bash
-python scripts/inspect_parquet.py ./outputs/20250301120000_my_prompts.parquet
+python scripts/manifest_inspect.py ./outputs/20250301120000_my_prompts.parquet
+
+# Extract final post, hashtags, image_prompt, and source_url
+python scripts/manifest_extract.py ./outputs/20250301120000_my_prompts.parquet
+
+# Export results to files
+python scripts/manifest_extract.py ./outputs/results.parquet --output-dir ./extracted
 ```
 
 ## Config Worksheet Reference

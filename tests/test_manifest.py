@@ -195,22 +195,30 @@ class TestManifestOrchestratorOutput:
     """Tests for ManifestOrchestrator output generation."""
 
     def test_get_output_path_format(self, tmp_path, mock_ffmistralsmall):
-        """Test output path format includes timestamp and workbook name."""
+        """Test output path format includes timestamp and manifest name."""
+        import yaml
+
         from src.orchestrator.manifest import ManifestOrchestrator
+
+        # Create manifest.yaml with name
+        manifest_data = {"name": "My Prompts", "version": "1.0"}
+        with open(tmp_path / "manifest.yaml", "w") as f:
+            yaml.dump(manifest_data, f)
 
         orchestrator = ManifestOrchestrator(
             manifest_dir=str(tmp_path),
             client=mock_ffmistralsmall,
         )
-        orchestrator.source_workbook = "/path/to/my_prompts.xlsx"
 
         output_path = orchestrator._get_output_path()
 
+        # Name is sanitized: "My Prompts" -> "my_prompts"
         assert "my_prompts" in str(output_path)
         assert str(output_path).endswith(".parquet")
 
         filename = output_path.name
-        assert len(filename.split("_")[0]) == 14
+        # Timestamp format: YYYYMMDDHHMMSS (14 chars)
+        assert len(filename) == 14 + len(".parquet")
         assert filename.startswith("20")
 
     def test_write_parquet_creates_file(self, tmp_path, mock_ffmistralsmall):
@@ -306,6 +314,62 @@ class TestManifestOrchestratorOutput:
 
         for col in expected_columns:
             assert col in df.columns
+
+    def test_write_parquet_metadata(self, tmp_path, mock_ffmistralsmall):
+        """Test parquet file includes manifest metadata."""
+        import json
+
+        import pyarrow.parquet as pq
+        import yaml
+
+        from src.orchestrator.manifest import ManifestOrchestrator
+
+        # Create manifest.yaml with name and output_prompts
+        manifest_data = {
+            "name": "Test Manifest",
+            "output_prompts": ["final_post", "summary"],
+        }
+        with open(tmp_path / "manifest.yaml", "w") as f:
+            yaml.dump(manifest_data, f)
+
+        orchestrator = ManifestOrchestrator(
+            manifest_dir=str(tmp_path),
+            client=mock_ffmistralsmall,
+        )
+        orchestrator.source_workbook = "/path/to/test.xlsx"
+
+        results = [
+            {
+                "sequence": 1,
+                "prompt_name": "test",
+                "prompt": "Hello",
+                "history": None,
+                "client": None,
+                "condition": None,
+                "condition_result": None,
+                "condition_error": None,
+                "response": "Response",
+                "status": "success",
+                "attempts": 1,
+                "error": None,
+                "references": None,
+                "semantic_query": None,
+                "semantic_filter": None,
+                "query_expansion": None,
+                "rerank": None,
+            }
+        ]
+
+        parquet_path = orchestrator._write_parquet(results)
+
+        # Read metadata from parquet
+        pf = pq.ParquetFile(parquet_path)
+        metadata = pf.schema_arrow.metadata or {}
+
+        assert b"manifest_name" in metadata
+        assert metadata[b"manifest_name"] == b"test_manifest"
+        assert b"output_prompts" in metadata
+        assert json.loads(metadata[b"output_prompts"]) == ["final_post", "summary"]
 
     def test_write_parquet_with_batch_data(self, tmp_path, mock_ffmistralsmall):
         """Test parquet file includes batch columns when in batch mode."""

@@ -569,21 +569,21 @@ Workbook → export_manifest.py → Manifest Folder → run_manifest.py → Parq
 
 ```bash
 # Step 1: Export workbook to manifest
-python scripts/export_manifest.py ./workbooks/my_prompts.xlsx
+python scripts/manifest_export.py ./workbooks/my_prompts.xlsx
 # Creates: ./manifests/manifest_my_prompts/
 
 # Step 2: Run orchestration from manifest
-python scripts/run_manifest.py ./manifests/manifest_my_prompts/ -c 3
+python scripts/manifest_run.py ./manifests/manifest_my_prompts/ -c 3
 # Creates: ./outputs/YYYYMMDDHHMMSS_my_prompts.parquet
 
 # Step 3: Inspect results
-python scripts/inspect_parquet.py ./outputs/20260228103000_my_prompts.parquet
+python scripts/manifest_inspect.py ./outputs/20260228103000_my_prompts.parquet
 ```
 
 ### Export Command
 
 ```bash
-python scripts/export_manifest.py <workbook_path> [options]
+python scripts/manifest_export.py <workbook_path> [options]
 ```
 
 | Option | Description |
@@ -605,7 +605,7 @@ manifest_<workbook_name>/
 ### Run Manifest Command
 
 ```bash
-python scripts/run_manifest.py <manifest_dir> [options]
+python scripts/manifest_run.py <manifest_dir> [options]
 ```
 
 | Option | Short | Description |
@@ -653,7 +653,7 @@ Results are written to parquet files with timestamped names:
 ### Inspect Parquet Command
 
 ```bash
-python scripts/inspect_parquet.py <parquet_file> [options]
+python scripts/manifest_inspect.py <parquet_file> [options]
 ```
 
 | Option | Short | Description |
@@ -671,22 +671,22 @@ python scripts/inspect_parquet.py <parquet_file> [options]
 
 ```bash
 # Basic view (first/last 10 rows)
-python scripts/inspect_parquet.py ./outputs/results.parquet
+python scripts/manifest_inspect.py ./outputs/results.parquet
 
 # Extended view with responses
-python scripts/inspect_parquet.py ./outputs/results.parquet --extended
+python scripts/manifest_inspect.py ./outputs/results.parquet --extended
 
 # Full view with all columns
-python scripts/inspect_parquet.py ./outputs/results.parquet --full
+python scripts/manifest_inspect.py ./outputs/results.parquet --full
 
 # Summary only
-python scripts/inspect_parquet.py ./outputs/results.parquet --summary
+python scripts/manifest_inspect.py ./outputs/results.parquet --summary
 
 # Show only failed
-python scripts/inspect_parquet.py ./outputs/results.parquet --failed
+python scripts/manifest_inspect.py ./outputs/results.parquet --failed
 
 # Export to CSV
-python scripts/inspect_parquet.py ./outputs/results.parquet --export csv
+python scripts/manifest_inspect.py ./outputs/results.parquet --export csv
 ```
 
 ### Programmatic Usage
