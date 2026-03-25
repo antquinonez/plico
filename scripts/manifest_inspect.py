@@ -7,34 +7,34 @@
 Inspect Parquet Result Files
 
 Usage:
-    python scripts/inspect_parquet.py <parquet_file> [options]
+    python scripts/manifest_inspect.py <parquet_file> [options]
 
 Examples:
     # Show summary and data preview (first/last 10 rows)
-    python scripts/inspect_parquet.py ./outputs/results.parquet
+    python scripts/manifest_inspect.py ./outputs/results.parquet
 
     # Show only summary statistics
-    python scripts/inspect_parquet.py ./outputs/results.parquet --summary
+    python scripts/manifest_inspect.py ./outputs/results.parquet --summary
 
     # Show extended view with response column
-    python scripts/inspect_parquet.py ./outputs/results.parquet --extended
+    python scripts/manifest_inspect.py ./outputs/results.parquet --extended
 
     # Show full view with all columns
-    python scripts/inspect_parquet.py ./outputs/results.parquet --full
+    python scripts/manifest_inspect.py ./outputs/results.parquet --full
 
     # Show only failed executions
-    python scripts/inspect_parquet.py ./outputs/results.parquet --failed
+    python scripts/manifest_inspect.py ./outputs/results.parquet --failed
 
     # Show all rows (be careful with large files)
-    python scripts/inspect_parquet.py ./outputs/results.parquet --all
+    python scripts/manifest_inspect.py ./outputs/results.parquet --all
 
     # Export to CSV
-    python scripts/inspect_parquet.py ./outputs/results.parquet --export csv
+    python scripts/manifest_inspect.py ./outputs/results.parquet --export csv
 
     # Filter by status
-    python scripts/inspect_parquet.py ./outputs/results.parquet --status success
-    python scripts/inspect_parquet.py ./outputs/results.parquet --status failed
-    python scripts/inspect_parquet.py ./outputs/results.parquet --status skipped
+    python scripts/manifest_inspect.py ./outputs/results.parquet --status success
+    python scripts/manifest_inspect.py ./outputs/results.parquet --status failed
+    python scripts/manifest_inspect.py ./outputs/results.parquet --status skipped
 """
 
 import argparse

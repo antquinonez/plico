@@ -7,21 +7,21 @@
 Run Orchestration from Manifest Folder
 
 Usage:
-    python scripts/run_manifest.py <manifest_dir> [--client <client_type>] [--concurrency N]
+    python scripts/manifest_run.py <manifest_dir> [--client <client_type>] [--concurrency N]
 
 Examples:
     # Run with default settings
-    python scripts/run_manifest.py ./manifests/manifest_my_prompts
+    python scripts/manifest_run.py ./manifests/manifest_my_prompts
 
     # Run with specific client and concurrency
-    python scripts/run_manifest.py ./manifests/manifest_my_prompts --client mistral-small -c 4
+    python scripts/manifest_run.py ./manifests/manifest_my_prompts --client mistral-small -c 4
 
     # Dry run to validate manifest
-    python scripts/run_manifest.py ./manifests/manifest_my_prompts --dry-run
+    python scripts/manifest_run.py ./manifests/manifest_my_prompts --dry-run
 
 Output:
     Results are written to a parquet file:
-    ./outputs/YYYYMMDDHHMMSS_<workbook_basename>.parquet
+    ./outputs/<manifest_name>/<timestamp>.parquet
 """
 
 import argparse
@@ -160,7 +160,7 @@ def main():
     print(f"Failed:        {summary['failed']}")
     print("=" * 60 + "\n")
 
-    print(f"Inspect results: python scripts/inspect_parquet.py {parquet_path}\n")
+    print(f"Extract results: python scripts/manifest_extract.py {parquet_path} --save\n")
 
     return 0 if summary["failed"] == 0 else 1
 

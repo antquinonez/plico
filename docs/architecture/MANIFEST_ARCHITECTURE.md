@@ -233,7 +233,7 @@ Example: `outputs/20250301103000_my_prompts.parquet`
 ### Inspecting Results
 
 ```bash
-python scripts/inspect_parquet.py ./outputs/20250301103000_my_prompts.parquet
+python scripts/manifest_inspect.py ./outputs/20250301103000_my_prompts.parquet
 ```
 
 ## Data Flow
@@ -388,31 +388,31 @@ class ManifestOrchestrator:
 
 ```bash
 # Export to default manifest directory
-python scripts/export_manifest.py ./workbooks/my_prompts.xlsx
+python scripts/manifest_export.py ./workbooks/my_prompts.xlsx
 
 # Export to custom directory
-python scripts/export_manifest.py ./workbook.xlsx --output ./custom_manifest/
+python scripts/manifest_export.py ./workbook.xlsx --output ./custom_manifest/
 
 # Options
-python scripts/export_manifest.py ./workbook.xlsx -o ./manifests/
+python scripts/manifest_export.py ./workbook.xlsx -o ./manifests/
 ```
 
 ### Run from Manifest
 
 ```bash
 # Run with default settings
-python scripts/run_manifest.py ./manifests/manifest_my_prompts
+python scripts/manifest_run.py ./manifests/manifest_my_prompts
 
 # Run with specific client and concurrency
-python scripts/run_manifest.py ./manifests/manifest_my_prompts \
+python scripts/manifest_run.py ./manifests/manifest_my_prompts \
     --client mistral-small \
     --concurrency 4
 
 # Dry run to validate
-python scripts/run_manifest.py ./manifests/manifest_my_prompts --dry-run
+python scripts/manifest_run.py ./manifests/manifest_my_prompts --dry-run
 
 # Quiet mode
-python scripts/run_manifest.py ./manifests/manifest_my_prompts -q
+python scripts/manifest_run.py ./manifests/manifest_my_prompts -q
 ```
 
 ### CLI Options
@@ -493,7 +493,7 @@ parquet_path = orchestrator.run()
 
 ```bash
 # Export workbook to version-controlled manifest
-python scripts/export_manifest.py ./workbooks/experiments.xlsx -o ./manifests/
+python scripts/manifest_export.py ./workbooks/experiments.xlsx -o ./manifests/
 
 # Commit to git
 git add manifests/manifest_experiments/
@@ -528,7 +528,7 @@ jobs:
       - name: Run manifest
         env:
           MISTRALSMALL_KEY: ${{ secrets.MISTRALSMALL_KEY }}
-        run: python scripts/run_manifest.py ./manifests/manifest_experiments -c 4
+        run: python scripts/manifest_run.py ./manifests/manifest_experiments -c 4
       - name: Upload results
         uses: actions/upload-artifact@v4
         with:

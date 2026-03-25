@@ -14,3 +14,6 @@ docs/readmes/*
 manifests_test/*
 dont_track/*
 .env
+outputs/*
+.opencode/plans/*
+working_docs/*
