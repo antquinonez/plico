@@ -1118,7 +1118,7 @@ parquet_path = orchestrator.run()
 
 ## Sample Manifests
 
-Sample manifests are available in `manifests/samples/`:
+Sample manifests are available in `manifest_samples/`:
 
 ### linkedin_ai_post
 
@@ -1135,7 +1135,7 @@ Sample manifests are available in `manifests/samples/`:
 **Run:**
 ```bash
 # Run the manifest
-python scripts/manifest_run.py ./manifests/samples/linkedin_ai_post -c 2
+python scripts/manifest_run.py ./manifest_samples/linkedin_ai_post -c 2
 
 # Extract results (auto-detects output prompts from manifest.yaml)
 python scripts/manifest_extract.py ./outputs/linkedin_ai_post/<timestamp>.parquet --save
@@ -1152,4 +1152,4 @@ outputs/linkedin_ai_post/
     └── _summary.json
 ```
 
-**See:** `manifests/samples/README.md` for full documentation.
+**See:** `manifest_samples/README.md` for full documentation.
