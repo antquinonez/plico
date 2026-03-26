@@ -669,18 +669,20 @@ class TestFFAIBuildPrompt:
         from src.FFAI import FFAI
 
         ffai = FFAI(mock_ffmistralsmall)
-        result = ffai._build_prompt("Test prompt", history=None)
+        result, interpolated = ffai._build_prompt("Test prompt", history=None)
 
         assert result == "Test prompt"
+        assert interpolated == set()
 
     def test_build_prompt_empty_history_list(self, mock_ffmistralsmall):
         """Test building prompt with empty history list."""
         from src.FFAI import FFAI
 
         ffai = FFAI(mock_ffmistralsmall)
-        result = ffai._build_prompt("Test prompt", history=[])
+        result, interpolated = ffai._build_prompt("Test prompt", history=[])
 
         assert result == "Test prompt"
+        assert interpolated == set()
 
     def test_build_prompt_with_matching_history(self, mock_ffmistralsmall):
         """Test building prompt with matching history entries."""
@@ -691,11 +693,13 @@ class TestFFAIBuildPrompt:
             {"prompt_name": "prev", "prompt": "Previous Q", "response": "Previous A"}
         ]
 
-        result = ffai._build_prompt("New question", history=["prev"])
+        result, interpolated = ffai._build_prompt("New question", history=["prev"])
 
         assert "<conversation_history>" in result
         assert "Previous Q" in result
         assert "Previous A" in result
+        assert "New question" in result
+        assert interpolated == set()
 
     def test_build_prompt_missing_history_entry(self, mock_ffmistralsmall):
         """Test building prompt with missing history entry."""
@@ -704,9 +708,10 @@ class TestFFAIBuildPrompt:
         ffai = FFAI(mock_ffmistralsmall)
         ffai.prompt_attr_history = []
 
-        result = ffai._build_prompt("New question", history=["missing"])
+        result, interpolated = ffai._build_prompt("New question", history=["missing"])
 
         assert result == "New question"
+        assert interpolated == set()
 
     def test_build_prompt_multiple_history_entries(self, mock_ffmistralsmall):
         """Test building prompt with multiple history entries."""
@@ -718,12 +723,13 @@ class TestFFAIBuildPrompt:
             {"prompt_name": "q2", "prompt": "Q2", "response": "A2"},
         ]
 
-        result = ffai._build_prompt("New", history=["q1", "q2"])
+        result, interpolated = ffai._build_prompt("New", history=["q1", "q2"])
 
         assert "Q1" in result
         assert "A1" in result
         assert "Q2" in result
         assert "A2" in result
+        assert interpolated == set()
 
     def test_build_prompt_uses_latest_matching(self, mock_ffmistralsmall):
         """Test uses latest entry when multiple matches exist."""
@@ -735,10 +741,132 @@ class TestFFAIBuildPrompt:
             {"prompt_name": "q1", "prompt": "Q1 new", "response": "A1 new"},
         ]
 
-        result = ffai._build_prompt("New", history=["q1"])
+        result, interpolated = ffai._build_prompt("New", history=["q1"])
 
         assert "Q1 new" in result
         assert "A1 new" in result
+        assert interpolated == set()
+
+
+class TestVariableInterpolation:
+    """Tests for variable interpolation in prompts."""
+
+    def test_interpolate_basic(self, mock_ffmistralsmall):
+        """Test basic {{prompt.response}} interpolation."""
+        from src.FFAI import interpolate_prompt
+
+        history = {"q1": "Answer from Q1"}
+        prompt = "Based on: {{q1.response}}"
+
+        result, interpolated = interpolate_prompt(prompt, history)
+
+        assert result == "Based on: Answer from Q1"
+        assert interpolated == {"q1"}
+
+    def test_interpolate_multiple(self, mock_ffmistralsmall):
+        """Test multiple interpolation patterns."""
+        from src.FFAI import interpolate_prompt
+
+        history = {"q1": "A1", "q2": "A2"}
+        prompt = "Q1: {{q1.response}}\nQ2: {{q2.response}}"
+
+        result, interpolated = interpolate_prompt(prompt, history)
+
+        assert "Q1: A1" in result
+        assert "Q2: A2" in result
+        assert interpolated == {"q1", "q2"}
+
+    def test_interpolate_json_field(self, mock_ffmistralsmall):
+        """Test {{prompt.response.field}} JSON extraction."""
+        from src.FFAI import interpolate_prompt
+
+        history = {"q1": '{"name": "test", "value": 42}'}
+        prompt = "Name: {{q1.response.name}}, Value: {{q1.response.value}}"
+
+        result, interpolated = interpolate_prompt(prompt, history)
+
+        assert "Name: test, Value: 42" in result
+        assert interpolated == {"q1"}
+
+    def test_interpolate_nested_json(self, mock_ffmistralsmall):
+        """Test nested JSON field extraction."""
+        from src.FFAI import interpolate_prompt
+
+        history = {"q1": '{"outer": {"inner": "nested_value"}}'}
+        prompt = "Result: {{q1.response.outer.inner}}"
+
+        result, interpolated = interpolate_prompt(prompt, history)
+
+        assert "Result: nested_value" in result
+        assert interpolated == {"q1"}
+
+    def test_interpolate_array_index(self, mock_ffmistralsmall):
+        """Test array index extraction."""
+        from src.FFAI import interpolate_prompt
+
+        history = {"q1": '{"items": ["first", "second", "third"]}'}
+        prompt = "First: {{q1.response.items.0}}, Second: {{q1.response.items.1}}"
+
+        result, interpolated = interpolate_prompt(prompt, history)
+
+        assert "First: first, Second: second" in result
+        assert interpolated == {"q1"}
+
+    def test_interpolate_missing_prompt(self, mock_ffmistralsmall):
+        """Test interpolation with missing prompt reference."""
+        from src.FFAI import interpolate_prompt
+
+        history = {"q1": "A1"}
+        prompt = "Missing: {{q2.response}}"
+
+        result, interpolated = interpolate_prompt(prompt, history)
+
+        assert "Missing: {{q2.response}}" in result
+        assert interpolated == set()
+
+    def test_interpolate_invalid_json_field(self, mock_ffmistralsmall):
+        """Test interpolation with invalid JSON field."""
+        from src.FFAI import interpolate_prompt
+
+        history = {"q1": '{"name": "test"}'}
+        prompt = "Missing: {{q1.response.nonexistent}}"
+
+        result, interpolated = interpolate_prompt(prompt, history)
+
+        assert "Missing: " in result
+        assert interpolated == {"q1"}
+
+    def test_interpolate_no_patterns(self, mock_ffmistralsmall):
+        """Test prompt without interpolation patterns."""
+        from src.FFAI import interpolate_prompt
+
+        history = {"q1": "A1"}
+        prompt = "Just a regular prompt"
+
+        result, interpolated = interpolate_prompt(prompt, history)
+
+        assert result == "Just a regular prompt"
+        assert interpolated == set()
+
+    def test_extract_json_field(self, mock_ffmistralsmall):
+        """Test extract_json_field helper."""
+        from src.FFAI import extract_json_field
+
+        data = {"name": "test", "nested": {"value": 42}}
+        assert extract_json_field(data, "name") == "test"
+        assert extract_json_field(data, "nested.value") == "42"
+        assert extract_json_field(data, "nonexistent") == ""
+        assert extract_json_field(data, "nested.nonexistent") == ""
+
+    def test_extract_json_field_array(self, mock_ffmistralsmall):
+        """Test extract_json_field with arrays."""
+        from src.FFAI import extract_json_field
+
+        data = {"items": ["a", "b", "c"], "nested": {"arr": [1, 2, 3]}}
+        assert extract_json_field(data, "items.0") == "a"
+        assert extract_json_field(data, "items.2") == "c"
+        assert extract_json_field(data, "nested.arr.1") == "2"
+        assert extract_json_field(data, "items.10") == ""
 
 
 class TestFFAIGenerateResponseExtended:
