@@ -193,6 +193,7 @@ scripts/
 ├── export_manifest.py         # Export workbook to YAML manifest
 ├── run_manifest.py            # Run from manifest folder
 ├── inspect_parquet.py         # Inspect parquet results
+├── parquet_to_excel.py        # Export parquet results to Excel workbook
 ├── sample_workbook_*_create_v001.py    # Workbook creation scripts
 ├── sample_workbook_*_validate_v001.py  # Workbook validation scripts
 ├── try_ai_mistralsmall_script.py       # Quick test script
@@ -474,6 +475,9 @@ python scripts/manifest_extract.py ./outputs/20250301120000_my_prompts.parquet
 
 # Export results to files
 python scripts/manifest_extract.py ./outputs/results.parquet --output-dir ./extracted
+
+# Export parquet to Excel (includes resolved_prompt column)
+python scripts/parquet_to_excel.py ./outputs/results.parquet
 ```
 
 ## Config Worksheet Reference

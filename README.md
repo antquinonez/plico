@@ -262,7 +262,7 @@ Each prompt entry defines a node in the execution DAG. Dependencies are declared
 |-------|------|-------------|
 | `sequence` | `int` | Execution order (1-based). Prompts at the same level with no dependencies run in parallel. |
 | `prompt_name` | `str` | Unique identifier. Referenced by `history`, `condition` expressions, and `client` routing. |
-| `prompt` | `str` | The prompt text. Supports `{{variable}}` templating in batch mode. |
+| `prompt` | `str` | The prompt text. Supports `{{variable}}` templating in batch mode and `{{prompt_name.response}}` for referencing previous results. In output, `prompt` retains the original template while `resolved_prompt` contains the fully-resolved text. |
 | `history` | `list[str]` | `prompt_name` values whose responses are injected as conversation context. |
 | `client` | `str` | Name from `clients.yaml` to route this prompt to a specific client. `null` = default. |
 | `condition` | `str` | Expression evaluated at runtime. If falsy, the prompt is skipped (status: `"skipped"`). |
@@ -701,6 +701,16 @@ These columns map to `prompts.yaml` fields.
 | `query_expansion` | Override query expansion (`true`/`false`) |
 | `rerank` | Override reranking (`true`/`false`) |
 
+**Output columns** (written to results sheet in Excel, or as parquet columns via manifest):
+
+| Column | Description |
+|--------|-------------|
+| `prompt` | Original prompt template (with `{{}}` placeholders intact) |
+| `resolved_prompt` | Fully-resolved prompt sent to the AI (variables substituted, conversation history assembled) |
+| `response` | AI response text |
+| `status` | `success`, `failed`, or `skipped` |
+| `error` / `attempts` / `condition` / `condition_result` | Execution details |
+
 ### Workflow
 
 1. **Create template:** `python scripts/run_orchestrator.py analysis.xlsx`
@@ -791,7 +801,7 @@ client = FFLiteLLMClient(
 
 **AI-composability.** YAML manifests are machine-writable. AI systems can author, modify, and evolve workflows without code generation.
 
-**Auditability.** Every execution recorded: prompt, response, model, condition, error, retry. Manifest + Parquet = complete provenance.
+**Auditability.** Every execution recorded: prompt, resolved_prompt, response, model, condition, error, retry. Manifest + Parquet = complete provenance.
 
 **Batch processing.** Purpose-built for running workflows across multiple data inputs at the workflow definition level.
 
@@ -982,6 +992,7 @@ Plico/
 │   ├── export_manifest.py             # Convert workbook to manifest folder
 │   ├── run_manifest.py                # Execute manifest and write parquet
 │   ├── inspect_parquet.py             # Inspect/export parquet results
+│   ├── parquet_to_excel.py            # Export parquet results to Excel workbook
 │   └── sample_workbooks/              # Shared builders and validators
 ├── tests/                             # Unit and integration tests
 ├── manifests/                         # Exported YAML manifests

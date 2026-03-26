@@ -152,9 +152,35 @@ Results are written to a timestamped Parquet file:
 ./outputs/20250115100000_my_workflow.parquet
 ```
 
+**Parquet columns:**
+
+| Column | Description |
+|--------|-------------|
+| `prompt` | Original prompt template as written (with `{{variable}}` placeholders intact) |
+| `resolved_prompt` | Fully-resolved prompt sent to the AI (all `{{}}` variables substituted, conversation history assembled) |
+| `response` | AI-generated response text |
+| `status` | `"success"`, `"failed"`, or `"skipped"` |
+| `condition` | Condition expression (if any) |
+| `condition_result` | Evaluated condition value |
+| `error` | Error message (if failed) |
+| `attempts` | Number of retry attempts |
+| `client` | Client name used (multi-client mode) |
+| `batch_id` / `batch_name` | Batch identifiers (batch mode) |
+| `references` | Document references (JSON array) |
+| `semantic_query` | RAG query used |
+| `rerank` / `query_expansion` | RAG settings |
+| `sequence` / `prompt_name` / `history` | Execution metadata |
+
+> **`prompt` vs `resolved_prompt`:** The `prompt` column preserves your original template text (useful for auditing what you asked). The `resolved_prompt` column shows what was actually sent to the AI, including any `{{prompt_name.response}}` substitutions and the assembled `<conversation_history>` block. When a referenced prompt was **skipped** (condition evaluated to false), its `{{}}` pattern is replaced with an empty string in `resolved_prompt`.
+
 Inspect results:
 ```bash
 python scripts/manifest_inspect.py ./outputs/20250115100000_my_workflow.parquet
+```
+
+Export to Excel:
+```bash
+python scripts/parquet_to_excel.py ./outputs/20250115100000_my_workflow.parquet
 ```
 
 ---
@@ -217,7 +243,7 @@ Each prompt entry is a node in the execution DAG.
 |-------|------|----------|-------------|
 | `sequence` | `int` | Yes | Execution order (1-based). Same-level prompts with no dependencies run in parallel. |
 | `prompt_name` | `str` | Yes | Unique identifier. Referenced by `history`, `condition`, and `client`. |
-| `prompt` | `str` | Yes | The prompt text. Supports `{{variable}}` templating in batch mode. |
+| `prompt` | `str` | Yes | The prompt text. Supports `{{variable}}` templating in batch mode and `{{prompt_name.response}}` for referencing previous results. In the output parquet, `prompt` retains this original template while `resolved_prompt` contains the fully-resolved text. |
 | `history` | `list[str]` | No | `prompt_name` values whose responses are injected as context. |
 | `client` | `str` | No | Named client from `clients.yaml` for multi-model routing. |
 | `condition` | `str` | No | Expression for conditional execution. If falsy, prompt is skipped. |
@@ -286,6 +312,8 @@ prompt: "Analyze sales for {{region}} region, {{product}} product."
 ```
 
 Each prompt runs once per batch row. 2 prompts × 2 batches = 4 executions.
+
+> **Output note:** In the parquet results, the `prompt` column retains the original template (`{{region}}`, `{{product}}`), while the `resolved_prompt` column shows the substituted values (e.g., "Analyze sales for north region, widget_a product.").
 
 ---
 
@@ -495,6 +523,12 @@ prompts:
 
 Conditions are parsed via Python's AST module with a strict whitelist — no `eval()`, no imports, no arbitrary code execution.
 
+### Skipped Prompts and Variable References
+
+When a prompt is skipped (its condition evaluated to false), downstream prompts that reference it via `{{prompt_name.response}}` in their text will have those patterns replaced with an empty string in their `resolved_prompt`. The original template with `{{}}` placeholders is preserved in the `prompt` column.
+
+Example: if `force_ai_rewrite` is skipped, a prompt containing `{{force_ai_rewrite.response}}` will have that placeholder removed in `resolved_prompt` but kept in `prompt`.
+
 ---
 
 ## Declarative Context Assembly
@@ -533,6 +567,8 @@ SYSTEM: [response]
 ===
 Based on the conversation history above, please answer: Suggest 3 ways to reduce costs.
 ```
+
+> **`resolved_prompt` captures this full text.** The `resolved_prompt` column in the output parquet contains the entire assembled prompt sent to the AI — including the `<conversation_history>` block with all `{{prompt_name.response}}` references resolved, the separator, and the user's prompt text. The `prompt` column only contains the original `"Suggest 3 ways to reduce costs."` template.
 
 ---
 
@@ -1081,6 +1117,15 @@ python scripts/manifest_extract.py ./outputs/results.parquet --prompts final_pos
 
 # Save extracted results to files (outputs to <parquet_dir>/<timestamp>/)
 python scripts/manifest_extract.py ./outputs/results.parquet --save
+
+# Export parquet to Excel (includes resolved_prompt column)
+python scripts/parquet_to_excel.py ./outputs/results.parquet
+
+# Export specific columns to Excel
+python scripts/parquet_to_excel.py ./outputs/results.parquet --columns prompt_name,resolved_prompt,response
+
+# Export with status filter
+python scripts/parquet_to_excel.py ./outputs/results.parquet --status success
 ```
 
 **Output structure:**
@@ -1118,7 +1163,7 @@ parquet_path = orchestrator.run()
 
 ## Sample Manifests
 
-Sample manifests are available in `manifests/samples/`:
+Sample manifests are available in `manifest_samples/`:
 
 ### linkedin_ai_post
 
@@ -1135,7 +1180,7 @@ Sample manifests are available in `manifests/samples/`:
 **Run:**
 ```bash
 # Run the manifest
-python scripts/manifest_run.py ./manifests/samples/linkedin_ai_post -c 2
+python scripts/manifest_run.py ./manifest_samples/linkedin_ai_post -c 2
 
 # Extract results (auto-detects output prompts from manifest.yaml)
 python scripts/manifest_extract.py ./outputs/linkedin_ai_post/<timestamp>.parquet --save
@@ -1152,4 +1197,4 @@ outputs/linkedin_ai_post/
     └── _summary.json
 ```
 
-**See:** `manifests/samples/README.md` for full documentation.
+**See:** `manifest_samples/README.md` for full documentation.

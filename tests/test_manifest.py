@@ -296,6 +296,7 @@ class TestManifestOrchestratorOutput:
             "sequence",
             "prompt_name",
             "prompt",
+            "resolved_prompt",
             "history",
             "client",
             "condition",

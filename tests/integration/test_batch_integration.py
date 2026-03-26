@@ -165,7 +165,7 @@ class TestBatchResults:
         for row in ws.iter_rows(min_row=2, values_only=True):
             if row[0] is not None:
                 results_count += 1
-                assert row[10] is not None, "batch_name should be populated"
+                assert row[1] is not None, "batch_name should be populated"
 
         assert results_count == 3, f"Should have 3 results, got {results_count}"
 
@@ -241,7 +241,7 @@ class TestBatchRealAPI:
         for row in ws.iter_rows(min_row=2, values_only=True):
             if row[0] is not None:
                 batch_name = row[1]
-                response = row[10]
+                response = row[11]
                 batch_results[batch_name] = response
 
         assert "north_widget_a" in batch_results

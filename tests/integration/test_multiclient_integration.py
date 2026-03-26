@@ -56,7 +56,7 @@ class TestMultiClientExecution:
             results = {}
             for row in ws.iter_rows(min_row=2, values_only=True):
                 if row[2] is not None:
-                    results[row[3]] = {"client": row[6], "response": row[10]}
+                    results[row[3]] = {"client": row[7], "response": row[11]}
 
             assert results["task1"]["client"] == "fast", (
                 f"task1 should use 'fast' client, got {results['task1']['client']}"
@@ -156,9 +156,9 @@ class TestMultiClientRealAPI:
         for row in ws.iter_rows(min_row=2, values_only=True):
             if row[2] is not None:
                 results[row[3]] = {
-                    "client": row[6],
-                    "response": row[10],
-                    "status": row[11],
+                    "client": row[7],
+                    "response": row[11],
+                    "status": row[12],
                 }
 
         for task_name, data in results.items():

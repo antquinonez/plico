@@ -432,6 +432,7 @@ class ManifestOrchestrator(OrchestratorBase):
                 "sequence": r["sequence"],
                 "prompt_name": r.get("prompt_name"),
                 "prompt": r.get("prompt"),
+                "resolved_prompt": r.get("resolved_prompt"),
                 "history": json.dumps(r.get("history")) if r.get("history") else None,
                 "client": r.get("client"),
                 "condition": r.get("condition"),

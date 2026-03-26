@@ -187,7 +187,7 @@ class TestOrchestratorRetries:
 
         for row in ws.iter_rows(min_row=2, values_only=True):
             if row[2] == 1:
-                assert row[11] == "success", "Status should be success after retry"
+                assert row[12] == "success", "Status should be success after retry"
                 assert call_count[0] >= 2, f"Should have retried, got {call_count[0]} calls"
                 return
 
@@ -234,10 +234,10 @@ class TestOrchestratorRetries:
 
         for row in ws.iter_rows(min_row=2, values_only=True):
             if row[2] == 1:
-                assert row[11] == "failed", "Status should be failed"
-                assert row[13] is not None, "Should have error message"
-                assert "Permanent failure" in str(row[13]), (
-                    f"Error message should contain 'Permanent failure', got {row[13]}"
+                assert row[12] == "failed", "Status should be failed"
+                assert row[14] is not None, "Should have error message"
+                assert "Permanent failure" in str(row[14]), (
+                    f"Error message should contain 'Permanent failure', got {row[14]}"
                 )
                 return
 
@@ -300,7 +300,7 @@ class TestOrchestratorFailurePropagation:
         results = {}
         for row in ws.iter_rows(min_row=2, values_only=True):
             if row[2] is not None:
-                results[row[3]] = {"status": row[11], "response": row[10]}
+                results[row[3]] = {"status": row[12], "response": row[11]}
 
         assert results["failing"]["status"] == "failed", "First prompt should fail"
 
@@ -347,7 +347,7 @@ class TestOrchestratorRealAPI:
         responses = {}
         for row in ws.iter_rows(min_row=2, values_only=True):
             if row[2] is not None:
-                responses[row[3]] = row[10]
+                responses[row[3]] = row[11]
 
         assert responses["greeting"] is not None
         assert responses["math"] is not None

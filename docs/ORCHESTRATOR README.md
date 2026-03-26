@@ -261,11 +261,12 @@ Batch execution allows running the same prompt chain multiple times with differe
 | `batch_name` | Resolved batch name |
 | `sequence` | Prompt sequence |
 | `prompt_name` | Prompt name |
-| `prompt` | Resolved prompt (with variables substituted) |
+| `prompt` | Original prompt template (with `{{}}` placeholders intact) |
+| `resolved_prompt` | Fully-resolved prompt sent to the AI (variables substituted, conversation history assembled) |
 | `history` | Dependencies |
 | `client` | Client used |
 | `response` | AI response |
-| `status` | `success` or `failed` |
+| `status` | `success`, `failed`, or `skipped` |
 | `attempts` | Retry attempts |
 | `error` | Error message if failed |
 

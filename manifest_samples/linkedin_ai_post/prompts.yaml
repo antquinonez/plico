@@ -1,0 +1,1225 @@
+prompts:
+  # ============================================
+  # PHASE 1: RESEARCH
+  # ============================================
+
+  - sequence: 1
+    prompt_name: "find_stories"
+    prompt: |
+      Search for trending AI stories from the PAST 7 DAYS ONLY. Today's date is 2026-03-24.
+
+      Search queries to use (try ALL of these):
+      - "AI news March 2026"
+      - "artificial intelligence announcement March 24 2026"
+      - "LLM model release March 2026"
+      - "AI company news March 2026"
+      - "machine learning breakthrough March 2026"
+      - "AI agent announcement 2026"
+      - "new AI model launched March 2026"
+
+      FOCUS: Stories MUST be centrally about artificial intelligence, machine learning, LLMs, AI agents, or AI research.
+      REJECT: Stories where AI is merely mentioned or tangential.
+      REJECT: Stories older than 7 days (before March 17, 2026).
+
+      Find 7-10 stories with these priorities:
+      - RECENCY: Stories from the past 48 hours are gold, past 7 days acceptable
+      - IMPACT: Prefer stories affecting real users/businesses
+      - NOVELTY: Genuine surprises, not incremental updates
+      - ENGAGEMENT: Stories that would make people stop scrolling
+
+      For each story, provide:
+      1. Headline (specific, include the AI tech/company name)
+      2. Publication date (MUST include)
+      3. Key facts (2-3 sentences with specific AI details)
+      4. Why it matters for AI (1 sentence)
+      5. Primary source URL (the most credible link to this story)
+      6. Source credibility (high/medium/low)
+      7. Recency score (1-10: 10 = today, 7 = past 48h, 5 = past week)
+      8. Impact score (1-10: how many people does this affect?)
+    history: []
+    client: "researcher"
+    condition: null
+    references: []
+    semantic_query: null
+    semantic_filter: null
+    query_expansion: null
+    rerank: null
+
+  - sequence: 2
+    prompt_name: "validate_stories_ai_focus"
+    prompt: |
+      Validate that these stories are CENTRALLY about AI, not just mentioning it tangentially:
+
+      {{find_stories.response}}
+
+      For each story, determine:
+      - Is AI the main subject? (not just mentioned)
+      - Would removing AI make the story meaningless?
+      - Is there specific AI technology discussed?
+      - Is the story from the past 7 days?
+
+      Output as JSON:
+      {
+        "stories_validated": [
+          {"headline": "...", "is_ai_central": true/false, "ai_technology_mentioned": "...", "recency_score": 8}
+        ],
+        "stories_rejected": ["headline1", "headline2"],
+        "validation_passed": true/false,
+        "rejection_reasons": ["reason1", "reason2"]
+      }
+    history: ["find_stories"]
+    client: "analyst"
+    condition: null
+    references: []
+    semantic_query: null
+    semantic_filter: null
+    query_expansion: null
+    rerank: null
+
+  - sequence: 3
+    prompt_name: "select_best"
+    prompt: |
+      Review these AI stories and select the ONE best candidate for a LinkedIn post.
+
+      IMPORTANT: The story MUST be centrally about AI technology. Reject any story where AI is peripheral.
+
+      Stories:
+      {{find_stories.response}}
+
+      Validation results:
+      {{validate_stories_ai_focus.response}}
+
+      Selection criteria (in order of priority):
+      1. RECENCY (weight: 30%) - Prefer stories from past 48 hours
+      2. IMPACT (weight: 25%) - Stories affecting real users/businesses
+      3. ENGAGEMENT POTENTIAL (weight: 20%) - Will people want to comment?
+      4. AI CENTRALITY (weight: 15%) - AI must be the core topic
+      5. AUTHENTIC ANGLE (weight: 10%) - Can you say something real about it?
+
+      Calculate composite score and explain your choice.
+
+      Output as JSON:
+      {
+        "selected_headline": "string",
+        "source_url": "https://...",
+        "publication_date": "YYYY-MM-DD",
+        "recency_score": 9,
+        "impact_score": 8,
+        "engagement_score": 8,
+        "composite_score": 8.3,
+        "why_selected": "string explaining recency and impact",
+        "angle": "string",
+        "ai_technology_at_stake": "what specific AI tech is this about",
+        "potential_hooks": ["string", "string", "string"]
+      }
+    history: ["find_stories", "validate_stories_ai_focus"]
+    client: "analyst"
+    condition: null
+    references: []
+    semantic_query: null
+    semantic_filter: null
+    query_expansion: null
+    rerank: null
+
+  # ============================================
+  # PHASE 2: MULTI-DRAFT CREATION
+  # ============================================
+
+  - sequence: 4
+    prompt_name: "draft_hook_first"
+    prompt: |
+      Write a LinkedIn post about this AI story using a HOOK-FIRST approach.
+
+      CRITICAL REQUIREMENT: This post MUST be about the AI story below. Your post MUST:
+      - Discuss the specific AI technology mentioned
+      - Reference specific details from the story
+      - Stay anchored to the actual news event
+
+      SELECTED STORY:
+      {{select_best.response}}
+
+      Structure:
+      1. Lead with the most surprising/interesting specific AI detail
+      2. Add context about the AI technology involved
+      3. Give your take on what this means for AI/tech/industry
+      4. End with something that makes people want to respond
+
+      Rules:
+      - No "In today's world" or similar openers
+      - Start with the AI-related detail immediately
+      - Be specific: use AI model names, companies, technical details
+      - Sound like you're telling a friend about this AI news
+      - 300-400 words
+      - The post MUST mention AI, the technology, and the company/product by name
+    history: ["select_best"]
+    client: "writer"
+    condition: null
+    references: []
+    semantic_query: null
+    semantic_filter: null
+    query_expansion: null
+    rerank: null
+
+  - sequence: 5
+    prompt_name: "draft_story_first"
+    prompt: |
+      Write a LinkedIn post about this AI story using a STORY-FIRST approach.
+
+      CRITICAL REQUIREMENT: This post MUST be about the AI story below. Your post MUST:
+      - Discuss the specific AI technology mentioned
+      - Reference specific details from the story
+      - Stay anchored to the actual news event
+
+      SELECTED STORY:
+      {{select_best.response}}
+
+      Structure:
+      1. Set the scene with a specific moment or detail about the AI announcement
+      2. Build tension or interest around what this AI tech can do
+      3. Deliver your key insight about AI implications
+      4. Land on something memorable
+
+      Rules:
+      - Open with action or a specific moment related to AI
+      - Create narrative momentum about the technology
+      - Your opinion about AI should emerge naturally
+      - End with impact, not a summary
+      - 300-400 words
+      - The post MUST mention AI, the technology, and the company/product by name
+    history: ["select_best"]
+    client: "writer"
+    condition: null
+    references: []
+    semantic_query: null
+    semantic_filter: null
+    query_expansion: null
+    rerank: null
+
+  - sequence: 6
+    prompt_name: "draft_contrarian"
+    prompt: |
+      Write a LinkedIn post about this AI story using a CONTRARIAN approach.
+
+      CRITICAL REQUIREMENT: This post MUST be about the AI story below. Your post MUST:
+      - Discuss the specific AI technology mentioned
+      - Reference specific details from the story
+      - Stay anchored to the actual news event
+
+      SELECTED STORY:
+      {{select_best.response}}
+
+      Structure:
+      1. State the common take on this AI development
+      2. Pivot to your different perspective on the AI tech
+      3. Back it up with reasoning about AI capabilities/limitations
+      4. Invite genuine debate about AI's role
+
+      Rules:
+      - The contrarian take must be genuine about the AI tech, not manufactured
+      - Avoid "hot take" energy - be thoughtful about AI
+      - Use "but" or "however" only once
+      - Don't be provocative just for attention
+      - 300-400 words
+      - The post MUST mention AI, the technology, and the company/product by name
+    history: ["select_best"]
+    client: "writer"
+    condition: null
+    references: []
+    semantic_query: null
+    semantic_filter: null
+    query_expansion: null
+    rerank: null
+
+  # ============================================
+  # PHASE 3: AUTHENTICITY + AI FOCUS CHECKS
+  # ============================================
+
+  - sequence: 7
+    prompt_name: "check_hook_first"
+    prompt: |
+      Analyze this LinkedIn draft for:
+      1. AI-generated clichés and authenticity
+      2. AI TOPIC FOCUS (critical)
+
+      ---
+      {{draft_hook_first.response}}
+      ---
+
+      SELECTED STORY (for reference):
+      {{select_best.response}}
+
+      AI FOCUS VALIDATION:
+      □ Is AI mentioned specifically? (not just implied)
+      □ Is the specific AI technology/product named?
+      □ Is the company/product from the story mentioned?
+      □ Would this post make sense without the AI story context?
+      □ Score 0-10 on AI centrality (10 = entirely about the AI story)
+
+      RED FLAGS (each found = -2 points):
+      - "In today's world" / "In an era where" / "In our increasingly X world"
+      - "It's not X, it's Y" pattern
+      - "The real question is..." / "Here's the thing:" / "Let's be clear:"
+      - Starting with "Look,"
+      - "What this means for you:" / "The bottom line:"
+      - "Picture this" / "Imagine a world where"
+      - "Let's dive in" / "Let's unpack this" / "Unpacking"
+      - "At the end of the day" / "Game-changer" / "This changes everything"
+      - Rhetorical question as opener
+      - More than 2 em-dashes
+      - "Moreover" / "Furthermore" / "In addition"
+      - "In conclusion" / "To summarize" / "The takeaway"
+      - 3+ sentences starting same way
+      - Vague phrases without specifics
+      - "The implications are profound" or similar drama
+
+      Output as JSON:
+      {
+        "red_flags_found": ["flag1", "flag2"],
+        "authenticity_score": 8,
+        "ai_focus_score": 9,
+        "ai_technology_mentioned": "specific tech name",
+        "company_mentioned": "company name",
+        "stays_on_topic": true/false,
+        "topic_drift_detected": true/false,
+        "specific_issues": ["quote - explanation"],
+        "strengths": ["what sounds genuine"]
+      }
+    history: ["draft_hook_first", "select_best"]
+    client: "analyst"
+    condition: null
+    references: []
+    semantic_query: null
+    semantic_filter: null
+    query_expansion: null
+    rerank: null
+
+  - sequence: 8
+    prompt_name: "check_story_first"
+    prompt: |
+      Analyze this LinkedIn draft for:
+      1. AI-generated clichés and authenticity
+      2. AI TOPIC FOCUS (critical)
+
+      ---
+      {{draft_story_first.response}}
+      ---
+
+      SELECTED STORY (for reference):
+      {{select_best.response}}
+
+      AI FOCUS VALIDATION:
+      □ Is AI mentioned specifically? (not just implied)
+      □ Is the specific AI technology/product named?
+      □ Is the company/product from the story mentioned?
+      □ Would this post make sense without the AI story context?
+      □ Score 0-10 on AI centrality (10 = entirely about the AI story)
+
+      RED FLAGS (each found = -2 points):
+      - "In today's world" / "In an era where" / "In our increasingly X world"
+      - "It's not X, it's Y" pattern
+      - "The real question is..." / "Here's the thing:" / "Let's be clear:"
+      - Starting with "Look,"
+      - "What this means for you:" / "The bottom line:"
+      - "Picture this" / "Imagine a world where"
+      - "Let's dive in" / "Let's unpack this" / "Unpacking"
+      - "At the end of the day" / "Game-changer" / "This changes everything"
+      - Rhetorical question as opener
+      - More than 2 em-dashes
+      - "Moreover" / "Furthermore" / "In addition"
+      - "In conclusion" / "To summarize" / "The takeaway"
+      - 3+ sentences starting same way
+      - Vague phrases without specifics
+      - "The implications are profound" or similar drama
+
+      Output as JSON:
+      {
+        "red_flags_found": ["flag1", "flag2"],
+        "authenticity_score": 8,
+        "ai_focus_score": 9,
+        "ai_technology_mentioned": "specific tech name",
+        "company_mentioned": "company name",
+        "stays_on_topic": true/false,
+        "topic_drift_detected": true/false,
+        "specific_issues": ["quote - explanation"],
+        "strengths": ["what sounds genuine"]
+      }
+    history: ["draft_story_first", "select_best"]
+    client: "analyst"
+    condition: null
+    references: []
+    semantic_query: null
+    semantic_filter: null
+    query_expansion: null
+    rerank: null
+
+  - sequence: 9
+    prompt_name: "check_contrarian"
+    prompt: |
+      Analyze this LinkedIn draft for:
+      1. AI-generated clichés and authenticity
+      2. AI TOPIC FOCUS (critical)
+
+      ---
+      {{draft_contrarian.response}}
+      ---
+
+      SELECTED STORY (for reference):
+      {{select_best.response}}
+
+      AI FOCUS VALIDATION:
+      □ Is AI mentioned specifically? (not just implied)
+      □ Is the specific AI technology/product named?
+      □ Is the company/product from the story mentioned?
+      □ Would this post make sense without the AI story context?
+      □ Score 0-10 on AI centrality (10 = entirely about the AI story)
+
+      RED FLAGS (each found = -2 points):
+      - "In today's world" / "In an era where" / "In our increasingly X world"
+      - "It's not X, it's Y" pattern
+      - "The real question is..." / "Here's the thing:" / "Let's be clear:"
+      - Starting with "Look,"
+      - "What this means for you:" / "The bottom line:"
+      - "Picture this" / "Imagine a world where"
+      - "Let's dive in" / "Let's unpack this" / "Unpacking"
+      - "At the end of the day" / "Game-changer" / "This changes everything"
+      - Rhetorical question as opener
+      - More than 2 em-dashes
+      - "Moreover" / "Furthermore" / "In addition"
+      - "In conclusion" / "To summarize" / "The takeaway"
+      - 3+ sentences starting same way
+      - Vague phrases without specifics
+      - "The implications are profound" or similar drama
+
+      Output as JSON:
+      {
+        "red_flags_found": ["flag1", "flag2"],
+        "authenticity_score": 8,
+        "ai_focus_score": 9,
+        "ai_technology_mentioned": "specific tech name",
+        "company_mentioned": "company name",
+        "stays_on_topic": true/false,
+        "topic_drift_detected": true/false,
+        "specific_issues": ["quote - explanation"],
+        "strengths": ["what sounds genuine"]
+      }
+    history: ["draft_contrarian", "select_best"]
+    client: "analyst"
+    condition: null
+    references: []
+    semantic_query: null
+    semantic_filter: null
+    query_expansion: null
+    rerank: null
+
+  # ============================================
+  # PHASE 4: DRAFT SELECTION
+  # ============================================
+
+  - sequence: 10
+    prompt_name: "select_draft"
+    prompt: |
+      Choose the best draft based on content quality, authenticity, AND AI TOPIC FOCUS.
+
+      SELECTED STORY (anchor):
+      {{select_best.response}}
+
+      DRAFT 1 (Hook-First):
+      Authenticity: {{check_hook_first.response}}
+      Content: {{draft_hook_first.response}}
+
+      DRAFT 2 (Story-First):
+      Authenticity: {{check_story_first.response}}
+      Content: {{draft_story_first.response}}
+
+      DRAFT 3 (Contrarian):
+      Authenticity: {{check_contrarian.response}}
+      Content: {{draft_contrarian.response}}
+
+      Selection criteria (AI focus is non-negotiable):
+      1. AI topic focus score (weight: 40%) - MUST be 7+ or reject
+      2. Authenticity score (weight: 25%)
+      3. Engagement potential (weight: 20%)
+      4. Clarity of point of view (weight: 15%)
+
+      Output as JSON:
+      {
+        "selected": 1,
+        "composite_score": 8.2,
+        "ai_focus_score": 9,
+        "rationale": "why this draft wins",
+        "improvement_areas": ["what needs work"],
+        "ai_topic_validated": true/false
+      }
+    history: ["select_best", "draft_hook_first", "draft_story_first", "draft_contrarian", "check_hook_first", "check_story_first", "check_contrarian"]
+    client: "analyst"
+    condition: null
+    references: []
+    semantic_query: null
+    semantic_filter: null
+    query_expansion: null
+    rerank: null
+
+  # ============================================
+  # PHASE 5: DEEP RESEARCH
+  # ============================================
+
+  - sequence: 11
+    prompt_name: "deep_research"
+    prompt: |
+      Research deeper details on the selected AI story:
+
+      {{select_best.response}}
+
+      Find:
+      1. Specific numbers (users, dollars, percentages, dates)
+      2. Named individuals involved (CEOs, researchers, engineers)
+      3. Technical AI details (model architecture, capabilities, benchmarks)
+      4. Historical context (what AI came before, how we got here)
+      5. One surprising or counterintuitive fact about the AI tech
+
+      Focus on AI-specific information that would make the post more credible.
+    history: ["select_best"]
+    client: "researcher"
+    condition: null
+    references: []
+    semantic_query: null
+    semantic_filter: null
+    query_expansion: null
+    rerank: null
+
+  - sequence: 12
+    prompt_name: "related_insights"
+    prompt: |
+      Find 2-3 related AI stories or trends that connect to this one:
+
+      {{select_best.response}}
+
+      Look for:
+      - Similar AI developments in the past year
+      - Competitor AI responses or parallel moves
+      - Broader AI trend this fits into
+      - Unexpected connections to AI in other industries
+
+      These should provide AI context that makes the main story more interesting.
+    history: ["select_best"]
+    client: "researcher"
+    condition: null
+    references: []
+    semantic_query: null
+    semantic_filter: null
+    query_expansion: null
+    rerank: null
+
+  # ============================================
+  # PHASE 6: ENRICHMENT
+  # ============================================
+
+  - sequence: 13
+    prompt_name: "enrich_draft"
+    prompt: |
+      Enhance the selected draft with AI research while maintaining its voice.
+
+      CRITICAL: The post MUST remain centered on the AI story. Do NOT drift to generic business advice.
+
+      SELECTED STORY (you MUST write about this):
+      {{select_best.response}}
+
+      Use the selected draft (1, 2, or 3 based on select_draft.selected value).
+      If selected=1, use: {{draft_hook_first.response}}
+      If selected=2, use: {{draft_story_first.response}}
+      If selected=3, use: {{draft_contrarian.response}}
+
+      NEW AI RESEARCH TO INCORPORATE:
+      {{deep_research.response}}
+
+      RELATED AI CONTEXT:
+      {{related_insights.response}}
+
+      SELECTION FEEDBACK:
+      {{select_draft.response}}
+
+      Rules for enhancement:
+      1. Add 1-2 specific AI details from research (don't overstuff)
+      2. Keep the original voice and structure
+      3. MUST mention AI, the specific technology, and company by name
+      4. Remove any remaining vague statements
+      5. Strengthen the ending if possible
+      6. Stay under 400 words
+      7. Do NOT drift to generic business/marketing advice
+
+      Output the enriched draft only, no meta-commentary.
+    history: ["select_best", "select_draft", "draft_hook_first", "draft_story_first", "draft_contrarian", "deep_research", "related_insights"]
+    client: "writer"
+    condition: null
+    references: []
+    semantic_query: null
+    semantic_filter: null
+    query_expansion: null
+    rerank: null
+
+  # ============================================
+  # PHASE 7: AI TOPIC VALIDATION GATE
+  # ============================================
+
+  - sequence: 14
+    prompt_name: "validate_ai_topic"
+    prompt: |
+      CRITICAL CHECK: Does this draft stay on the AI topic?
+
+      SELECTED STORY (the original topic):
+      {{select_best.response}}
+
+      DRAFT TO VALIDATE:
+      {{enrich_draft.response}}
+
+      Check:
+      1. Is the AI technology from the story mentioned by name?
+      2. Is the company/product from the story mentioned?
+      3. Is the post about the specific AI news event?
+      4. Could this post exist without the AI story? (if yes, FAIL)
+      5. Score AI centrality 0-10 (10 = entirely anchored to the AI story)
+
+      Output as JSON:
+      {
+        "ai_mentioned": true/false,
+        "specific_tech_named": "tech name or null",
+        "company_named": "company name or null",
+        "story_anchored": true/false,
+        "ai_centrality_score": 8,
+        "topic_drift_detected": true/false,
+        "drift_description": "what drifted or null",
+        "pass": true/false,
+        "required_fixes": ["fix1", "fix2"]
+      }
+    history: ["select_best", "enrich_draft"]
+    client: "analyst"
+    condition: null
+    references: []
+    semantic_query: null
+    semantic_filter: null
+    query_expansion: null
+    rerank: null
+
+  - sequence: 15
+    prompt_name: "force_ai_rewrite"
+    prompt: |
+      The previous draft drifted from the AI topic. You MUST rewrite it to be about the AI story.
+
+      ORIGINAL AI STORY (write about THIS):
+      {{select_best.response}}
+
+      DRIFTED DRAFT:
+      {{enrich_draft.response}}
+
+      VALIDATION FEEDBACK:
+      {{validate_ai_topic.response}}
+
+      REWRITE RULES:
+      1. The post MUST be about the specific AI technology in the story
+      2. The post MUST mention the company/product by name
+      3. The post MUST reference specific details from the AI news
+      4. The post MUST NOT drift to generic business/marketing advice
+      5. Keep what worked from the original draft
+      6. 300-400 words
+
+      Output the rewritten draft only.
+    history: ["select_best", "enrich_draft", "validate_ai_topic"]
+    client: "writer"
+    condition: 'json_get({{validate_ai_topic.response}}, "pass") == False'
+    references: []
+    semantic_query: null
+    semantic_filter: null
+    query_expansion: null
+    rerank: null
+
+  # ============================================
+  # PHASE 8: REVISION CYCLE 1
+  # ============================================
+
+  - sequence: 16
+    prompt_name: "evaluate_v1"
+    prompt: |
+      Evaluate this draft on multiple dimensions:
+
+      SELECTED STORY (for AI topic reference):
+      {{select_best.response}}
+
+      DRAFT:
+      {{enrich_draft.response}}
+      {{force_ai_rewrite.response}}
+
+      Score each 1-10:
+
+      1. AI TOPIC FOCUS (critical)
+         - AI technology named: [yes/no]
+         - Company/product named: [yes/no]
+         - Story anchored: [yes/no]
+         - Score: [number]
+
+      2. AUTHENTICITY (sounds like a real person)
+         - Red flags checked: [list any found]
+         - Score: [number]
+
+      3. SPECIFICITY (uses concrete AI details)
+         - AI details present: [list them]
+         - Vague phrases: [list any]
+         - Score: [number]
+
+      4. ENGAGEMENT (makes reader want to respond)
+         - What triggers engagement: [explain]
+         - Score: [number]
+
+      5. CLARITY (point of view is clear)
+         - The main point about AI: [one sentence]
+         - Score: [number]
+
+      6. MEMORABILITY (will reader remember this)
+         - Most memorable element: [quote it]
+         - Score: [number]
+
+      Output as JSON:
+      {
+        "ai_focus_score": 9,
+        "authenticity_score": 8,
+        "specificity_score": 7,
+        "engagement_score": 8,
+        "clarity_score": 9,
+        "memorability_score": 7,
+        "overall_score": 7.8,
+        "topic_drift_detected": false,
+        "red_flags_remaining": ["flag1"],
+        "revision_priorities": ["issue1", "issue2", "issue3"]
+      }
+    history: ["select_best", "enrich_draft", "force_ai_rewrite"]
+    client: "analyst"
+    condition: null
+    references: []
+    semantic_query: null
+    semantic_filter: null
+    query_expansion: null
+    rerank: null
+
+  - sequence: 17
+    prompt_name: "revise_v1"
+    prompt: |
+      Revise this draft based on evaluation feedback.
+
+      CRITICAL: Keep the post centered on the AI story. Do NOT drift.
+
+      SELECTED AI STORY (stay anchored to this):
+      {{select_best.response}}
+
+      CURRENT DRAFT:
+      {{enrich_draft.response}}
+      {{force_ai_rewrite.response}}
+
+      EVALUATION:
+      {{evaluate_v1.response}}
+
+      REVISION GUIDELINES:
+      1. Address the top 3 issues identified
+      2. Remove any remaining AI clichés
+      3. Strengthen weak areas
+      4. Keep what's working
+      5. Stay under 400 words
+      6. MUST remain about the AI story - no drift to generic advice
+
+      Output the revised draft only.
+    history: ["select_best", "enrich_draft", "force_ai_rewrite", "evaluate_v1"]
+    client: "writer"
+    condition: 'json_get({{evaluate_v1.response}}, "overall_score") < 7.5'
+    references: []
+    semantic_query: null
+    semantic_filter: null
+    query_expansion: null
+    rerank: null
+
+  # ============================================
+  # PHASE 9: REVISION CYCLE 2
+  # ============================================
+
+  - sequence: 18
+    prompt_name: "evaluate_v2"
+    prompt: |
+      Evaluate this revised draft:
+
+      SELECTED AI STORY (for reference):
+      {{select_best.response}}
+
+      DRAFT:
+      {{revise_v1.response}}
+      {{enrich_draft.response}}
+      {{force_ai_rewrite.response}}
+
+      Score each 1-10:
+
+      1. AI TOPIC FOCUS - is it still about the AI story?
+      2. AUTHENTICITY (sounds like a real person)
+      3. SPECIFICITY (uses concrete AI details)
+      4. ENGAGEMENT (makes reader want to respond)
+      5. CLARITY (point of view is clear)
+      6. MEMORABILITY (will reader remember this)
+
+      Output as JSON:
+      {
+        "ai_focus_score": 9,
+        "authenticity_score": 8,
+        "specificity_score": 8,
+        "engagement_score": 8,
+        "clarity_score": 9,
+        "memorability_score": 8,
+        "overall_score": 8.2,
+        "improvement_from_v1": "+0.4",
+        "topic_drift_detected": false,
+        "revision_priorities": ["remaining issues"]
+      }
+    history: ["select_best", "revise_v1", "enrich_draft", "force_ai_rewrite", "evaluate_v1"]
+    client: "analyst"
+    condition: null
+    references: []
+    semantic_query: null
+    semantic_filter: null
+    query_expansion: null
+    rerank: null
+
+  - sequence: 19
+    prompt_name: "revise_v2"
+    prompt: |
+      Second revision based on feedback.
+
+      CRITICAL: Keep the post centered on the AI story.
+
+      SELECTED AI STORY:
+      {{select_best.response}}
+
+      CURRENT DRAFT:
+      {{revise_v1.response}}
+      {{enrich_draft.response}}
+      {{force_ai_rewrite.response}}
+
+      EVALUATION:
+      {{evaluate_v2.response}}
+
+      Focus on:
+      1. Remaining authenticity issues
+      2. Sharpening the hook or ending
+      3. Adding one more specific AI detail if vague
+      4. Polishing sentence variety
+      5. No topic drift
+
+      Output the revised draft only.
+    history: ["select_best", "revise_v1", "enrich_draft", "force_ai_rewrite", "evaluate_v2"]
+    client: "writer"
+    condition: 'json_get({{evaluate_v2.response}}, "overall_score") < 8.0'
+    references: []
+    semantic_query: null
+    semantic_filter: null
+    query_expansion: null
+    rerank: null
+
+  # ============================================
+  # PHASE 10: REVISION CYCLE 3
+  # ============================================
+
+  - sequence: 20
+    prompt_name: "evaluate_v3"
+    prompt: |
+      Final evaluation of this draft:
+
+      SELECTED AI STORY:
+      {{select_best.response}}
+
+      DRAFT:
+      {{revise_v2.response}}
+      {{revise_v1.response}}
+      {{enrich_draft.response}}
+      {{force_ai_rewrite.response}}
+
+      Score each 1-10:
+
+      1. AI TOPIC FOCUS - still about the AI story?
+      2. AUTHENTICITY (sounds like a real person)
+      3. SPECIFICITY (uses concrete AI details)
+      4. ENGAGEMENT (makes reader want to respond)
+      5. CLARITY (point of view is clear)
+      6. MEMORABILITY (will reader remember this)
+
+      Output as JSON:
+      {
+        "ai_focus_score": 9,
+        "authenticity_score": 9,
+        "specificity_score": 8,
+        "engagement_score": 9,
+        "clarity_score": 9,
+        "memorability_score": 8,
+        "overall_score": 8.6,
+        "improvement_journey": "v1: 7.8 -> v2: 8.2 -> v3: 8.6",
+        "topic_drift_detected": false,
+        "ready_for_final": true
+      }
+    history: ["select_best", "revise_v2", "revise_v1", "enrich_draft", "force_ai_rewrite", "evaluate_v2"]
+    client: "analyst"
+    condition: null
+    references: []
+    semantic_query: null
+    semantic_filter: null
+    query_expansion: null
+    rerank: null
+
+  - sequence: 21
+    prompt_name: "revise_v3"
+    prompt: |
+      Third and final revision:
+
+      CRITICAL: Keep centered on the AI story.
+
+      SELECTED AI STORY:
+      {{select_best.response}}
+
+      CURRENT DRAFT:
+      {{revise_v2.response}}
+      {{revise_v1.response}}
+      {{enrich_draft.response}}
+      {{force_ai_rewrite.response}}
+
+      EVALUATION:
+      {{evaluate_v3.response}}
+
+      This is the last revision pass. Focus on:
+      1. Any remaining clichés (zero tolerance)
+      2. Sentence-level polish
+      3. Word choice precision
+      4. Final impact check
+      5. Confirm AI topic is still central
+
+      Output the final draft only.
+    history: ["select_best", "revise_v2", "revise_v1", "enrich_draft", "force_ai_rewrite", "evaluate_v3"]
+    client: "writer"
+    condition: 'json_get({{evaluate_v3.response}}, "overall_score") < 8.5'
+    references: []
+    semantic_query: null
+    semantic_filter: null
+    query_expansion: null
+    rerank: null
+
+  - sequence: 22
+    prompt_name: "final_evaluate"
+    prompt: |
+      Final quality check:
+
+      SELECTED AI STORY:
+      {{select_best.response}}
+
+      DRAFT:
+      {{revise_v3.response}}
+      {{revise_v2.response}}
+      {{revise_v1.response}}
+      {{enrich_draft.response}}
+      {{force_ai_rewrite.response}}
+
+      Confirm:
+      - No AI clichés remain
+      - AI topic is central (not drifted)
+      - At least 3 specific AI details
+      - AI technology named
+      - Company/product named
+      - Clear point of view about the AI story
+      - Memorable opening or ending
+      - Under 400 words
+      - Natural sentence variety
+
+      Output as JSON:
+      {
+        "ai_topic_valid": true,
+        "final_score": 8.5,
+        "ready_to_post": true,
+        "final_tweaks": ["optional micro-suggestion"]
+      }
+    history: ["select_best", "revise_v3", "revise_v2", "revise_v1", "enrich_draft", "force_ai_rewrite", "evaluate_v3"]
+    client: "analyst"
+    condition: null
+    references: []
+    semantic_query: null
+    semantic_filter: null
+    query_expansion: null
+    rerank: null
+
+  # ============================================
+  # PHASE 11: FINAL OUTPUT
+  # ============================================
+
+  - sequence: 23
+    prompt_name: "final_post"
+    prompt: |
+      Produce the final, polished LinkedIn post.
+
+      CRITICAL: The post MUST be about the AI story.
+
+      SELECTED AI STORY:
+      {{select_best.response}}
+
+      LATEST DRAFT:
+      {{revise_v3.response}}
+      {{revise_v2.response}}
+      {{revise_v1.response}}
+      {{enrich_draft.response}}
+      {{force_ai_rewrite.response}}
+
+      FINAL FEEDBACK:
+      {{final_evaluate.response}}
+
+      Apply any final tweaks and output the ready-to-post version.
+      Include nothing else - just the post text.
+
+      REQUIREMENTS:
+      - Must mention AI, the specific technology, and company by name
+      - Must be anchored to the AI news story
+      - 300-400 words
+    history: ["select_best", "revise_v3", "revise_v2", "revise_v1", "enrich_draft", "force_ai_rewrite", "final_evaluate"]
+    client: "writer"
+    condition: null
+    references: []
+    semantic_query: null
+    semantic_filter: null
+    query_expansion: null
+    rerank: null
+
+  - sequence: 24
+    prompt_name: "hashtags"
+    prompt: |
+      Generate 3-5 relevant hashtags for this LinkedIn post about AI:
+
+      {{final_post.response}}
+
+      Rules:
+      - Use established hashtags with reach
+      - Must include AI-related hashtags
+      - Mix broad (#AI) with specific (#LLMs, #EnterpriseAI, #AIAgents)
+      - Avoid oversaturated generic tags
+      - Maximum 5 hashtags
+
+      Output as JSON:
+      {
+        "hashtags": ["#AI", "#LLMs", "#EnterpriseAI"],
+        "rationale": "why these tags"
+      }
+    history: ["final_post"]
+    client: "writer"
+    condition: null
+    references: []
+    semantic_query: null
+    semantic_filter: null
+    query_expansion: null
+    rerank: null
+
+  # ============================================
+  # PHASE 12: IMAGE PROMPT CANDIDATES
+  # ============================================
+
+  - sequence: 25
+    prompt_name: "image_prompt_abstract"
+    prompt: |
+      Create a detailed image prompt for an abstract/conceptual visualization of this AI story.
+
+      POST CONTENT:
+      {{final_post.response}}
+
+      AI STORY CONTEXT:
+      {{select_best.response}}
+
+      Create a GENERIC image prompt (works with any image generator) for an ABSTRACT style:
+
+      STYLE: Abstract, minimalist, conceptual
+
+      Include ALL of these specifications:
+      - SUBJECT: Abstract representation of the AI concept (neural patterns, data flows, geometric shapes)
+      - COLOR PALETTE: 2-4 specific colors that evoke the AI theme
+      - CAMERA: Simulated view (aerial, macro, or wide shot)
+      - LENS: Type (50mm portrait, 85mm telephoto, 24mm wide)
+      - LIGHTING: Direction and quality (soft diffused, dramatic side lighting, backlit glow)
+      - FILTER/MOOD: (clean professional, warm tech, cool futuristic)
+      - COMPOSITION: Rule of thirds, centered, or asymmetrical
+      - DEPTH: Shallow or deep focus
+
+      AVOID: Robots, brains with circuits, Matrix code, stock photo clichés
+
+      Output as JSON:
+      {
+        "prompt": "Full detailed prompt without tool name",
+        "style": "abstract minimal",
+        "camera_specs": "85mm telephoto, shallow DOF, soft backlighting",
+        "color_palette": ["deep blue", "electric cyan", "white"],
+        "composition_notes": "Centered subject with negative space"
+      }
+    history: ["final_post", "select_best"]
+    client: "analyst"
+    condition: null
+    references: []
+    semantic_query: null
+    semantic_filter: null
+    query_expansion: null
+    rerank: null
+
+  - sequence: 26
+    prompt_name: "image_prompt_editorial"
+    prompt: |
+      Create a detailed image prompt for an editorial/professional visualization of this AI story.
+
+      POST CONTENT:
+      {{final_post.response}}
+
+      AI STORY CONTEXT:
+      {{select_best.response}}
+
+      Create a GENERIC image prompt (works with any image generator) for an EDITORIAL style:
+
+      STYLE: Professional editorial, magazine-quality, business tech
+
+      Include ALL of these specifications:
+      - SUBJECT: Realistic representation relevant to the AI application
+      - COLOR PALETTE: Professional, muted, trustworthy tones
+      - CAMERA: Simulated view (eye-level, slightly elevated)
+      - LENS: Type (50mm natural, 35mm documentary)
+      - LIGHTING: Direction and quality (natural window light, studio soft boxes)
+      - FILTER/MOOD: (clean corporate, approachable professional)
+      - COMPOSITION: Balanced, rule of thirds
+      - DEPTH: Medium depth of field
+      - SETTING: Office environment, tech workspace, or abstract professional space
+
+      AVOID: Robots, brains with circuits, Matrix code, stock photo clichés
+
+      Output as JSON:
+      {
+        "prompt": "Full detailed prompt without tool name",
+        "style": "editorial professional",
+        "camera_specs": "50mm natural lens, medium DOF, soft window lighting",
+        "color_palette": ["warm gray", "navy", "soft white"],
+        "composition_notes": "Left-third subject with context on right"
+      }
+    history: ["final_post", "select_best"]
+    client: "analyst"
+    condition: null
+    references: []
+    semantic_query: null
+    semantic_filter: null
+    query_expansion: null
+    rerank: null
+
+  - sequence: 27
+    prompt_name: "image_prompt_artistic"
+    prompt: |
+      Create a detailed image prompt for an artistic/creative visualization of this AI story.
+
+      POST CONTENT:
+      {{final_post.response}}
+
+      AI STORY CONTEXT:
+      {{select_best.response}}
+
+      Create a GENERIC image prompt (works with any image generator) for an ARTISTIC style:
+
+      STYLE: Artistic, painterly, creative interpretation
+
+      Include ALL of these specifications:
+      - SUBJECT: Creative interpretation of the AI concept
+      - COLOR PALETTE: Bold, striking, memorable colors
+      - CAMERA: Simulated view (dramatic angle, close-up detail)
+      - LENS: Type (35mm cinematic, 24mm dramatic wide)
+      - LIGHTING: Direction and quality (golden hour, dramatic rim lighting, colored gels)
+      - FILTER/MOOD: (cinematic, moody, inspiring)
+      - COMPOSITION: Dynamic, asymmetrical, eye-catching
+      - DEPTH: Shallow for focus, or infinite for expansiveness
+      - TECHNIQUE: Specify artistic style (double exposure, long exposure simulation, painterly)
+
+      AVOID: Robots, brains with circuits, Matrix code, stock photo clichés
+
+      Output as JSON:
+      {
+        "prompt": "Full detailed prompt without tool name",
+        "style": "artistic creative",
+        "camera_specs": "35mm cinematic, shallow DOF, golden rim lighting",
+        "color_palette": ["burnt orange", "deep purple", "gold highlight"],
+        "composition_notes": "Diagonal composition with negative space for text overlay"
+      }
+    history: ["final_post", "select_best"]
+    client: "analyst"
+    condition: null
+    references: []
+    semantic_query: null
+    semantic_filter: null
+    query_expansion: null
+    rerank: null
+
+  - sequence: 28
+    prompt_name: "select_image_prompt"
+    prompt: |
+      Select the best image prompt for this LinkedIn post.
+
+      POST CONTENT:
+      {{final_post.response}}
+
+      AI STORY CONTEXT:
+      {{select_best.response}}
+
+      CANDIDATE PROMPTS:
+
+      ABSTRACT:
+      {{image_prompt_abstract.response}}
+
+      EDITORIAL:
+      {{image_prompt_editorial.response}}
+
+      ARTISTIC:
+      {{image_prompt_artistic.response}}
+
+      Selection criteria:
+      1. Relevance to the AI story (40%)
+      2. LinkedIn feed visibility - stands out at small size (25%)
+      3. Professional credibility - not too whimsical (20%)
+      4. Technical quality of the prompt specification (15%)
+
+      Output as JSON:
+      {
+        "selected_style": "abstract|editorial|artistic",
+        "selected_prompt": "the full prompt text",
+        "camera_specs": "the camera specifications",
+        "rationale": "why this style works best for this story",
+        "score": 8.5
+      }
+    history: ["final_post", "select_best", "image_prompt_abstract", "image_prompt_editorial", "image_prompt_artistic"]
+    client: "analyst"
+    condition: null
+    references: []
+    semantic_query: null
+    semantic_filter: null
+    query_expansion: null
+    rerank: null
+
+  - sequence: 29
+    prompt_name: "image_prompt"
+    prompt: |
+      Output the final selected image prompt as a clean, ready-to-use prompt.
+
+      SELECTED PROMPT DATA:
+      {{select_image_prompt.response}}
+
+      Output the final prompt exactly as it should be used. Include nothing else.
+
+      Format:
+      {
+        "prompt": "The complete, polished prompt ready to paste into any image generator",
+        "style": "selected style name",
+        "camera": "camera specifications",
+        "colors": ["color1", "color2"],
+        "composition": "composition notes",
+        "aspect_ratio": "16:9 or 1:1 or 4:5",
+        "negative_prompt": "things to avoid in generation"
+      }
+    history: ["select_image_prompt"]
+    client: "analyst"
+    condition: null
+    references: []
+    semantic_query: null
+    semantic_filter: null
+    query_expansion: null
+    rerank: null

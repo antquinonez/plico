@@ -529,6 +529,7 @@ class OrchestratorBase(ABC):
                     max_tokens=self.config.get("max_tokens"),
                 )
 
+                builder.with_resolved_prompt(ffai.last_resolved_prompt or injected_prompt)
                 builder.with_response(response)
                 logger.info(f"{seq_label} succeeded")
                 break

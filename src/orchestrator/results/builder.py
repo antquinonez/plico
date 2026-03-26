@@ -139,6 +139,22 @@ class ResultBuilder:
         self._result.condition_error = condition_error
         return self
 
+    def with_resolved_prompt(self, resolved_prompt: str) -> ResultBuilder:
+        """Set the fully resolved prompt text.
+
+        The resolved prompt contains the prompt text after document reference
+        injection and {{variable}} interpolation have been applied.
+
+        Args:
+            resolved_prompt: The prompt text after variable and reference resolution.
+
+        Returns:
+            Self for chaining.
+
+        """
+        self._result.resolved_prompt = resolved_prompt
+        return self
+
     def as_failed_exception(self, error: str) -> ResultBuilder:
         """Mark as failed due to unexpected exception.
 

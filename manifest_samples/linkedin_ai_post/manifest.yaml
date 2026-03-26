@@ -1,0 +1,13 @@
+name: "LinkedIn AI Post Creator"
+description: "Researches trending AI stories, drafts authentic posts with anti-cliché checks, iterates through revisions, and generates image prompts"
+version: "1.0"
+source_workbook: ""
+exported_at: "2025-03-24T12:00:00"
+output_prompts:
+  - final_post
+  - hashtags
+  - image_prompt
+has_data: false
+has_clients: true
+has_documents: false
+prompt_count: 29

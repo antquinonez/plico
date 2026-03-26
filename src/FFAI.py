@@ -28,6 +28,94 @@ from .FFAIClientBase import FFAIClientBase
 from .OrderedPromptHistory import OrderedPromptHistory
 from .PermanentHistory import PermanentHistory
 
+INTERPOLATION_PATTERN = re.compile(r"\{\{(\w+)\.response(?:\.([\w.]+))?\}\}")
+
+
+def extract_json_field(data: dict | list, path: str) -> str:
+    """Extract a value from JSON using dot notation path.
+
+    Supports:
+    - Simple fields: "field_name"
+    - Nested objects: "object.field"
+    - Array indices: "array.0"
+    - Combined: "object.array.0.field"
+
+    Args:
+        data: Parsed JSON data (dict or list)
+        path: Dot-separated path to extract
+
+    Returns:
+        Extracted value as string, or empty string if not found
+
+    """
+    parts = path.split(".")
+    current: Any = data
+
+    for part in parts:
+        if isinstance(current, dict):
+            current = current.get(part)
+        elif isinstance(current, list):
+            try:
+                index = int(part)
+                current = current[index]
+            except (ValueError, IndexError):
+                return ""
+        else:
+            return ""
+
+        if current is None:
+            return ""
+
+    if isinstance(current, dict | list):
+        return json.dumps(current)
+    return str(current)
+
+
+def interpolate_prompt(
+    prompt: str,
+    history: dict[str, str],
+) -> tuple[str, set[str]]:
+    """Replace {{prompt_name.response}} patterns with actual content.
+
+    Args:
+        prompt: Template containing {{}} patterns
+        history: Dict mapping prompt_name to response text
+
+    Returns:
+        Tuple of (resolved_prompt, set_of_interpolated_prompt_names)
+
+    """
+    interpolated = set()
+    resolved = prompt
+
+    for match in INTERPOLATION_PATTERN.finditer(prompt):
+        full_match = match.group(0)
+        prompt_name = match.group(1)
+        field_path = match.group(2)
+
+        if prompt_name not in history:
+            logger.debug(
+                f"Interpolation: '{prompt_name}' not in history, replacing with empty string"
+            )
+            resolved = resolved.replace(full_match, "")
+            continue
+
+        response = history[prompt_name]
+
+        if field_path:
+            try:
+                data = json.loads(response)
+                replacement = extract_json_field(data, field_path)
+            except (json.JSONDecodeError, TypeError):
+                replacement = response
+        else:
+            replacement = response
+
+        resolved = resolved.replace(full_match, replacement)
+        interpolated.add(prompt_name)
+
+    return resolved, interpolated
+
 
 def auto_persist(method: Callable[..., pl.DataFrame]) -> Callable[..., pl.DataFrame]:
     """Persist DataFrame after method execution if auto_persist is enabled."""
@@ -116,6 +204,7 @@ class FFAI:
         self.ordered_history = OrderedPromptHistory()
         self.clean_ordered_history = OrderedPromptHistory()
         self.named_prompt_ordered_history = OrderedPromptHistory()
+        self.last_resolved_prompt: str | None = None
 
     def set_client(self, client: FFAIClientBase) -> None:
         """Switch to a different AI client."""
@@ -186,10 +275,21 @@ class FFAI:
         prompt: str,
         history: list[str] | None = None,
         dependencies: dict | None = None,
-    ) -> str:
+    ) -> tuple[str, set[str]]:
+        """Build the final prompt with history and variable interpolation.
+
+        Args:
+            prompt: The prompt template (may contain {{}} interpolation patterns)
+            history: List of prompt names to include in conversation history
+            dependencies: Additional dependencies (unused but kept for compatibility)
+
+        Returns:
+            Tuple of (final_prompt, set_of_interpolated_prompt_names)
+
+        """
         if not history:
-            logger.debug("No history provided, returning original prompt")
-            return prompt
+            logger.debug("No history provided, checking for interpolation only")
+            history = []
 
         logger.info(f"Building prompt with history references: {history}")
         logger.info(f"Current history size: {len(self.prompt_attr_history)}")
@@ -203,6 +303,24 @@ class FFAI:
             logger.debug(f"  Prompt: {entry.get('prompt')}")
             logger.debug("------------------------------------------------------------------")
             logger.debug(f"  Response: {entry.get('response')}")
+
+        history_dict: dict[str, str] = {}
+        for entry in self.prompt_attr_history:
+            prompt_name = entry.get("prompt_name")
+            if prompt_name:
+                response = entry.get("response")
+                if isinstance(response, dict):
+                    response = json.dumps(response)
+                elif response is not None:
+                    response = str(response)
+                else:
+                    response = ""
+                history_dict[prompt_name] = response
+
+        resolved_prompt, interpolated_names = interpolate_prompt(prompt, history_dict)
+
+        if interpolated_names:
+            logger.info(f"Interpolated {len(interpolated_names)} prompt(s): {interpolated_names}")
 
         history_entries = []
         for prompt_name in history:
@@ -223,10 +341,12 @@ class FFAI:
 
             if matching_entries:
                 latest = matching_entries[-1]
+                stored_prompt = latest["prompt"]
+                resolved_history_prompt, _ = interpolate_prompt(stored_prompt, history_dict)
                 history_entries.append(
                     {
                         "prompt_name": latest.get("prompt_name"),
-                        "prompt": latest["prompt"],
+                        "prompt": resolved_history_prompt,
                         "response": latest["response"],
                     }
                 )
@@ -234,8 +354,12 @@ class FFAI:
                     f"Added entry for {prompt_name}: {latest['prompt']} -> {latest['response']}"
                 )
 
+        filtered_history = [
+            entry for entry in history_entries if entry.get("prompt_name") not in interpolated_names
+        ]
+
         formatted_history = []
-        for entry in history_entries:
+        for entry in filtered_history:
             formatted_entry = (
                 f"<interaction prompt_name='{entry['prompt_name']}'>\n"
                 f"USER: {entry['prompt']}\n"
@@ -251,13 +375,13 @@ class FFAI:
                 + "\n</conversation_history>\n"
                 + "===\n"
                 + "Based on the conversation history above, please answer: "
-                + prompt
+                + resolved_prompt
             )
         else:
-            final_prompt = prompt
+            final_prompt = resolved_prompt
 
         logger.info(f"Final constructed prompt:\n{final_prompt}")
-        return final_prompt
+        return final_prompt, interpolated_names
 
     def generate_response(
         self,
@@ -295,9 +419,11 @@ class FFAI:
                 dependencies_set = set(dependencies)
                 dependencies = list(dependencies_set)
 
-            # Build prompt with history
-            final_prompt = self._build_prompt(prompt, history, dependencies)
+            # Build prompt with history (returns tuple: final_prompt, interpolated_names)
+            final_prompt, interpolated_names = self._build_prompt(prompt, history, dependencies)
+            self.last_resolved_prompt = final_prompt
             logger.debug(f"final_prompt built: {final_prompt}")
+            logger.debug(f"interpolated_names: {interpolated_names}")
 
             # Ensure system_instructions is included in kwargs if provided
             if system_instructions is not None:

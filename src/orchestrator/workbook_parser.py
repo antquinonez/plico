@@ -136,6 +136,7 @@ class WorkbookParser:
         "sequence",
         "prompt_name",
         "prompt",
+        "resolved_prompt",
         "history",
         "client",
         "condition",
@@ -670,38 +671,39 @@ class WorkbookParser:
             ws.cell(row=row_idx, column=3, value=result.get("sequence"))
             ws.cell(row=row_idx, column=4, value=result.get("prompt_name"))
             ws.cell(row=row_idx, column=5, value=result.get("prompt"))
+            ws.cell(row=row_idx, column=6, value=result.get("resolved_prompt"))
 
             history = result.get("history")
             history_str = json.dumps(history) if history else ""
-            ws.cell(row=row_idx, column=6, value=history_str)
+            ws.cell(row=row_idx, column=7, value=history_str)
 
-            ws.cell(row=row_idx, column=7, value=result.get("client"))
-            ws.cell(row=row_idx, column=8, value=result.get("condition"))
-            ws.cell(row=row_idx, column=9, value=result.get("condition_result"))
-            ws.cell(row=row_idx, column=10, value=result.get("condition_error"))
+            ws.cell(row=row_idx, column=8, value=result.get("client"))
+            ws.cell(row=row_idx, column=9, value=result.get("condition"))
+            ws.cell(row=row_idx, column=10, value=result.get("condition_result"))
+            ws.cell(row=row_idx, column=11, value=result.get("condition_error"))
             response = result.get("response")
             if isinstance(response, list | dict):
                 response = json.dumps(response)
-            ws.cell(row=row_idx, column=11, value=response)
-            ws.cell(row=row_idx, column=12, value=result.get("status"))
-            ws.cell(row=row_idx, column=13, value=result.get("attempts"))
-            ws.cell(row=row_idx, column=14, value=result.get("error"))
+            ws.cell(row=row_idx, column=12, value=response)
+            ws.cell(row=row_idx, column=13, value=result.get("status"))
+            ws.cell(row=row_idx, column=14, value=result.get("attempts"))
+            ws.cell(row=row_idx, column=15, value=result.get("error"))
 
             references = result.get("references")
             references_str = json.dumps(references) if references else ""
-            ws.cell(row=row_idx, column=15, value=references_str)
+            ws.cell(row=row_idx, column=16, value=references_str)
 
             semantic_query = result.get("semantic_query")
-            ws.cell(row=row_idx, column=16, value=semantic_query if semantic_query else "")
+            ws.cell(row=row_idx, column=17, value=semantic_query if semantic_query else "")
 
             semantic_filter = result.get("semantic_filter")
-            ws.cell(row=row_idx, column=17, value=semantic_filter if semantic_filter else "")
+            ws.cell(row=row_idx, column=18, value=semantic_filter if semantic_filter else "")
 
             query_expansion = result.get("query_expansion")
-            ws.cell(row=row_idx, column=18, value=query_expansion if query_expansion else "")
+            ws.cell(row=row_idx, column=19, value=query_expansion if query_expansion else "")
 
             rerank = result.get("rerank")
-            ws.cell(row=row_idx, column=19, value=rerank if rerank else "")
+            ws.cell(row=row_idx, column=20, value=rerank if rerank else "")
 
         self.formatter.apply_formatting(ws, "results")
 
@@ -736,20 +738,21 @@ class WorkbookParser:
             ws.cell(row=row_idx, column=3, value=result.get("sequence"))
             ws.cell(row=row_idx, column=4, value=result.get("prompt_name"))
             ws.cell(row=row_idx, column=5, value=result.get("prompt"))
+            ws.cell(row=row_idx, column=6, value=result.get("resolved_prompt"))
 
             history = result.get("history")
             history_str = json.dumps(history) if history else ""
-            ws.cell(row=row_idx, column=6, value=history_str)
+            ws.cell(row=row_idx, column=7, value=history_str)
 
-            ws.cell(row=row_idx, column=7, value=result.get("client"))
-            ws.cell(row=row_idx, column=8, value=result.get("condition"))
-            ws.cell(row=row_idx, column=9, value=result.get("condition_result"))
-            ws.cell(row=row_idx, column=10, value=result.get("condition_error"))
+            ws.cell(row=row_idx, column=8, value=result.get("client"))
+            ws.cell(row=row_idx, column=9, value=result.get("condition"))
+            ws.cell(row=row_idx, column=10, value=result.get("condition_result"))
+            ws.cell(row=row_idx, column=11, value=result.get("condition_error"))
             response = result.get("response")
             if isinstance(response, list | dict):
                 response = json.dumps(response)
-            ws.cell(row=row_idx, column=11, value=response)
-            ws.cell(row=row_idx, column=12, value=result.get("status"))
+            ws.cell(row=row_idx, column=12, value=response)
+            ws.cell(row=row_idx, column=13, value=result.get("status"))
             ws.cell(row=row_idx, column=13, value=result.get("attempts"))
             ws.cell(row=row_idx, column=14, value=result.get("error"))
 
@@ -774,20 +777,21 @@ class WorkbookParser:
         ws.column_dimensions["C"].width = 10
         ws.column_dimensions["D"].width = 18
         ws.column_dimensions["E"].width = 50
-        ws.column_dimensions["F"].width = 30
-        ws.column_dimensions["G"].width = 15
-        ws.column_dimensions["H"].width = 40
-        ws.column_dimensions["I"].width = 15
-        ws.column_dimensions["J"].width = 25
-        ws.column_dimensions["K"].width = 60
-        ws.column_dimensions["L"].width = 10
+        ws.column_dimensions["F"].width = 60
+        ws.column_dimensions["G"].width = 30
+        ws.column_dimensions["H"].width = 15
+        ws.column_dimensions["I"].width = 40
+        ws.column_dimensions["J"].width = 15
+        ws.column_dimensions["K"].width = 25
+        ws.column_dimensions["L"].width = 60
         ws.column_dimensions["M"].width = 10
-        ws.column_dimensions["N"].width = 40
-        ws.column_dimensions["O"].width = 30
+        ws.column_dimensions["N"].width = 10
+        ws.column_dimensions["O"].width = 40
         ws.column_dimensions["P"].width = 30
-        ws.column_dimensions["Q"].width = 15
-        ws.column_dimensions["R"].width = 18
-        ws.column_dimensions["S"].width = 10
+        ws.column_dimensions["Q"].width = 30
+        ws.column_dimensions["R"].width = 15
+        ws.column_dimensions["S"].width = 18
+        ws.column_dimensions["T"].width = 10
 
         wb.save(self.workbook_path)
         logger.info(f"Batch results written to sheet: {sheet_name}")

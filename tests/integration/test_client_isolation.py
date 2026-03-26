@@ -208,8 +208,8 @@ class TestClientIsolationRealAPI:
                     {
                         "sequence": row[2],
                         "prompt_name": row[3],
-                        "response": row[10],
-                        "status": row[11],
+                        "response": row[11],
+                        "status": row[12],
                     }
                 )
 
