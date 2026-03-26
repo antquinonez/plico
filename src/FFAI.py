@@ -94,6 +94,10 @@ def interpolate_prompt(
         field_path = match.group(2)
 
         if prompt_name not in history:
+            logger.debug(
+                f"Interpolation: '{prompt_name}' not in history, replacing with empty string"
+            )
+            resolved = resolved.replace(full_match, "")
             continue
 
         response = history[prompt_name]
@@ -200,6 +204,7 @@ class FFAI:
         self.ordered_history = OrderedPromptHistory()
         self.clean_ordered_history = OrderedPromptHistory()
         self.named_prompt_ordered_history = OrderedPromptHistory()
+        self.last_resolved_prompt: str | None = None
 
     def set_client(self, client: FFAIClientBase) -> None:
         """Switch to a different AI client."""
@@ -336,10 +341,12 @@ class FFAI:
 
             if matching_entries:
                 latest = matching_entries[-1]
+                stored_prompt = latest["prompt"]
+                resolved_history_prompt, _ = interpolate_prompt(stored_prompt, history_dict)
                 history_entries.append(
                     {
                         "prompt_name": latest.get("prompt_name"),
-                        "prompt": latest["prompt"],
+                        "prompt": resolved_history_prompt,
                         "response": latest["response"],
                     }
                 )
@@ -414,6 +421,7 @@ class FFAI:
 
             # Build prompt with history (returns tuple: final_prompt, interpolated_names)
             final_prompt, interpolated_names = self._build_prompt(prompt, history, dependencies)
+            self.last_resolved_prompt = final_prompt
             logger.debug(f"final_prompt built: {final_prompt}")
             logger.debug(f"interpolated_names: {interpolated_names}")
 

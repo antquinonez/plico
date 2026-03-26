@@ -40,6 +40,7 @@ class PromptResult:
     sequence: int
     prompt_name: str | None = None
     prompt: str = ""
+    resolved_prompt: str | None = None
     history: list[str] | None = None
     client: str | None = None
     condition: str | None = None
@@ -65,6 +66,7 @@ class PromptResult:
             "sequence": self.sequence,
             "prompt_name": self.prompt_name,
             "prompt": self.prompt,
+            "resolved_prompt": self.resolved_prompt,
             "history": self.history,
             "client": self.client,
             "condition": self.condition,
@@ -93,6 +95,7 @@ class PromptResult:
             sequence=data.get("sequence", 0),
             prompt_name=data.get("prompt_name"),
             prompt=data.get("prompt", ""),
+            resolved_prompt=data.get("resolved_prompt"),
             history=data.get("history"),
             client=data.get("client"),
             condition=data.get("condition"),

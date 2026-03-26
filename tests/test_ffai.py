@@ -813,7 +813,7 @@ class TestVariableInterpolation:
         assert interpolated == {"q1"}
 
     def test_interpolate_missing_prompt(self, mock_ffmistralsmall):
-        """Test interpolation with missing prompt reference."""
+        """Test interpolation with missing prompt reference replaces with empty string."""
         from src.FFAI import interpolate_prompt
 
         history = {"q1": "A1"}
@@ -821,7 +821,7 @@ class TestVariableInterpolation:
 
         result, interpolated = interpolate_prompt(prompt, history)
 
-        assert "Missing: {{q2.response}}" in result
+        assert result == "Missing: "
         assert interpolated == set()
 
     def test_interpolate_invalid_json_field(self, mock_ffmistralsmall):

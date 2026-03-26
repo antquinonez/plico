@@ -476,7 +476,7 @@ class TestWorkbookParserWriteResults:
         wb = load_workbook(temp_workbook_with_data)
         ws = wb["results_test"]
 
-        history_cell = ws.cell(row=2, column=6).value
+        history_cell = ws.cell(row=2, column=7).value
 
         assert history_cell == '["a", "b"]'
 

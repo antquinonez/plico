@@ -41,9 +41,9 @@ class TestConditionalExecution:
         for row in ws.iter_rows(min_row=2, values_only=True):
             if row[2] is not None:
                 results[row[3]] = {
-                    "status": row[11],
-                    "condition": row[7],
-                    "condition_result": row[8],
+                    "status": row[12],
+                    "condition": row[8],
+                    "condition_result": row[9],
                 }
 
         assert results["check1"]["status"] == "success", "check1 should succeed (no condition)"
@@ -77,8 +77,8 @@ class TestConditionalExecution:
 
         for row in ws.iter_rows(min_row=2, values_only=True):
             if row[0] is not None and row[1] == "combined":
-                assert row[6] == True, f"combined condition_result should be True, got {row[6]}"
-                assert row[8] == "success", f"combined should run, got status {row[8]}"
+                assert row[7] == True, f"combined condition_result should be True, got {row[7]}"
+                assert row[9] == "success", f"combined should run, got status {row[9]}"
 
     def test_condition_implies_dependency(self, integration_workbook, spy_client):
         """
@@ -177,7 +177,7 @@ class TestConditionalExecution:
         results = {}
         for row in ws.iter_rows(min_row=2, values_only=True):
             if row[2] is not None:
-                results[row[3]] = {"status": row[11]}
+                results[row[3]] = {"status": row[12]}
 
         assert results["check_yes"]["status"] == "success", (
             "check_yes should run (response contains 'yes')"
@@ -234,7 +234,7 @@ class TestConditionalExecution:
 
         for row in ws.iter_rows(min_row=2, values_only=True):
             if row[2] is not None and row[3] == "check_length":
-                assert row[11] == "success", f"check_length should run (len > 10), got {row[11]}"
+                assert row[12] == "success", f"check_length should run (len > 10), got {row[12]}"
                 return
 
         pytest.fail("check_length result not found")
@@ -258,10 +258,10 @@ class TestConditionalExecution:
 
         for row in ws.iter_rows(min_row=2, values_only=True):
             if row[2] is not None and row[3] == "never_runs":
-                assert row[11] == "skipped", (
-                    f"never_runs should have status 'skipped', got {row[11]}"
+                assert row[12] == "skipped", (
+                    f"never_runs should have status 'skipped', got {row[12]}"
                 )
-                assert row[8] == False, f"never_runs condition_result should be False, got {row[8]}"
+                assert row[9] == False, f"never_runs condition_result should be False, got {row[9]}"
                 return
 
         pytest.fail("never_runs result not found")
@@ -302,9 +302,9 @@ class TestConditionalRealAPI:
         for row in ws.iter_rows(min_row=2, values_only=True):
             if row[2] is not None:
                 results[row[3]] = {
-                    "status": row[11],
-                    "response": row[10],
-                    "condition_result": row[8],
+                    "status": row[12],
+                    "response": row[11],
+                    "condition_result": row[9],
                 }
 
         assert results["check1"]["status"] == "success"
@@ -373,8 +373,8 @@ class TestConditionalRealAPI:
 
         for row in ws.iter_rows(min_row=2, values_only=True):
             if row[2] is not None and row[3] == "generate":
-                assert "positive" in str(row[10]).lower(), (
-                    f"generate response should contain 'positive', got {row[10]}"
+                assert "positive" in str(row[11]).lower(), (
+                    f"generate response should contain 'positive', got {row[11]}"
                 )
                 return
 
