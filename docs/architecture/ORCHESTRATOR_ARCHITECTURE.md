@@ -150,7 +150,7 @@ Plico provides a declarative execution engine for AI prompt workflows. Workflows
 
 ### results_{timestamp} Sheet (Generated)
 
-| batch_id | batch_name | sequence | prompt_name | prompt | history | client | condition | condition_result | response | status | attempts | error | references | semantic_query |
+| batch_id | batch_name | sequence | prompt_name | prompt | resolved_prompt | history | client | condition | condition_result | response | status | attempts | error | references | semantic_query |
 |----------|------------|----------|-------------|--------|---------|--------|-----------|------------------|----------|--------|----------|-------|------------|----------------|
 | 1 | north_widget_a | 1 | context | I run... | | | | | Based on... | success | 1 | | | |
 | 2 | south_widget_b | 1 | context | I run... | | | | | Based on... | success | 1 | | | |

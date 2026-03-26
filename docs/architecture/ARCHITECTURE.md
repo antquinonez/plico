@@ -212,7 +212,7 @@ Same manifest. Same execution engine. Same audit trail.
   - `execute_batch_parallel()` - Parallel batch execution
 - `ExecutionState` (`state/execution_state.py`) - Thread-safe tracking of completed, in-progress, pending prompts; results indexed by prompt_name
 - `PromptNode` (`state/prompt_node.py`) - Dependency graph node with `is_ready()` and level assignment
-- `PromptResult` (`results/result.py`) - 17-field dataclass for structured results with `to_dict()` / `from_dict()`
+- `PromptResult` (`results/result.py`) - 18-field dataclass for structured results with `to_dict()` / `from_dict()`
 - `ResultBuilder` (`results/builder.py`) - Fluent builder for constructing `PromptResult` objects
 
 **See:** [ORCHESTRATOR_ARCHITECTURE.md](./ORCHESTRATOR_ARCHITECTURE.md) for detailed data flows.
@@ -343,7 +343,7 @@ Plico/
 │       │   ├── execution_state.py     #   Thread-safe ExecutionState dataclass
 │       │   └── prompt_node.py         #   PromptNode with is_ready() and level assignment
 │       └── results/                   # Result builders and DTOs
-│           ├── result.py              #   PromptResult dataclass (17 fields)
+│           ├── result.py              #   PromptResult dataclass (18 fields)
 │           └── builder.py             #   ResultBuilder fluent builder
 │   │
 │   └── RAG/                           # SUBSYSTEM 4: RAG (Semantic Search)

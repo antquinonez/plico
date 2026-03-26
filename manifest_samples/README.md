@@ -33,6 +33,9 @@ python scripts/manifest_run.py ./manifest_samples/linkedin_ai_post -c 2
 **Extract results:**
 ```bash
 python scripts/manifest_extract.py ./outputs/linkedin_ai_post/<timestamp>.parquet --save
+
+# Export to Excel (includes resolved_prompt column)
+python scripts/parquet_to_excel.py ./outputs/linkedin_ai_post/<timestamp>.parquet
 ```
 
 **Revision Cycles:**

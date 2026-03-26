@@ -233,7 +233,9 @@ def execute_batch_parallel(self, concurrency: int) -> List[Dict]:
 
 ### Interaction with History
 
-Variables are resolved before history assembly. A prompt's resolved text (with variables substituted) is stored in history, not the template:
+Variables are resolved before history assembly. The prompt's resolved text (with variables substituted) is used in conversation history.
+
+> **Note (post-implementation):** The `prompt` column in output retains the original template text, while `resolved_prompt` contains the fully-resolved text (variables substituted, conversation history assembled). When a referenced prompt was skipped, its `{{}}` pattern is replaced with an empty string.
 
 ```
 History for batch_id=1:
