@@ -669,15 +669,28 @@ class ConditionEvaluator:
             for name, _prop in cls.VARIABLE_PATTERN.findall(condition):
                 dummy_results[name] = {
                     "status": "success",
-                    "response": "test",
+                    "response": '{"score": 8.5, "pass": true, "ready": true}',
                     "attempts": 1,
                     "error": "",
                     "has_response": True,
                 }
 
-            evaluator = cls(dummy_results)
-            evaluator.evaluate(condition)
-            return True, None
+            eval_logger = logging.getLogger(__name__)
+            old_level = eval_logger.level
+            eval_logger.setLevel(logging.CRITICAL)
+
+            try:
+                evaluator = cls(dummy_results)
+
+                resolved = evaluator._resolve_variables(condition)
+                try:
+                    ast.parse(resolved, mode="eval")
+                except SyntaxError as e:
+                    return False, f"Syntax error in condition: {e}"
+
+                return True, None
+            finally:
+                eval_logger.setLevel(old_level)
 
         except Exception as e:
             return False, str(e)

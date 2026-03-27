@@ -40,6 +40,7 @@ from _shared import ProgressIndicator, get_client, setup_logging
 
 from src.config import get_config
 from src.orchestrator import ExcelOrchestrator
+from src.orchestrator.validation import OrchestratorValidator
 
 load_dotenv()
 
@@ -108,12 +109,46 @@ def main():
 
     if args.dry_run:
         prompts = builder.load_prompts()
+
+        client_names: list[str] = []
+        clients_data = builder.load_clients()
+        if clients_data:
+            client_names = [c.get("name", "") for c in clients_data if c.get("name")]
+
+        doc_names: list[str] = []
+        documents_data = builder.load_documents()
+        if documents_data:
+            doc_names = [
+                d.get("reference_name", "") for d in documents_data if d.get("reference_name")
+            ]
+
+        batch_keys: list[str] = []
+        batch_data = builder.load_data()
+        if batch_data:
+            skip = {"id", "batch_name"}
+            for row in batch_data:
+                batch_keys.extend(k for k in row if k not in skip and k not in batch_keys)
+
+        validator = OrchestratorValidator(
+            prompts=prompts,
+            config=workbook_config,
+            client_names=client_names,
+            batch_data_keys=batch_keys,
+            doc_ref_names=doc_names,
+            available_client_types=available_clients,
+        )
+        result = validator.validate()
+
         print(f"\nWorkbook validated: {workbook_path}")
-        print(f"Config: {workbook_config}")
-        print(f"Prompts loaded: {len(prompts)}")
+        print(f"Prompts loaded:  {len(prompts)}")
+
+        print()
+        print(result.format_report())
+
         for p in prompts:
-            print(f"  - Seq {p['sequence']}: {p.get('prompt_name', '(unnamed)')}")
-        return 0
+            print(f"  Seq {p['sequence']}: {p.get('prompt_name', '(unnamed)')}")
+
+        return 1 if result.has_errors else 0
 
     client_type = workbook_config.get("client_type") or args.client
     client = get_client(client_type, workbook_config)

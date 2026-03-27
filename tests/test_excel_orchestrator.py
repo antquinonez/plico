@@ -777,7 +777,7 @@ class TestExcelOrchestratorConditions:
         ws["B3"] = "second"
         ws["C3"] = "World"
         ws["D3"] = ""
-        ws["E3"] = 'first.response == "nonexistent"'
+        ws["E3"] = '{{first.response}} == "nonexistent"'
 
         wb.save(temp_workbook)
 
@@ -869,7 +869,7 @@ class TestExcelOrchestratorConditions:
         ws["B3"] = "second"
         ws["C3"] = "World"
         ws["D3"] = ""
-        ws["E3"] = "nonexistent.invalid_method()"
+        ws["E3"] = "{{nonexistent.status}}.invalid_method()"
 
         wb.save(temp_workbook)
 
@@ -916,7 +916,7 @@ class TestExcelOrchestratorConditions:
         ws["B3"] = "second"
         ws["C3"] = "World"
         ws["D3"] = ""
-        ws["E3"] = 'first.status == "success"'
+        ws["E3"] = '{{first.status}} == "success"'
 
         wb.save(temp_workbook)
 
@@ -1028,7 +1028,7 @@ class TestExcelOrchestratorParallelEdgeCases:
         ws["B3"] = "second"
         ws["C3"] = "World"
         ws["D3"] = ""
-        ws["E3"] = 'first.response == "nonexistent"'
+        ws["E3"] = '{{first.response}} == "nonexistent"'
 
         wb.save(temp_workbook)
 
@@ -1399,7 +1399,7 @@ class TestExcelOrchestratorSummaryEdgeCases:
         ws["B3"] = "second"
         ws["C3"] = "World"
         ws["D3"] = ""
-        ws["E3"] = 'first.response == "nonexistent"'
+        ws["E3"] = '{{first.response}} == "nonexistent"'
 
         wb.save(temp_workbook)
 
