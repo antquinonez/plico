@@ -1,0 +1,283 @@
+prompts:
+  # ============================================
+  # PHASE 1: RESEARCH (parallel)
+  # ============================================
+
+  - sequence: 1
+    prompt_name: "research"
+    prompt: |
+      Find the most compelling AI story from the past 7 days (today is 2026-03-26).
+
+      Search for: "AI news March 2026" OR "artificial intelligence announcement March 24 2026" OR "LLM model release March 2026" OR "AI agent announcement 2026"
+
+      Rules:
+      - AI must be the central subject, not tangential
+      - Prefer stories from the past 48 hours
+      - Prefer stories with real user/business impact
+      - Reject incremental updates, prefer genuine surprises
+
+      For the top story, provide:
+      1. Headline (specific, include AI tech/company name)
+      2. Publication date
+      3. Key facts (2-3 sentences with specific details)
+      4. Primary source URL
+      5. 2-3 related AI stories or trends that connect to this one
+      6. One surprising or counterintuitive fact
+      7. Specific numbers, people, or technical details
+    history: []
+    client: "researcher"
+    condition: null
+    references: []
+    semantic_query: null
+    semantic_filter: null
+    query_expansion: null
+    rerank: null
+
+  - sequence: 1
+    prompt_name: "deep_research"
+    prompt: |
+      Research deeper details on the most significant AI development from the past 7 days.
+
+      Search for: "new AI model launched March 2026" OR "machine learning breakthrough March 2026" OR "AI company news March 2026"
+
+      Find for the top story:
+      1. Specific numbers (users, dollars, percentages, benchmarks)
+      2. Named individuals involved (CEOs, researchers, engineers)
+      3. Technical AI details (model architecture, capabilities, benchmarks)
+      4. Historical context (what came before, how we got here)
+      5. Competitor responses or parallel moves
+    history: []
+    client: "researcher"
+    condition: null
+    references: []
+    semantic_query: null
+    semantic_filter: null
+    query_expansion: null
+    rerank: null
+
+  # ============================================
+  # PHASE 2: SELECT + DRAFT
+  # ============================================
+
+  - sequence: 2
+    prompt_name: "select_and_brief"
+    prompt: |
+      You have two research passes. Synthesize them into one clear brief for a LinkedIn writer.
+
+      RESEARCH PASS 1:
+      {{research.response}}
+
+      RESEARCH PASS 2:
+      {{deep_research.response}}
+
+      Select the single best AI story and produce a writer brief:
+
+      Output as JSON:
+      {
+        "headline": "specific headline with AI tech/company",
+        "source_url": "https://...",
+        "publication_date": "YYYY-MM-DD",
+        "key_facts": ["fact1 with specifics", "fact2", "fact3"],
+        "surprising_detail": "one counterintuitive thing",
+        "related_trends": ["trend1", "trend2"],
+        "technical_details": "specific AI tech details",
+        "people_involved": ["person and role"],
+        "why_it_matters": "one sentence",
+        "angle_suggestion": "suggested angle for the post"
+      }
+
+      If the two passes found different stories, pick whichever is more recent and impactful.
+    history: ["research", "deep_research"]
+    client: "analyst"
+    condition: null
+    references: []
+    semantic_query: null
+    semantic_filter: null
+    query_expansion: null
+    rerank: null
+
+  - sequence: 3
+    prompt_name: "draft_post"
+    prompt: |
+      Write a LinkedIn post about this AI story.
+
+      WRITER BRIEF:
+      {{select_and_brief.response}}
+
+      Requirements:
+      - 300-400 words
+      - Must mention the AI technology and company by name
+      - Must reference specific details from the story
+      - Must be anchored to the actual news event -- not generic AI commentary
+      - Have a clear point of view
+      - Open with the most interesting detail, not a setup
+      - End with something that makes people want to respond
+      - Vary sentence length
+      - Sound like you're telling a smart friend about something that caught your attention
+    history: ["select_and_brief"]
+    client: "writer"
+    condition: null
+    references: []
+    semantic_query: null
+    semantic_filter: null
+    query_expansion: null
+    rerank: null
+
+  # ============================================
+  # PHASE 3: EVALUATE (conditional gate)
+  # ============================================
+
+  - sequence: 4
+    prompt_name: "evaluate"
+    prompt: |
+      Evaluate this LinkedIn post draft.
+
+      WRITER BRIEF (for reference):
+      {{select_and_brief.response}}
+
+      DRAFT:
+      {{draft_post.response}}
+
+      Score each 1-10:
+      1. AI TOPIC FOCUS -- AI tech named? Company named? Story-anchored?
+      2. AUTHENTICITY -- sounds human? any AI-generated cliches?
+      3. SPECIFICITY -- concrete details vs vague claims?
+      4. ENGAGEMENT -- would someone comment?
+      5. CLARITY -- clear point of view?
+
+      Check for these red flags (each found = -2):
+      "In today's world", "In an era where", "It's not X, it's Y", "Here's the thing:",
+      "Let's dive in", "Let's unpack this", "At the end of the day", "Game-changer",
+      "This changes everything", rhetorical question opener, 3+ sentences starting the same way
+
+      Output as JSON:
+      {
+        "ai_focus_score": 0,
+        "authenticity_score": 0,
+        "specificity_score": 0,
+        "engagement_score": 0,
+        "clarity_score": 0,
+        "overall_score": 0,
+        "red_flags_found": ["flag1"],
+        "topic_drift": false,
+        "revision_priorities": ["issue1", "issue2"],
+        "ready": true
+      }
+    history: ["select_and_brief", "draft_post"]
+    client: "analyst"
+    condition: null
+    references: []
+    semantic_query: null
+    semantic_filter: null
+    query_expansion: null
+    rerank: null
+
+  - sequence: 5
+    prompt_name: "revise"
+    prompt: |
+      Revise this LinkedIn post based on the evaluation.
+
+      WRITER BRIEF:
+      {{select_and_brief.response}}
+
+      CURRENT DRAFT:
+      {{draft_post.response}}
+
+      EVALUATION:
+      {{evaluate.response}}
+
+      Fix the revision priorities identified. Remove any red flags. Stay anchored to the AI story.
+      Keep what's working. Stay under 400 words.
+
+      Output the revised draft only.
+    history: ["select_and_brief", "draft_post", "evaluate"]
+    client: "writer"
+    condition: 'json_get({{evaluate.response}}, "overall_score") < 8.0'
+    references: []
+    semantic_query: null
+    semantic_filter: null
+    query_expansion: null
+    rerank: null
+
+  # ============================================
+  # PHASE 4: FINAL OUTPUTS
+  # ============================================
+
+  - sequence: 6
+    prompt_name: "final_post"
+    prompt: |
+      Output the final, ready-to-post LinkedIn post.
+
+      LATEST DRAFT:
+      {{revise.response}}
+      {{draft_post.response}}
+
+      If a revised version exists, use it. Otherwise use the original draft.
+      Apply any final polish. Output only the post text.
+    history: ["draft_post", "revise"]
+    client: "writer"
+    condition: null
+    references: []
+    semantic_query: null
+    semantic_filter: null
+    query_expansion: null
+    rerank: null
+
+  - sequence: 7
+    prompt_name: "hashtags"
+    prompt: |
+      Generate 3-5 hashtags for this LinkedIn post about AI.
+
+      POST:
+      {{final_post.response}}
+
+      Mix broad (#AI) with specific tags. Avoid oversaturated generic tags. Max 5.
+
+      Output as JSON:
+      {
+        "hashtags": ["#AI", "#LLMs"],
+        "rationale": "brief explanation"
+      }
+    history: ["final_post"]
+    client: "writer"
+    condition: null
+    references: []
+    semantic_query: null
+    semantic_filter: null
+    query_expansion: null
+    rerank: null
+
+  - sequence: 7
+    prompt_name: "image_prompt"
+    prompt: |
+      Create an image prompt for a LinkedIn post visual that accompanies this AI story post.
+
+      POST:
+      {{final_post.response}}
+
+      WRITER BRIEF (for AI story context):
+      {{select_and_brief.response}}
+
+      Requirements:
+      - Create one professional image prompt that works with any image generator (DALL-E, Midjourney, Flux)
+      - Style: modern, professional, tech-forward but not cliched
+      - Avoid: robots with glowing eyes, brains with circuit boards, Matrix code, stock photo cliches
+      - Include: color palette, composition, mood/lighting, camera angle notes
+
+      Output as JSON:
+      {
+        "prompt": "Full detailed prompt text",
+        "style": "one-line style description",
+        "color_palette": ["color1", "color2", "color3"],
+        "composition": "composition notes",
+        "aspect_ratio": "16:9",
+        "negative_prompt": "things to avoid"
+      }
+    history: ["final_post", "select_and_brief"]
+    client: "analyst"
+    condition: null
+    references: []
+    semantic_query: null
+    semantic_filter: null
+    query_expansion: null
+    rerank: null
