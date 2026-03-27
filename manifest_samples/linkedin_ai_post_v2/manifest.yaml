@@ -1,0 +1,13 @@
+name: "LinkedIn AI Post Creator v2"
+description: "Streamlined workflow: research trending AI stories, write an authentic post, generate image prompt. 7 prompts instead of 29."
+version: "1.0"
+source_workbook: ""
+exported_at: "2026-03-26T12:00:00"
+output_prompts:
+  - final_post
+  - hashtags
+  - image_prompt
+has_data: false
+has_clients: true
+has_documents: false
+prompt_count: 9

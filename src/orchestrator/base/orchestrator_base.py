@@ -16,6 +16,7 @@ between ExcelOrchestrator and ManifestOrchestrator, including:
 
 from __future__ import annotations
 
+import contextlib
 import json
 import logging
 import os
@@ -36,6 +37,7 @@ from ..document_registry import DocumentRegistry
 from ..executor import Executor
 from ..results import ResultBuilder
 from ..state import ExecutionState, PromptNode
+from ..validation import OrchestratorValidator
 
 if TYPE_CHECKING:
     from ...RAG import FFRAGClient
@@ -270,6 +272,54 @@ class OrchestratorBase(ABC):
             raise ValueError("Dependency validation failed:\n" + "\n".join(errors))
 
         logger.info("Dependency validation passed")
+
+    def _validate(self) -> None:
+        """Run comprehensive validation on prompts, config, and dependencies.
+
+        Replaces the basic _validate_dependencies() check with a full
+        validation suite. Raises ValueError if any errors are found.
+        """
+        client_names = self.client_registry.get_registered_names() if self.client_registry else []
+
+        batch_keys: list[str] = []
+        if self.is_batch_mode and self.batch_data:
+            skip = {"id", "batch_name"}
+            for row in self.batch_data:
+                batch_keys.extend(k for k in row if k not in skip and k not in batch_keys)
+
+        doc_refs: list[str] = []
+        if self.document_registry:
+            doc_refs = list(self.document_registry.get_reference_names())
+
+        available_types: list[str] = []
+        with contextlib.suppress(Exception):
+            available_types = get_config().get_available_client_types()
+
+        validator = OrchestratorValidator(
+            prompts=self.prompts,
+            config=self.config,
+            manifest_meta=getattr(self, "_manifest_meta", None),
+            client_names=client_names,
+            batch_data_keys=batch_keys,
+            doc_ref_names=doc_refs,
+            available_client_types=available_types,
+        )
+
+        result = validator.validate()
+
+        for warning in result.errors:
+            if warning.severity == "warning":
+                logger.warning(str(warning))
+
+        if result.has_errors:
+            for error in result.errors:
+                if error.severity == "error":
+                    logger.error(str(error))
+            result.raise_on_error()
+        elif result.warning_count > 0:
+            logger.info(f"Validation passed with {result.warning_count} warning(s)")
+        else:
+            logger.info("Validation passed")
 
     def _inject_references(self, prompt: dict[str, Any]) -> str:
         """Inject document references or semantic search results into a prompt.
@@ -775,7 +825,7 @@ class OrchestratorBase(ABC):
 
         """
         self._load_source()
-        self._validate_dependencies()
+        self._validate()
         self._init_client()
 
         if self.is_batch_mode:
