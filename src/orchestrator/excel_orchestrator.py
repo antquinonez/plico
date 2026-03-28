@@ -107,6 +107,10 @@ class ExcelOrchestrator(OrchestratorBase):
         if documents_data:
             self._init_documents(documents_data, os.path.dirname(self._workbook_path))
 
+        tools_data = self.builder.load_tools()
+        if tools_data:
+            self._init_tools(tools_data)
+
         self.batch_data = self.builder.load_data()
         self.is_batch_mode = len(self.batch_data) > 0
 

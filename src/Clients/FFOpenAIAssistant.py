@@ -277,10 +277,27 @@ class FFOpenAIAssistant:
         Generate a response to the given prompt.
 
         Args:
-            prompt (str): The user's input prompt.
+            prompt: The user's input prompt.
 
         Returns:
             str: The generated response from the OpenAI model.
         """
         logger.info("Generating response")
         return self._run_conversation(prompt)
+
+    def add_tool_result(self, tool_call_id: str, content: str) -> None:
+        """Add a tool result to the conversation history.
+
+        Note: The OpenAI Assistants API handles tool results via
+        submit_tool_outputs on the run object. This implementation
+        stores the result locally for record-keeping since the
+        agent loop model differs from the Assistants API model.
+
+        Args:
+            tool_call_id: The ID of the tool call this result responds to.
+            content: The tool execution result string.
+
+        """
+        if not hasattr(self, "_tool_results"):
+            self._tool_results = {}
+        self._tool_results[tool_call_id] = content

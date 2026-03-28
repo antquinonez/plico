@@ -39,6 +39,7 @@ from .base import (
     DEFAULT_CONFIG_FIELDS,
     DEFAULT_DOCUMENTS_HEADERS,
     DEFAULT_PROMPT_HEADERS,
+    DEFAULT_TOOLS_HEADERS,
     PromptSpec,
 )
 
@@ -302,6 +303,34 @@ class WorkbookBuilder:
                 ws.cell(row=row_idx, column=col_idx, value=row_data.get(header, ""))
 
         self.formatter.apply_formatting(ws, "data")
+
+        return self
+
+    def add_tools_sheet(
+        self,
+        tools: list[dict],
+    ) -> WorkbookBuilder:
+        """Add the tools sheet for agentic execution.
+
+        Args:
+            tools: List of dicts with keys: name, description, parameters,
+                   implementation, enabled.
+
+        Returns:
+            self for method chaining
+
+        """
+        ws = self.wb.create_sheet(title="tools")
+
+        headers = DEFAULT_TOOLS_HEADERS
+        for col_idx, header in enumerate(headers, start=1):
+            ws.cell(row=1, column=col_idx, value=header)
+
+        for row_idx, tool in enumerate(tools, start=2):
+            for col_idx, header in enumerate(headers, start=1):
+                ws.cell(row=row_idx, column=col_idx, value=tool.get(header, ""))
+
+        self.formatter.apply_formatting(ws, "tools")
 
         return self
 

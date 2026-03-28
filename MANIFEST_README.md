@@ -27,10 +27,11 @@ manifest_my_workflow/
 ├── prompts.yaml       # Required — prompt graph
 ├── data.yaml          # Optional — batch data
 ├── clients.yaml       # Optional — named client configurations
-└── documents.yaml     # Optional — document references
+├── documents.yaml     # Optional — document references
+└── tools.yaml         # Optional — tool definitions for agent mode
 ```
 
-The optional files are only needed when the workflow requires them. The `has_data`, `has_clients`, and `has_documents` flags in `manifest.yaml` control which optional files are loaded.
+The optional files are only needed when the workflow requires them. The `has_data`, `has_clients`, `has_documents`, and `has_tools` flags in `manifest.yaml` control which optional files are loaded.
 
 ---
 
@@ -200,6 +201,7 @@ python scripts/parquet_to_excel.py ./outputs/20250115100000_my_workflow.parquet
 | `has_data` | `bool` | Yes | Whether `data.yaml` exists |
 | `has_clients` | `bool` | Yes | Whether `clients.yaml` exists |
 | `has_documents` | `bool` | Yes | Whether `documents.yaml` exists |
+| `has_tools` | `bool` | No | Whether `tools.yaml` exists |
 | `prompt_count` | `int` | Yes | Total number of prompts |
 
 **Output Directory Structure:**
@@ -252,6 +254,9 @@ Each prompt entry is a node in the execution DAG.
 | `semantic_filter` | `str` | No | JSON string for filtering RAG results (e.g., `'{"reference_name": "api_ref"}'`). |
 | `query_expansion` | `str` | No | Enable multi-query retrieval: `"true"`, `"yes"`, `"1"`. |
 | `rerank` | `str` | No | Enable cross-encoder reranking: `"true"`, `"yes"`, `"1"`. |
+| `agent_mode` | `bool` | No | Enable agentic tool-call loop. Default: `false`. |
+| `tools` | `list[str]` | No | Tool names available to this prompt (from `tools.yaml`). |
+| `max_tool_rounds` | `int` | No | Maximum tool-call rounds. Default: from `config/main.yaml` (5). |
 
 **Full example:**
 
@@ -392,6 +397,49 @@ documents:
     common_name: "API Reference"
     file_path: "./library/api_reference.pdf"
     tags: ["api", "reference"]
+```
+
+### tools.yaml — Tool Definitions (Agent Mode)
+
+Define tools available for agentic execution. Tools are registered by name and can be built-in or custom Python callables.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | `str` | Yes | Unique tool identifier |
+| `description` | `str` | Yes | Description sent to the LLM |
+| `parameters` | `dict` | Yes | JSON Schema for tool parameters |
+| `implementation` | `str` | Yes | `builtin:<name>` or `python:<module.func>` |
+| `enabled` | `bool` | No | Whether tool is available (default: true) |
+
+Built-in tools: `rag_search`, `read_document`, `list_documents`, `calculate`, `json_extract`, `http_get`.
+
+```yaml
+tools:
+  - name: calculate
+    description: "Evaluate a mathematical expression safely."
+    parameters:
+      type: object
+      properties:
+        expression:
+          type: string
+          description: "Math expression (e.g., '2 + 3 * 4')"
+      required: ["expression"]
+    implementation: "builtin:calculate"
+    enabled: true
+
+  - name: fetch_url
+    description: "Fetch content from a URL."
+    parameters:
+      type: object
+      properties:
+        url:
+          type: string
+        max_length:
+          type: integer
+          default: 5000
+      required: ["url"]
+    implementation: "python:my_tools.fetch_url"
+    enabled: true
 ```
 
 ---

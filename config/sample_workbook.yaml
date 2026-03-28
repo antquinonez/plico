@@ -18,6 +18,7 @@ sample_workbooks:
     documents: "./sample_workbook_documents.xlsx"
     batch: "./sample_workbook_batch.xlsx"
     max: "./sample_workbook_max.xlsx"
+    agent: "./sample_workbook_agent.xlsx"
   sample_clients:
     default:
       client_type: "litellm-mistral"

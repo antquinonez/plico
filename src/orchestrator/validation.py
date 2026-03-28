@@ -131,6 +131,7 @@ class OrchestratorValidator:
         batch_data_keys: list[str] | None = None,
         doc_ref_names: list[str] | None = None,
         available_client_types: list[str] | None = None,
+        tool_names: list[str] | None = None,
     ) -> None:
         self.prompts = prompts
         self.config = config
@@ -139,6 +140,7 @@ class OrchestratorValidator:
         self.batch_data_keys = batch_data_keys or []
         self.doc_ref_names = doc_ref_names or []
         self.available_client_types = available_client_types or []
+        self.tool_names = tool_names or []
 
     def validate(self) -> ValidationResult:
         """Run all validation checks and return results."""
@@ -153,6 +155,7 @@ class OrchestratorValidator:
         self._validate_config_values(result)
         self._validate_document_references(result)
         self._validate_batch_variables(result)
+        self._validate_agent_mode(result)
         if self.manifest_meta is not None:
             self._validate_manifest_metadata(result)
         return result
@@ -378,6 +381,62 @@ class OrchestratorValidator:
                         f"Template variable '{{{{{var_name}}}}}' not found in batch data keys",
                         prompt_name=prompt.get("prompt_name"),
                         prompt_sequence=prompt.get("sequence"),
+                    )
+
+    def _validate_agent_mode(self, result: ValidationResult) -> None:
+        for prompt in self.prompts:
+            name = prompt.get("prompt_name", "(unnamed)")
+            seq = prompt.get("sequence")
+
+            if not prompt.get("agent_mode"):
+                continue
+
+            tools = prompt.get("tools")
+            if not tools:
+                result.add_warning(
+                    "AGENT_NO_TOOLS",
+                    "agent_mode=true but no tools specified",
+                    prompt_name=name,
+                    prompt_sequence=seq,
+                )
+                continue
+
+            if not isinstance(tools, list):
+                result.add_error(
+                    "AGENT_INVALID_TOOLS",
+                    f"tools must be a list, got {type(tools).__name__}",
+                    prompt_name=name,
+                    prompt_sequence=seq,
+                )
+                continue
+
+            if self.tool_names:
+                unknown = set(tools) - set(self.tool_names)
+                if unknown:
+                    result.add_error(
+                        "AGENT_UNKNOWN_TOOLS",
+                        f"tools reference unknown tools: {', '.join(sorted(unknown))}",
+                        prompt_name=name,
+                        prompt_sequence=seq,
+                    )
+
+            max_rounds = prompt.get("max_tool_rounds")
+            if max_rounds is not None:
+                try:
+                    rounds = int(max_rounds)
+                    if rounds < 1 or rounds > 50:
+                        result.add_error(
+                            "AGENT_INVALID_MAX_ROUNDS",
+                            f"max_tool_rounds must be 1-50, got {rounds}",
+                            prompt_name=name,
+                            prompt_sequence=seq,
+                        )
+                except (TypeError, ValueError):
+                    result.add_error(
+                        "AGENT_INVALID_MAX_ROUNDS",
+                        f"max_tool_rounds must be an integer, got '{max_rounds}'",
+                        prompt_name=name,
+                        prompt_sequence=seq,
                     )
 
     def _validate_manifest_metadata(self, result: ValidationResult) -> None:

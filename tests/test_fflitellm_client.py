@@ -27,6 +27,7 @@ class TestFFLiteLLMClientContract:
         assert hasattr(client, "get_conversation_history")
         assert hasattr(client, "set_conversation_history")
         assert hasattr(client, "clone")
+        assert hasattr(client, "add_tool_result")
 
     def test_has_required_attributes(self):
         """FFLiteLLMClient should have required attributes."""
@@ -295,3 +296,36 @@ class TestFFLiteLLMClientEnvResolution:
             api_key="explicit-key",
         )
         assert client.api_key == "explicit-key"
+
+
+class TestFFLiteLLMClientToolResult:
+    """Tests for add_tool_result method."""
+
+    def test_add_tool_result_appends_to_history(self):
+        """add_tool_result should append a tool message to conversation history."""
+        client = FFLiteLLMClient(model_string="openai/gpt-4")
+        client.conversation_history.append({"role": "user", "content": "Hello"})
+        client.conversation_history.append({"role": "assistant", "content": "Hi"})
+
+        client.add_tool_result("tc_123", "tool result content")
+
+        assert len(client.conversation_history) == 3
+        last = client.conversation_history[-1]
+        assert last["role"] == "tool"
+        assert last["tool_call_id"] == "tc_123"
+        assert last["content"] == "tool result content"
+
+    def test_add_tool_result_preserves_existing_history(self):
+        """add_tool_result should not overwrite existing history."""
+        client = FFLiteLLMClient(model_string="openai/gpt-4")
+        client.conversation_history = [
+            {"role": "user", "content": "Q1"},
+            {"role": "assistant", "content": "A1"},
+            {"role": "user", "content": "Q2"},
+        ]
+
+        client.add_tool_result("tc_456", "result")
+
+        assert len(client.conversation_history) == 4
+        assert client.conversation_history[0]["content"] == "Q1"
+        assert client.conversation_history[-1]["role"] == "tool"

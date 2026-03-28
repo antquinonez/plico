@@ -179,6 +179,11 @@ class ConditionEvaluator:
         - attempts: Number of retry attempts (int)
         - error: Error message if failed (str)
         - has_response: True if response exists and non-empty (bool)
+        - agent_mode: True if prompt used agentic tool-call loop (bool)
+        - tool_calls_count: Number of tool calls made (int)
+        - last_tool_name: Name of the last tool called (str)
+        - total_rounds: Number of rounds in the agentic loop (int)
+        - total_llm_calls: Total LLM API calls within agent loop (int)
     """
 
     ALLOWED_OPERATORS = {
@@ -382,6 +387,29 @@ class ConditionEvaluator:
                 return value
             response = result.get("response")
             return response is not None and len(str(response).strip()) > 0
+
+        if prop == "agent_mode":
+            return bool(value) if value is not None else False
+
+        if prop == "tool_calls_count":
+            tool_calls = result.get("tool_calls")
+            if isinstance(tool_calls, list):
+                return len(tool_calls)
+            return 0
+
+        if prop == "last_tool_name":
+            tool_calls = result.get("tool_calls")
+            if isinstance(tool_calls, list) and tool_calls:
+                last = tool_calls[-1]
+                if isinstance(last, dict):
+                    return last.get("tool_name", "")
+            return ""
+
+        if prop == "total_rounds":
+            return int(value) if value is not None else 0
+
+        if prop == "total_llm_calls":
+            return int(value) if value is not None else 0
 
         if prop == "status":
             return value if value else "pending"

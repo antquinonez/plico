@@ -113,6 +113,22 @@ class FFAIClientBase(ABC):
         """
         pass
 
+    def add_tool_result(self, tool_call_id: str, content: str) -> None:
+        """Add a tool result to the conversation history.
+
+        Default implementation appends a tool-role message. Subclasses
+        that manage conversation history differently (e.g. via an external
+        API) should override this method.
+
+        Args:
+            tool_call_id: The ID of the tool call this result responds to.
+            content: The tool execution result string.
+
+        """
+        history = self.get_conversation_history()
+        history.append({"role": "tool", "tool_call_id": tool_call_id, "content": content})
+        self.set_conversation_history(history)
+
     @abstractmethod
     def clone(self) -> FFAIClientBase:
         """Create a fresh clone of this client with empty history.

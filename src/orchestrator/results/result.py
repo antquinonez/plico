@@ -34,6 +34,10 @@ class PromptResult:
         rerank: Whether to rerank results.
         batch_id: Batch identifier for batch mode.
         batch_name: Batch name for batch mode.
+        agent_mode: Whether this prompt used agentic tool-call loop.
+        tool_calls: List of tool call records from agentic execution.
+        total_rounds: Number of rounds in the agentic loop.
+        total_llm_calls: Total LLM API calls within the agentic loop.
 
     """
 
@@ -57,8 +61,12 @@ class PromptResult:
     rerank: str | None = None
     batch_id: int | None = None
     batch_name: str | None = None
+    agent_mode: bool = False
+    tool_calls: list[dict[str, Any]] | None = None
+    total_rounds: int | None = None
+    total_llm_calls: int | None = None
 
-    VALID_STATUSES = ("pending", "success", "failed", "skipped")
+    VALID_STATUSES = ("pending", "success", "failed", "skipped", "max_rounds_exceeded")
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for backward compatibility."""
@@ -86,6 +94,11 @@ class PromptResult:
             result["batch_id"] = self.batch_id
         if self.batch_name is not None:
             result["batch_name"] = self.batch_name
+        if self.agent_mode:
+            result["agent_mode"] = self.agent_mode
+            result["tool_calls"] = self.tool_calls
+            result["total_rounds"] = self.total_rounds
+            result["total_llm_calls"] = self.total_llm_calls
         return result
 
     @classmethod
@@ -112,4 +125,8 @@ class PromptResult:
             rerank=data.get("rerank"),
             batch_id=data.get("batch_id"),
             batch_name=data.get("batch_name"),
+            agent_mode=data.get("agent_mode", False),
+            tool_calls=data.get("tool_calls"),
+            total_rounds=data.get("total_rounds"),
+            total_llm_calls=data.get("total_llm_calls"),
         )

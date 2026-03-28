@@ -188,3 +188,82 @@ class TestResultBuilder:
         assert result.prompt == "Minimal"
         assert result.prompt_name is None
         assert result.status == "pending"
+
+    def test_with_agent_result_success(self, sample_prompt):
+        """Test with_agent_result for successful agent execution."""
+        from src.agent.agent_result import AgentResult, ToolCallRecord
+
+        agent_result = AgentResult(
+            response="Final answer",
+            tool_calls=[ToolCallRecord(round=1, tool_name="calc", tool_call_id="tc1")],
+            total_rounds=2,
+            total_llm_calls=2,
+            status="success",
+        )
+        result = ResultBuilder(sample_prompt).with_agent_result(agent_result).build()
+        assert result.agent_mode is True
+        assert result.response == "Final answer"
+        assert result.status == "success"
+        assert result.total_rounds == 2
+        assert result.total_llm_calls == 2
+        assert len(result.tool_calls) == 1
+
+    def test_with_agent_result_max_rounds_exceeded(self, sample_prompt):
+        """Test with_agent_result maps max_rounds_exceeded correctly."""
+        from src.agent.agent_result import AgentResult
+
+        agent_result = AgentResult(
+            response="partial answer",
+            tool_calls=[],
+            total_rounds=5,
+            total_llm_calls=5,
+            status="max_rounds_exceeded",
+        )
+        result = ResultBuilder(sample_prompt).with_agent_result(agent_result).build()
+        assert result.status == "max_rounds_exceeded"
+        assert result.error is not None
+        assert "max rounds" in result.error.lower()
+
+    def test_with_agent_result_failed(self, sample_prompt):
+        """Test with_agent_result maps failed status correctly."""
+        from src.agent.agent_result import AgentResult
+
+        agent_result = AgentResult(
+            response="",
+            tool_calls=[],
+            total_rounds=1,
+            total_llm_calls=1,
+            status="failed",
+        )
+        result = ResultBuilder(sample_prompt).with_agent_result(agent_result).build()
+        assert result.status == "failed"
+
+    def test_valid_statuses_includes_max_rounds_exceeded(self):
+        """VALID_STATUSES should include max_rounds_exceeded."""
+        assert "max_rounds_exceeded" in PromptResult.VALID_STATUSES
+
+    def test_agent_fields_default_to_none(self):
+        """Agent fields should default to None/False."""
+        result = PromptResult(sequence=1)
+        assert result.agent_mode is False
+        assert result.tool_calls is None
+        assert result.total_rounds is None
+        assert result.total_llm_calls is None
+
+    def test_to_dict_includes_agent_fields_when_set(self):
+        """to_dict should include agent fields when agent_mode is True."""
+        result = PromptResult(sequence=1, agent_mode=True, total_rounds=3, total_llm_calls=5)
+        result.tool_calls = [{"tool_name": "calc"}]
+        d = result.to_dict()
+        assert d["agent_mode"] is True
+        assert d["total_rounds"] == 3
+        assert d["total_llm_calls"] == 5
+
+    def test_to_dict_omits_agent_fields_when_not_set(self):
+        """to_dict should omit agent fields when agent_mode is False."""
+        result = PromptResult(sequence=1)
+        d = result.to_dict()
+        assert "agent_mode" not in d
+        assert "tool_calls" not in d
+        assert "total_rounds" not in d
+        assert "total_llm_calls" not in d

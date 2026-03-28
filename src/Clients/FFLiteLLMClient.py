@@ -389,6 +389,18 @@ class FFLiteLLMClient(FFAIClientBase):
 
         raise RuntimeError(f"All models failed. Primary error: {original_error}")
 
+    def add_tool_result(self, tool_call_id: str, content: str) -> None:
+        """Add a tool result to the conversation history.
+
+        Args:
+            tool_call_id: The ID of the tool call this result responds to.
+            content: The tool execution result string.
+
+        """
+        self.conversation_history.append(
+            {"role": "tool", "tool_call_id": tool_call_id, "content": content}
+        )
+
     def clear_conversation(self) -> None:
         """Clear the conversation history."""
         logger.debug("Clearing conversation history")

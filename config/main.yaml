@@ -10,6 +10,7 @@ workbook:
     data: "data"
     clients: "clients"
     documents: "documents"
+    tools: "tools"
   defaults:
     model: "mistral-small-2503"
     api_key_env: "MISTRALSMALL_KEY"
@@ -188,6 +189,12 @@ rag:
     parent_context: true
     parent_chunk_size: 1500
     levels: 2
+
+agent:
+  enabled: true
+  max_tool_rounds: 5
+  tool_timeout: 30.0
+  continue_on_tool_error: true
 
 retry:
   max_attempts: 3

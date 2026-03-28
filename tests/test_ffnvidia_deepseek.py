@@ -147,3 +147,24 @@ class TestFFNvidiaDeepSeekErrorHandling:
 
             with pytest.raises(RuntimeError, match="Error generating response"):
                 client.generate_response("Hello!")
+
+
+class TestFFNvidiaDeepSeekToolResult:
+    """Tests for add_tool_result method."""
+
+    def test_add_tool_result_appends_to_history(self, mock_openai_client):
+        """add_tool_result should append a tool message to conversation history."""
+        with patch("src.Clients.FFNvidiaDeepSeek.OpenAI") as MockOpenAI:
+            MockOpenAI.return_value = mock_openai_client
+            from src.Clients.FFNvidiaDeepSeek import FFNvidiaDeepSeek
+
+            client = FFNvidiaDeepSeek(api_key="test-key")
+            client.conversation_history = [{"role": "user", "content": "test"}]
+
+            client.add_tool_result("tc_nvidia", "search result")
+
+            assert len(client.conversation_history) == 2
+            last = client.conversation_history[-1]
+            assert last["role"] == "tool"
+            assert last["tool_call_id"] == "tc_nvidia"
+            assert last["content"] == "search result"
