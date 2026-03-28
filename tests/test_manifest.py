@@ -473,7 +473,7 @@ class TestManifestIntegration:
             concurrency=1,
         )
         orchestrator._load_manifest()
-        orchestrator._validate_dependencies()
+        orchestrator._validate()
         orchestrator._init_client()
 
         results = orchestrator.execute()

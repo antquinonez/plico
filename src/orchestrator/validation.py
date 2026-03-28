@@ -22,6 +22,9 @@ from .condition_evaluator import ConditionEvaluator
 logger = logging.getLogger(__name__)
 
 PROMPT_REF_PATTERN = re.compile(r"\{\{(\w+)\.(\w+(?:\.\w+)*)\}\}")
+# Matches {{word}} but NOT {{word.prop}} (dot prevents match).
+# Prompt names take priority over batch vars when names collide
+# (handled in _validate_batch_variables).
 BATCH_VAR_PATTERN = re.compile(r"\{\{(\w+)\}\}")
 
 REQUIRED_PROMPT_FIELDS = {"sequence", "prompt_name", "prompt"}
@@ -108,6 +111,15 @@ class OrchestratorValidator:
         if result.has_errors:
             result.raise_on_error()
     """
+
+    @staticmethod
+    def extract_batch_keys(batch_rows: list[dict[str, Any]]) -> list[str]:
+        """Extract unique data keys from batch rows, excluding id/batch_name."""
+        skip = {"id", "batch_name"}
+        keys: list[str] = []
+        for row in batch_rows:
+            keys.extend(k for k in row if k not in skip and k not in keys)
+        return keys
 
     def __init__(
         self,
@@ -305,6 +317,19 @@ class OrchestratorValidator:
             except (TypeError, ValueError):
                 result.add_error(
                     "INVALID_CONFIG", f"max_retries '{max_retries}' is not a valid integer"
+                )
+
+        max_tokens = self.config.get("max_tokens")
+        if max_tokens is not None:
+            try:
+                m = int(max_tokens)
+                if m < 1:
+                    result.add_error(
+                        "INVALID_CONFIG", f"max_tokens {max_tokens} must be a positive integer"
+                    )
+            except (TypeError, ValueError):
+                result.add_error(
+                    "INVALID_CONFIG", f"max_tokens '{max_tokens}' is not a valid integer"
                 )
 
         client_type = self.config.get("client_type")

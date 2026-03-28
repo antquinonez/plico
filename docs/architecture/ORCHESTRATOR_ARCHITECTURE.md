@@ -191,10 +191,10 @@ Plico provides a declarative execution engine for AI prompt workflows. Workflows
                 └─► If data rows exist: enable batch mode
                 └─► Resolve {{variable}} templates per batch
 
-6. DEPENDENCY VALIDATION
-   Loaded Prompts → ExcelOrchestrator._validate_dependencies()
-                    └─► Check: all history refs exist
-                    └─► Check: refs defined before use
+6. VALIDATION
+   Loaded Prompts → OrchestratorBase._validate()
+                     └─► OrchestratorValidator: prompt fields, dependency DAG,
+                         template refs, condition syntax, config values
 
 7. EXECUTION
    ┌─────────────────────────────────────────────────────────────┐

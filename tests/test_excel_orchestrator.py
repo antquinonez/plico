@@ -91,8 +91,9 @@ class TestExcelOrchestratorDependencyValidation:
         orchestrator = ExcelOrchestrator(temp_workbook_with_data, mock_ffmistralsmall)
         orchestrator._init_workbook()
         orchestrator.prompts = orchestrator.builder.load_prompts()
+        orchestrator.config = {}
 
-        assert orchestrator._validate_dependencies() is None
+        orchestrator._validate()
 
     def test_validate_dependencies_missing_reference(self, temp_workbook, mock_ffmistralsmall):
         """Test validation fails for missing dependency reference."""
@@ -122,9 +123,10 @@ class TestExcelOrchestratorDependencyValidation:
         orchestrator = ExcelOrchestrator(temp_workbook, mock_ffmistralsmall)
         orchestrator._init_workbook()
         orchestrator.prompts = orchestrator.builder.load_prompts()
+        orchestrator.config = {}
 
-        with pytest.raises(ValueError, match="Dependency validation failed"):
-            orchestrator._validate_dependencies()
+        with pytest.raises(ValueError, match="Validation failed"):
+            orchestrator._validate()
 
     def test_validate_dependencies_wrong_order(self, temp_workbook, mock_ffmistralsmall):
         """Test validation fails when dependency defined after use."""
@@ -158,9 +160,10 @@ class TestExcelOrchestratorDependencyValidation:
         orchestrator = ExcelOrchestrator(temp_workbook, mock_ffmistralsmall)
         orchestrator._init_workbook()
         orchestrator.prompts = orchestrator.builder.load_prompts()
+        orchestrator.config = {}
 
-        with pytest.raises(ValueError, match="must be defined before"):
-            orchestrator._validate_dependencies()
+        with pytest.raises(ValueError, match="must come before"):
+            orchestrator._validate()
 
 
 class TestExcelOrchestratorExecute:

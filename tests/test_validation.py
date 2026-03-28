@@ -238,6 +238,25 @@ class TestValidateConfigValues:
         codes = [e.code for e in result.errors]
         assert "UNKNOWN_CLIENT_TYPE" in codes
 
+    def test_valid_max_tokens(self):
+        result = OrchestratorValidator([], {"max_tokens": 4096}).validate()
+        assert not result.has_errors
+
+    def test_max_tokens_zero(self):
+        result = OrchestratorValidator([], {"max_tokens": 0}).validate()
+        codes = [e.code for e in result.errors]
+        assert "INVALID_CONFIG" in codes
+
+    def test_max_tokens_negative(self):
+        result = OrchestratorValidator([], {"max_tokens": -100}).validate()
+        codes = [e.code for e in result.errors]
+        assert "INVALID_CONFIG" in codes
+
+    def test_max_tokens_non_numeric(self):
+        result = OrchestratorValidator([], {"max_tokens": "huge"}).validate()
+        codes = [e.code for e in result.errors]
+        assert "INVALID_CONFIG" in codes
+
 
 class TestValidateDocumentReferences:
     def test_valid_reference(self):
@@ -275,6 +294,30 @@ class TestValidateBatchVariables:
         assert len(warnings) == 0
 
 
+class TestExtractBatchKeys:
+    def test_extracts_unique_keys(self):
+        from src.orchestrator.validation import OrchestratorValidator
+
+        rows = [
+            {"id": 1, "batch_name": "a", "region": "US", "topic": "AI"},
+            {"id": 2, "batch_name": "b", "region": "EU", "tone": "formal"},
+        ]
+        keys = OrchestratorValidator.extract_batch_keys(rows)
+        assert keys == ["region", "topic", "tone"]
+
+    def test_empty_rows(self):
+        from src.orchestrator.validation import OrchestratorValidator
+
+        assert OrchestratorValidator.extract_batch_keys([]) == []
+
+    def test_skips_id_and_batch_name(self):
+        from src.orchestrator.validation import OrchestratorValidator
+
+        rows = [{"id": 1, "batch_name": "x", "value": "y"}]
+        keys = OrchestratorValidator.extract_batch_keys(rows)
+        assert keys == ["value"]
+
+
 class TestValidateManifestMetadata:
     def test_matching_prompt_count(self):
         prompts = [_make_prompt(1, "a"), _make_prompt(2, "b")]
@@ -305,7 +348,7 @@ class TestValidateManifestMetadata:
         assert "UNKNOWN_OUTPUT_PROMPT" in codes
 
 
-class TestOrchestratorValidatorIntegration:
+class TestValidatorIntegration:
     def test_clean_manifest_passes(self):
         prompts = [
             _make_prompt(1, "research", client="researcher"),

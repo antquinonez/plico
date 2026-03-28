@@ -822,7 +822,7 @@ Add to features list:
 - [x] Add `_should_execute()` method to ExcelOrchestrator
 - [x] Integrate with sequential execution
 - [x] Integrate with parallel execution (dependency graph)
-- [x] Add condition validation to `_validate_dependencies()`
+- [x] Add condition validation to `_validate()`
 - [x] Update results schema with condition columns
 - [ ] Add `--show-conditions` CLI option
 - [x] Write unit tests for ConditionEvaluator
