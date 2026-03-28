@@ -431,7 +431,7 @@ class TestDeadCodeRemoval:
         assert not hasattr(OrchestratorBase, "_get_isolated_client")
 
     def test_validate_dependencies_uses_name_to_sequence(self, temp_workbook, mock_ffmistralsmall):
-        """Test that _validate_dependencies uses efficient lookup (Fix #2)."""
+        """Test that _validate uses efficient lookup (Fix #2)."""
         from src.orchestrator.excel_orchestrator import ExcelOrchestrator
 
         orchestrator = ExcelOrchestrator(temp_workbook, mock_ffmistralsmall)
@@ -439,9 +439,9 @@ class TestDeadCodeRemoval:
             {"sequence": 1, "prompt_name": "a", "prompt": "A", "history": None},
             {"sequence": 2, "prompt_name": "b", "prompt": "B", "history": ["a"]},
         ]
+        orchestrator.config = {}
 
-        # Should not raise - valid dependencies
-        orchestrator._validate_dependencies()
+        orchestrator._validate()
 
     def test_validate_dependencies_detects_wrong_order(self, temp_workbook, mock_ffmistralsmall):
         """Test that validation still catches wrong-order dependencies after refactor."""
@@ -452,9 +452,10 @@ class TestDeadCodeRemoval:
             {"sequence": 1, "prompt_name": "a", "prompt": "A", "history": ["b"]},
             {"sequence": 2, "prompt_name": "b", "prompt": "B", "history": None},
         ]
+        orchestrator.config = {}
 
-        with pytest.raises(ValueError, match="must be defined before"):
-            orchestrator._validate_dependencies()
+        with pytest.raises(ValueError, match="must come before"):
+            orchestrator._validate()
 
 
 class TestSelfFfaiDocumentation:

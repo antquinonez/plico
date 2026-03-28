@@ -122,12 +122,8 @@ def main():
                 d.get("reference_name", "") for d in documents_data if d.get("reference_name")
             ]
 
-        batch_keys: list[str] = []
         batch_data = builder.load_data()
-        if batch_data:
-            skip = {"id", "batch_name"}
-            for row in batch_data:
-                batch_keys.extend(k for k in row if k not in skip and k not in batch_keys)
+        batch_keys = OrchestratorValidator.extract_batch_keys(batch_data) if batch_data else []
 
         validator = OrchestratorValidator(
             prompts=prompts,

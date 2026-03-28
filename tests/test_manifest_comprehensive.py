@@ -1413,10 +1413,10 @@ class TestManifestOrchestratorSummaryExtended:
 
 
 class TestManifestOrchestratorValidateDependencies:
-    """Tests for ManifestOrchestrator dependency validation."""
+    """Tests for ManifestOrchestrator validation via _validate()."""
 
     def test_validate_dependencies_success(self, tmp_path, mock_ffmistralsmall):
-        """Test _validate_dependencies with valid dependencies."""
+        """Test _validate with valid dependencies."""
         from src.orchestrator.manifest import ManifestOrchestrator
 
         orchestrator = ManifestOrchestrator(
@@ -1429,11 +1429,12 @@ class TestManifestOrchestratorValidateDependencies:
             {"sequence": 2, "prompt_name": "second", "prompt": "B", "history": ["first"]},
             {"sequence": 3, "prompt_name": "third", "prompt": "C", "history": ["first", "second"]},
         ]
+        orchestrator.config = {}
 
-        orchestrator._validate_dependencies()
+        orchestrator._validate()
 
     def test_validate_dependencies_missing_reference(self, tmp_path, mock_ffmistralsmall):
-        """Test _validate_dependencies raises for missing reference."""
+        """Test _validate raises for missing reference."""
         from src.orchestrator.manifest import ManifestOrchestrator
 
         orchestrator = ManifestOrchestrator(
@@ -1445,12 +1446,13 @@ class TestManifestOrchestratorValidateDependencies:
             {"sequence": 1, "prompt_name": "first", "prompt": "A", "history": None},
             {"sequence": 2, "prompt_name": "second", "prompt": "B", "history": ["nonexistent"]},
         ]
+        orchestrator.config = {}
 
-        with pytest.raises(ValueError, match="Dependency validation failed"):
-            orchestrator._validate_dependencies()
+        with pytest.raises(ValueError, match="Validation failed"):
+            orchestrator._validate()
 
     def test_validate_dependencies_wrong_order(self, tmp_path, mock_ffmistralsmall):
-        """Test _validate_dependencies raises when dependency defined later."""
+        """Test _validate raises when dependency defined later."""
         from src.orchestrator.manifest import ManifestOrchestrator
 
         orchestrator = ManifestOrchestrator(
@@ -1462,12 +1464,13 @@ class TestManifestOrchestratorValidateDependencies:
             {"sequence": 1, "prompt_name": "first", "prompt": "A", "history": ["second"]},
             {"sequence": 2, "prompt_name": "second", "prompt": "B", "history": None},
         ]
+        orchestrator.config = {}
 
-        with pytest.raises(ValueError, match="must be defined before"):
-            orchestrator._validate_dependencies()
+        with pytest.raises(ValueError, match="must come before"):
+            orchestrator._validate()
 
     def test_validate_dependencies_no_history(self, tmp_path, mock_ffmistralsmall):
-        """Test _validate_dependencies with prompts without history."""
+        """Test _validate with prompts without history."""
         from src.orchestrator.manifest import ManifestOrchestrator
 
         orchestrator = ManifestOrchestrator(
@@ -1477,10 +1480,11 @@ class TestManifestOrchestratorValidateDependencies:
 
         orchestrator.prompts = [
             {"sequence": 1, "prompt_name": "first", "prompt": "A", "history": None},
-            {"sequence": 2, "prompt_name": None, "prompt": "B", "history": None},
+            {"sequence": 2, "prompt_name": "second", "prompt": "B", "history": None},
         ]
+        orchestrator.config = {}
 
-        orchestrator._validate_dependencies()
+        orchestrator._validate()
 
 
 class TestManifestOrchestratorLoadYaml:

@@ -286,7 +286,7 @@ run()
          │         ├──► Load data.yaml (if has_data)
          │         └──► Determine batch_mode
          │
-         ├──► _validate_dependencies()
+         ├──► _validate()
          │
          ├──► _init_client()
          │

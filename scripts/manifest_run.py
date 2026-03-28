@@ -146,9 +146,7 @@ def main():
             if os.path.exists(data_yaml):
                 with open(data_yaml, encoding="utf-8") as f:
                     batch_data = yaml.safe_load(f) or {}
-                skip = {"id", "batch_name"}
-                for row in batch_data.get("batches", []):
-                    batch_keys.extend(k for k in row if k not in skip and k not in batch_keys)
+                batch_keys = OrchestratorValidator.extract_batch_keys(batch_data.get("batches", []))
 
         validator = OrchestratorValidator(
             prompts=prompts,

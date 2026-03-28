@@ -16,7 +16,6 @@ between ExcelOrchestrator and ManifestOrchestrator, including:
 
 from __future__ import annotations
 
-import contextlib
 import json
 import logging
 import os
@@ -240,60 +239,28 @@ class OrchestratorBase(ABC):
             history_lock=self.history_lock,
         )
 
-    def _validate_dependencies(self) -> None:
-        """Validate all history dependencies reference existing prompt_names."""
-        prompt_names = {p["prompt_name"] for p in self.prompts if p.get("prompt_name")}
-        name_to_sequence: dict[str, int] = {
-            p["prompt_name"]: p["sequence"] for p in self.prompts if p.get("prompt_name")
-        }
-
-        errors: list[str] = []
-        for prompt in self.prompts:
-            seq = prompt["sequence"]
-            history = prompt.get("history")
-
-            if not history:
-                continue
-
-            for dep_name in history:
-                if dep_name not in prompt_names:
-                    errors.append(
-                        f"Sequence {seq}: dependency '{dep_name}' not found in any prompt_name"
-                    )
-                else:
-                    dep_sequence = name_to_sequence.get(dep_name)
-                    if dep_sequence and dep_sequence >= seq:
-                        errors.append(
-                            f"Sequence {seq}: dependency '{dep_name}' (seq {dep_sequence}) "
-                            f"must be defined before sequence {seq}"
-                        )
-
-        if errors:
-            raise ValueError("Dependency validation failed:\n" + "\n".join(errors))
-
-        logger.info("Dependency validation passed")
-
     def _validate(self) -> None:
         """Run comprehensive validation on prompts, config, and dependencies.
 
-        Replaces the basic _validate_dependencies() check with a full
-        validation suite. Raises ValueError if any errors are found.
+        Uses OrchestratorValidator to check prompt structure, dependency DAGs,
+        template references, condition syntax, client assignments, config values,
+        and more. Raises ValueError if any errors are found.
         """
         client_names = self.client_registry.get_registered_names() if self.client_registry else []
 
         batch_keys: list[str] = []
         if self.is_batch_mode and self.batch_data:
-            skip = {"id", "batch_name"}
-            for row in self.batch_data:
-                batch_keys.extend(k for k in row if k not in skip and k not in batch_keys)
+            batch_keys = OrchestratorValidator.extract_batch_keys(self.batch_data)
 
         doc_refs: list[str] = []
         if self.document_registry:
             doc_refs = list(self.document_registry.get_reference_names())
 
         available_types: list[str] = []
-        with contextlib.suppress(Exception):
+        try:
             available_types = get_config().get_available_client_types()
+        except Exception:
+            logger.debug("Could not load available client types for validation", exc_info=True)
 
         validator = OrchestratorValidator(
             prompts=self.prompts,
