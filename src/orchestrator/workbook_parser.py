@@ -39,6 +39,7 @@ class WorkbookParser:
         self._has_data_sheet: bool | None = None
         self._has_clients_sheet: bool | None = None
         self._has_documents_sheet: bool | None = None
+        self._has_tools_sheet: bool | None = None
         self._config = get_config()
         self.formatter = WorkbookFormatter(self._config)
 
@@ -61,6 +62,10 @@ class WorkbookParser:
     @property
     def DOCUMENTS_SHEET(self) -> str:
         return self._config.workbook.sheet_names.documents
+
+    @property
+    def TOOLS_SHEET(self) -> str:
+        return self._config.workbook.sheet_names.tools
 
     @property
     def CONFIG_FIELDS(self) -> list[tuple[str, str, str]]:
@@ -111,6 +116,9 @@ class WorkbookParser:
         "semantic_filter",
         "query_expansion",
         "rerank",
+        "agent_mode",
+        "tools",
+        "max_tool_rounds",
     ]
     REQUIRED_PROMPTS_HEADERS = ["sequence", "prompt_name", "prompt", "history"]
     DOCUMENTS_HEADERS = [
@@ -151,6 +159,17 @@ class WorkbookParser:
         "semantic_filter",
         "query_expansion",
         "rerank",
+        "agent_mode",
+        "tool_calls",
+        "total_rounds",
+        "total_llm_calls",
+    ]
+    TOOLS_HEADERS = [
+        "name",
+        "description",
+        "parameters",
+        "implementation",
+        "enabled",
     ]
 
     def has_data_sheet(self) -> bool:
@@ -192,11 +211,25 @@ class WorkbookParser:
         self._has_documents_sheet = self.DOCUMENTS_SHEET in wb.sheetnames
         return self._has_documents_sheet
 
+    def has_tools_sheet(self) -> bool:
+        """Check if workbook has a tools sheet for agentic execution."""
+        if self._has_tools_sheet is not None:
+            return self._has_tools_sheet
+
+        if not os.path.exists(self.workbook_path):
+            self._has_tools_sheet = False
+            return False
+
+        wb = load_workbook(self.workbook_path)
+        self._has_tools_sheet = self.TOOLS_SHEET in wb.sheetnames
+        return self._has_tools_sheet
+
     def create_template_workbook(
         self,
         with_data_sheet: bool = False,
         with_clients_sheet: bool = False,
         with_documents_sheet: bool = False,
+        with_tools_sheet: bool = False,
     ) -> str:
         """Create a new workbook with template structure."""
         logger.info(f"Creating template workbook: {self.workbook_path}")
@@ -246,6 +279,12 @@ class WorkbookParser:
             for col_idx, header in enumerate(self.DOCUMENTS_HEADERS, start=1):
                 ws_documents.cell(row=1, column=col_idx, value=header)
             self.formatter.apply_formatting(ws_documents, "documents")
+
+        if with_tools_sheet:
+            ws_tools = wb.create_sheet(title=self.TOOLS_SHEET)
+            for col_idx, header in enumerate(self.TOOLS_HEADERS, start=1):
+                ws_tools.cell(row=1, column=col_idx, value=header)
+            self.formatter.apply_formatting(ws_tools, "tools")
 
         wb.save(self.workbook_path)
         logger.info(f"Template workbook created: {self.workbook_path}")
@@ -418,6 +457,16 @@ class WorkbookParser:
                 "rerank": str(row_dict.get("rerank", "")).strip().lower()
                 if row_dict.get("rerank")
                 else None,
+                "agent_mode": str(row_dict.get("agent_mode", "")).strip().lower()
+                in ("true", "1", "yes")
+                if row_dict.get("agent_mode")
+                else False,
+                "tools": self.parse_history_string(row_dict.get("tools"))
+                if row_dict.get("tools")
+                else None,
+                "max_tool_rounds": int(row_dict["max_tool_rounds"])
+                if row_dict.get("max_tool_rounds")
+                else None,
             }
 
             if prompt_data["sequence"] and prompt_data["prompt"]:
@@ -574,6 +623,56 @@ class WorkbookParser:
         logger.info(f"Loaded {len(documents)} document configurations")
         return documents
 
+    def load_tools(self) -> list[dict[str, Any]]:
+        """Load tool definitions from tools sheet.
+
+        Returns:
+            List of tool config dictionaries with keys:
+            - name: unique identifier for the tool
+            - description: human-readable description sent to LLM
+            - parameters: JSON Schema for tool parameters
+            - implementation: implementation reference (builtin:<name> or python:<module.func>)
+            - enabled: whether the tool is available (default True)
+
+        """
+        if not self.has_tools_sheet():
+            return []
+
+        wb = load_workbook(self.workbook_path)
+        ws = wb[self.TOOLS_SHEET]
+
+        headers = []
+        for col in range(1, ws.max_column + 1):
+            header = ws.cell(row=1, column=col).value
+            headers.append(str(header).strip() if header else f"col_{col}")
+
+        tools = []
+        for row_idx in range(2, ws.max_row + 1):
+            row_data = {}
+            has_content = False
+            for col_idx, header in enumerate(headers, start=1):
+                value = ws.cell(row=row_idx, column=col_idx).value
+                row_data[header] = value
+                if value is not None:
+                    has_content = True
+
+            if has_content and row_data.get("name"):
+                enabled = row_data.get("enabled", True)
+                if isinstance(enabled, str):
+                    enabled = enabled.strip().lower() not in ("false", "0", "no")
+                tools.append(
+                    {
+                        "name": str(row_data["name"]).strip(),
+                        "description": str(row_data.get("description", "")).strip(),
+                        "parameters": row_data.get("parameters", {}),
+                        "implementation": str(row_data.get("implementation", "")).strip(),
+                        "enabled": bool(enabled),
+                    }
+                )
+
+        logger.info(f"Loaded {len(tools)} tool definitions")
+        return tools
+
     def _infer_chunking_strategy(self, file_path: str) -> str:
         """Infer chunking strategy from file extension.
 
@@ -705,6 +804,19 @@ class WorkbookParser:
             rerank = result.get("rerank")
             ws.cell(row=row_idx, column=20, value=rerank if rerank else "")
 
+            agent_mode = result.get("agent_mode")
+            ws.cell(row=row_idx, column=21, value=agent_mode if agent_mode else "")
+
+            tool_calls = result.get("tool_calls")
+            tool_calls_str = json.dumps(tool_calls) if tool_calls else ""
+            ws.cell(row=row_idx, column=22, value=tool_calls_str)
+
+            total_rounds = result.get("total_rounds")
+            ws.cell(row=row_idx, column=23, value=total_rounds if total_rounds else "")
+
+            total_llm_calls = result.get("total_llm_calls")
+            ws.cell(row=row_idx, column=24, value=total_llm_calls if total_llm_calls else "")
+
         self.formatter.apply_formatting(ws, "results")
 
         wb.save(self.workbook_path)
@@ -753,24 +865,37 @@ class WorkbookParser:
                 response = json.dumps(response)
             ws.cell(row=row_idx, column=12, value=response)
             ws.cell(row=row_idx, column=13, value=result.get("status"))
-            ws.cell(row=row_idx, column=13, value=result.get("attempts"))
-            ws.cell(row=row_idx, column=14, value=result.get("error"))
+            ws.cell(row=row_idx, column=14, value=result.get("attempts"))
+            ws.cell(row=row_idx, column=15, value=result.get("error"))
 
             references = result.get("references")
             references_str = json.dumps(references) if references else ""
-            ws.cell(row=row_idx, column=15, value=references_str)
+            ws.cell(row=row_idx, column=16, value=references_str)
 
             semantic_query = result.get("semantic_query")
-            ws.cell(row=row_idx, column=16, value=semantic_query if semantic_query else "")
+            ws.cell(row=row_idx, column=17, value=semantic_query if semantic_query else "")
 
             semantic_filter = result.get("semantic_filter")
-            ws.cell(row=row_idx, column=17, value=semantic_filter if semantic_filter else "")
+            ws.cell(row=row_idx, column=18, value=semantic_filter if semantic_filter else "")
 
             query_expansion = result.get("query_expansion")
-            ws.cell(row=row_idx, column=18, value=query_expansion if query_expansion else "")
+            ws.cell(row=row_idx, column=19, value=query_expansion if query_expansion else "")
 
             rerank = result.get("rerank")
-            ws.cell(row=row_idx, column=19, value=rerank if rerank else "")
+            ws.cell(row=row_idx, column=20, value=rerank if rerank else "")
+
+            agent_mode = result.get("agent_mode")
+            ws.cell(row=row_idx, column=21, value=agent_mode if agent_mode else "")
+
+            tool_calls = result.get("tool_calls")
+            tool_calls_str = json.dumps(tool_calls) if tool_calls else ""
+            ws.cell(row=row_idx, column=22, value=tool_calls_str)
+
+            total_rounds = result.get("total_rounds")
+            ws.cell(row=row_idx, column=23, value=total_rounds if total_rounds else "")
+
+            total_llm_calls = result.get("total_llm_calls")
+            ws.cell(row=row_idx, column=24, value=total_llm_calls if total_llm_calls else "")
 
         ws.column_dimensions["A"].width = 10
         ws.column_dimensions["B"].width = 25
@@ -792,6 +917,10 @@ class WorkbookParser:
         ws.column_dimensions["R"].width = 15
         ws.column_dimensions["S"].width = 18
         ws.column_dimensions["T"].width = 10
+        ws.column_dimensions["U"].width = 12
+        ws.column_dimensions["V"].width = 50
+        ws.column_dimensions["W"].width = 14
+        ws.column_dimensions["X"].width = 16
 
         wb.save(self.workbook_path)
         logger.info(f"Batch results written to sheet: {sheet_name}")

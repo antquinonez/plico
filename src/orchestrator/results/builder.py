@@ -6,9 +6,12 @@
 
 from __future__ import annotations
 
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from .result import PromptResult
+
+if TYPE_CHECKING:
+    from ...agent.agent_result import AgentResult
 
 
 class ResultBuilder:
@@ -168,6 +171,33 @@ class ResultBuilder:
         self._result.status = "failed"
         self._result.error = error
         self._result.attempts = 1
+        return self
+
+    def with_agent_result(self, agent_result: AgentResult) -> ResultBuilder:
+        """Set result from agentic execution.
+
+        Populates tool call records, round counts, and the final response
+        from an AgentLoop execution.
+
+        Args:
+            agent_result: The result from an AgentLoop.execute() call.
+
+        Returns:
+            Self for chaining.
+
+        """
+        self._result.agent_mode = True
+        self._result.tool_calls = [tc.to_dict() for tc in agent_result.tool_calls]
+        self._result.total_rounds = agent_result.total_rounds
+        self._result.total_llm_calls = agent_result.total_llm_calls
+        self._result.response = agent_result.response
+        if agent_result.status == "max_rounds_exceeded":
+            self._result.status = "max_rounds_exceeded"
+            self._result.error = f"Agent loop exceeded max rounds ({agent_result.total_rounds})"
+        elif agent_result.status == "failed":
+            self._result.status = "failed"
+        else:
+            self._result.status = "success"
         return self
 
     def build(self) -> PromptResult:

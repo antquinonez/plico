@@ -36,6 +36,7 @@ from ..document_registry import DocumentRegistry
 from ..executor import Executor
 from ..results import ResultBuilder
 from ..state import ExecutionState, PromptNode
+from ..tool_registry import ToolDefinition, ToolRegistry
 from ..validation import OrchestratorValidator
 
 if TYPE_CHECKING:
@@ -111,6 +112,9 @@ class OrchestratorBase(ABC):
         self.document_processor: DocumentProcessor | None = None
         self.document_registry: DocumentRegistry | None = None
         self.has_documents: bool = False
+        self.tool_registry: ToolRegistry | None = None
+        self.has_tools: bool = False
+        self._rag_client: FFRAGClient | None = None
         self._executor = Executor()
 
     @property
@@ -202,6 +206,8 @@ class OrchestratorBase(ABC):
             rag_client=rag_client,
         )
 
+        self._rag_client = rag_client
+
         self.document_registry = DocumentRegistry(
             documents=documents_data,
             processor=self.document_processor,
@@ -218,6 +224,64 @@ class OrchestratorBase(ABC):
             indexing_results = self.document_registry.index_all_documents()
             indexed_count = sum(1 for v in indexing_results.values() if v > 0)
             logger.info(f"Indexed {indexed_count} documents for semantic search")
+
+    def _init_tools(self, tools_data: list[dict[str, Any]]) -> None:
+        """Initialize tool registry from tool definitions.
+
+        Registers all built-in tools with context-bound executors, then
+        overlays any custom tool definitions from the workbook or manifest.
+
+        Built-in tools are registered but disabled by default. A tool becomes
+        enabled when it appears in the tools sheet (with enabled=true) or
+        when a prompt references it via agent_mode.
+
+        Args:
+            tools_data: List of tool definition dictionaries.
+
+        """
+        if not tools_data:
+            return
+
+        from ..builtin_tools import BUILTIN_TOOL_DEFINITIONS, create_context_tools
+
+        self.tool_registry = ToolRegistry()
+
+        context_tools = create_context_tools(
+            rag_client=getattr(self, "_rag_client", None),
+            document_registry=self.document_registry,
+        )
+
+        for name, builtin_def in BUILTIN_TOOL_DEFINITIONS.items():
+            definition = ToolDefinition(
+                name=name,
+                description=builtin_def["description"],
+                parameters=builtin_def["parameters"],
+                implementation=f"builtin:{name}",
+                enabled=False,
+            )
+            self.tool_registry.register(definition)
+            if name in context_tools:
+                self.tool_registry.register_executor(name, context_tools[name])
+
+        for tool_def in tools_data:
+            definition = ToolDefinition.from_dict(tool_def)
+            if definition.name in self.tool_registry.get_registered_names():
+                existing = self.tool_registry.get_tool(definition.name)
+                existing.enabled = definition.enabled
+                if definition.implementation and definition.implementation.startswith("python:"):
+                    callable_path = definition.implementation[len("python:") :]
+                    executor = self.tool_registry.load_python_callable(callable_path)
+                    if executor is not None:
+                        self.tool_registry.register_executor(definition.name, executor)
+            else:
+                self.tool_registry.register(definition)
+
+        self.has_tools = True
+        enabled_names = self.tool_registry.get_enabled_names()
+        logger.info(
+            f"Tool registry initialized: {len(enabled_names)} enabled "
+            f"({', '.join(enabled_names) if enabled_names else 'none'})"
+        )
 
     def _get_isolated_ffai(self, client_name: str | None = None) -> FFAI:
         """Create an FFAI instance with isolated client but shared history.
@@ -256,6 +320,10 @@ class OrchestratorBase(ABC):
         if self.document_registry:
             doc_refs = list(self.document_registry.get_reference_names())
 
+        tool_names: list[str] = []
+        if self.tool_registry:
+            tool_names = self.tool_registry.get_registered_names()
+
         available_types: list[str] = []
         try:
             available_types = get_config().get_available_client_types()
@@ -270,6 +338,7 @@ class OrchestratorBase(ABC):
             batch_data_keys=batch_keys,
             doc_ref_names=doc_refs,
             available_client_types=available_types,
+            tool_names=tool_names,
         )
 
         result = validator.validate()
@@ -469,6 +538,85 @@ class OrchestratorBase(ABC):
 
         return result, result, error
 
+    def _execute_agent_mode(
+        self,
+        prompt: dict[str, Any],
+        ffai: FFAI,
+        builder: Any,
+        seq_label: str,
+    ) -> dict[str, Any]:  # noqa: ANN401
+        """Execute a prompt using the agentic tool-call loop.
+
+        Args:
+            prompt: Prompt dictionary with agent_mode=True.
+            ffai: FFAI instance for the execution.
+            builder: ResultBuilder already configured with prompt metadata.
+            seq_label: Label for logging (e.g. "Sequence 10").
+
+        Returns:
+            Result dictionary with tool call records.
+
+        """
+        from ...agent.agent_loop import AgentLoop
+
+        tool_names = prompt.get("tools") or []
+        max_rounds = prompt.get("max_tool_rounds") or get_config().agent.max_tool_rounds
+
+        agent_config = get_config().agent
+        client = ffai.client
+
+        if client.__class__.__name__ == "FFOpenAIAssistant":
+            logger.warning(
+                f"{seq_label}: agent_mode is not supported with FFOpenAIAssistant "
+                "(Assistants API). Falling back to single-shot execution."
+            )
+            return None
+
+        injected_prompt = self._inject_references(prompt)
+
+        logger.info(f"{seq_label} agent mode: {len(tool_names)} tool(s), max_rounds={max_rounds}")
+
+        agent_loop = AgentLoop(
+            client=ffai.client,
+            tool_registry=self.tool_registry,
+            max_rounds=max_rounds,
+            tool_timeout=agent_config.tool_timeout,
+            continue_on_tool_error=agent_config.continue_on_tool_error,
+        )
+
+        try:
+            agent_result = agent_loop.execute(
+                prompt=injected_prompt,
+                tools=tool_names,
+                tool_choice="auto",
+                prompt_name=prompt.get("prompt_name"),
+                history=prompt.get("history"),
+                model=self.config.get("model"),
+                temperature=self.config.get("temperature"),
+                max_tokens=self.config.get("max_tokens"),
+            )
+
+            builder.with_agent_result(agent_result)
+            builder.with_resolved_prompt(injected_prompt)
+            builder.with_attempts(1)
+
+            if agent_result.status == "failed":
+                logger.error(f"{seq_label} agent mode failed")
+            elif agent_result.status == "max_rounds_exceeded":
+                logger.warning(f"{seq_label} agent mode max rounds ({agent_result.total_rounds})")
+            else:
+                logger.info(
+                    f"{seq_label} agent mode succeeded: "
+                    f"{agent_result.tool_calls_count} tool call(s), "
+                    f"{agent_result.total_rounds} round(s)"
+                )
+
+        except Exception as e:
+            builder.with_error(str(e), 1)
+            logger.error(f"{seq_label} agent mode error: {e}")
+
+        return builder.build_dict()
+
     def _execute_with_retry(
         self,
         prompt: dict[str, Any],
@@ -525,6 +673,18 @@ class OrchestratorBase(ABC):
             return builder.build_dict()
 
         ffai = self._get_isolated_ffai(client_name)
+
+        if prompt.get("agent_mode") and self.tool_registry:
+            agent_result = self._execute_agent_mode(prompt, ffai, builder, seq_label)
+            if agent_result is not None:
+                return agent_result
+
+        if prompt.get("agent_mode") and not self.tool_registry:
+            logger.warning(
+                f"{seq_label} has agent_mode=true but no tool registry initialized; "
+                "falling back to single-shot execution. Add a 'tools' sheet or "
+                "tools.yaml to the workbook/manifest."
+            )
 
         for attempt in range(1, max_retries + 1):
             builder.with_attempts(attempt)

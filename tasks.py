@@ -76,6 +76,7 @@ def _get_workbook_configs() -> dict[str, tuple[str, str]]:
         "documents": (config.sample.workbooks.documents, "1"),
         "batch": (config.sample.workbooks.batch, "3"),
         "max": (config.sample.workbooks.max, "3"),
+        "agent": (config.sample.workbooks.agent, "1"),
     }
 
 
@@ -88,6 +89,7 @@ def _get_create_script(name: str) -> str:
         "documents": "scripts/sample_workbook_documents_create_v001.py",
         "batch": "scripts/sample_workbook_batch_create_v001.py",
         "max": "scripts/sample_workbook_max_create_v001.py",
+        "agent": "scripts/sample_workbook_agent_create_v001.py",
     }
     return script_map[name]
 
@@ -101,6 +103,7 @@ def _get_validate_script(name: str) -> str:
         "documents": "scripts/sample_workbook_documents_validate_v001.py",
         "batch": "scripts/sample_workbook_batch_validate_v001.py",
         "max": "scripts/sample_workbook_max_validate_v001.py",
+        "agent": "scripts/sample_workbook_agent_validate_v001.py",
     }
     return script_map[name]
 
@@ -210,6 +213,9 @@ RAG TASKS (inv rag.<task>):
     inv rag.clear-strategy  # Clear specific chunking strategy
     inv rag.rebuild         # Rebuild indexes from workbook
     inv rag.stats           # Show detailed RAG statistics
+
+MCP TASKS:
+    (removed — MCP server shelved until protocol stabilizes)
 
 OTHER TASKS:
     inv lint                # Run linting (ruff)
@@ -327,10 +333,10 @@ def wb_create(
     if client:
         print(f"  Using client: {client}")
 
-    workbook_names = ["basic", "multiclient", "max", "documents", "conditional", "batch"]
+    workbook_names = ["basic", "multiclient", "max", "documents", "conditional", "batch", "agent"]
 
     if parallel:
-        with ThreadPoolExecutor(max_workers=6) as executor:
+        with ThreadPoolExecutor(max_workers=7) as executor:
             futures = {
                 executor.submit(_create_single_workbook, name, client): name
                 for name in workbook_names
@@ -367,6 +373,7 @@ def wb_clean(c: Context):
         config.sample.workbooks.documents,
         config.sample.workbooks.batch,
         config.sample.workbooks.max,
+        config.sample.workbooks.agent,
     ]
 
     print("Removing test workbooks...")
@@ -391,7 +398,7 @@ def wb_run(c: Context, concurrency: str | None = None, parallel: bool = False, q
     print("Running orchestrator on all workbooks...")
 
     configs = _get_workbook_configs()
-    workbook_names = ["basic", "multiclient", "conditional", "documents", "batch", "max"]
+    workbook_names = ["basic", "multiclient", "conditional", "documents", "batch", "max", "agent"]
 
     if parallel:
         with ThreadPoolExecutor(max_workers=min(6, len(workbook_names))) as executor:
@@ -433,10 +440,10 @@ def wb_validate(c: Context, parallel: bool = False, quiet: bool = False):
     """
     print("Validating all workbooks...")
 
-    workbook_names = ["basic", "multiclient", "conditional", "documents", "batch", "max"]
+    workbook_names = ["basic", "multiclient", "conditional", "documents", "batch", "max", "agent"]
 
     if parallel:
-        with ThreadPoolExecutor(max_workers=6) as executor:
+        with ThreadPoolExecutor(max_workers=7) as executor:
             futures = {
                 executor.submit(_validate_single_workbook, name): name for name in workbook_names
             }
@@ -630,6 +637,25 @@ def wb_max(c: Context, concurrency: str = "3", client: str | None = None):
     )
     _run_cmd(c, f"python {_get_validate_script('max')} {config.sample.workbooks.max}")
     print("Max workbook complete!")
+
+
+@task
+def wb_agent(c: Context, client: str | None = None):
+    """Create, run, and validate agent workbook.
+
+    Args:
+        client: Client type from clients.yaml (e.g., 'anthropic', 'gemini')
+
+    """
+    config = get_config()
+    print("Processing agent workbook...")
+    if client:
+        print(f"  Using client: {client}")
+    client_flag = f" --client {client}" if client else ""
+    _run_cmd(c, f"python {_get_create_script('agent')}{client_flag}")
+    _run_cmd(c, f"python scripts/run_orchestrator.py {config.sample.workbooks.agent} -c 1")
+    _run_cmd(c, f"python {_get_validate_script('agent')} {config.sample.workbooks.agent}")
+    print("Agent workbook complete!")
 
 
 # ============================================================================
@@ -894,6 +920,7 @@ wb.add_task(wb_conditional, name="conditional")
 wb.add_task(wb_documents, name="documents")
 wb.add_task(wb_batch, name="batch")
 wb.add_task(wb_max, name="max")
+wb.add_task(wb_agent, name="agent")
 
 # RAG namespace
 rag = Collection()

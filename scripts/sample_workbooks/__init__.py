@@ -49,6 +49,8 @@ from .base import (
     DEFAULT_DOCUMENTS_HEADERS,
     DEFAULT_PROMPT_COLUMN_WIDTHS,
     DEFAULT_PROMPT_HEADERS,
+    DEFAULT_TOOLS_COLUMN_WIDTHS,
+    DEFAULT_TOOLS_HEADERS,
     PromptSpec,
     SectionDefinition,
 )
@@ -78,6 +80,8 @@ __all__ = [
     "DEFAULT_CLIENTS_COLUMN_WIDTHS",
     "DEFAULT_DOCUMENTS_HEADERS",
     "DEFAULT_DOCUMENTS_COLUMN_WIDTHS",
+    "DEFAULT_TOOLS_HEADERS",
+    "DEFAULT_TOOLS_COLUMN_WIDTHS",
     "get_available_clients",
     "get_client_config",
     "build_config_overrides",

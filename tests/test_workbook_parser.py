@@ -742,3 +742,93 @@ class TestWorkbookParserClientsSheet:
         assert len(prompts) == 2
         assert prompts[0]["client"] == "fast"
         assert prompts[1]["client"] == "smart"
+
+
+class TestWorkbookParserAgentHeaders:
+    """Tests for agent-related headers in workbook parser."""
+
+    def test_prompts_headers_includes_agent_mode(self):
+        """PROMPTS_HEADERS should include agent_mode column."""
+        from src.orchestrator.workbook_parser import WorkbookParser
+
+        assert "agent_mode" in WorkbookParser.PROMPTS_HEADERS
+
+    def test_prompts_headers_includes_tools_columns(self):
+        """PROMPTS_HEADERS should include tools and max_tool_rounds."""
+        from src.orchestrator.workbook_parser import WorkbookParser
+
+        assert "tools" in WorkbookParser.PROMPTS_HEADERS
+        assert "max_tool_rounds" in WorkbookParser.PROMPTS_HEADERS
+
+    def test_results_headers_includes_agent_columns(self):
+        """RESULTS_HEADERS should include agent metadata columns."""
+        from src.orchestrator.workbook_parser import WorkbookParser
+
+        assert "agent_mode" in WorkbookParser.RESULTS_HEADERS
+        assert "tool_calls" in WorkbookParser.RESULTS_HEADERS
+        assert "total_rounds" in WorkbookParser.RESULTS_HEADERS
+        assert "total_llm_calls" in WorkbookParser.RESULTS_HEADERS
+
+    def test_tools_headers_defined(self):
+        """TOOLS_HEADERS should be defined."""
+        from src.orchestrator.workbook_parser import WorkbookParser
+
+        assert hasattr(WorkbookParser, "TOOLS_HEADERS")
+        assert "name" in WorkbookParser.TOOLS_HEADERS
+        assert "description" in WorkbookParser.TOOLS_HEADERS
+        assert "parameters" in WorkbookParser.TOOLS_HEADERS
+        assert "implementation" in WorkbookParser.TOOLS_HEADERS
+        assert "enabled" in WorkbookParser.TOOLS_HEADERS
+
+    def test_template_includes_agent_mode_column(self, temp_workbook):
+        """Template workbook should include agent_mode column in prompts sheet."""
+        from src.orchestrator.workbook_parser import WorkbookParser
+
+        builder = WorkbookParser(temp_workbook)
+        builder.create_template_workbook()
+
+        wb = load_workbook(temp_workbook)
+        ws_prompts = wb["prompts"]
+        headers = [ws_prompts.cell(row=1, column=col).value for col in range(1, 20)]
+        assert "agent_mode" in headers
+
+    def test_create_template_with_tools_sheet(self, temp_workbook):
+        """Template workbook can be created with a tools sheet."""
+        from src.orchestrator.workbook_parser import WorkbookParser
+
+        builder = WorkbookParser(temp_workbook)
+        builder.create_template_workbook(with_tools_sheet=True)
+
+        wb = load_workbook(temp_workbook)
+        assert "tools" in wb.sheetnames
+
+    def test_load_tools_sheet(self, temp_workbook):
+        """Tools sheet can be loaded from workbook."""
+        from openpyxl import Workbook
+
+        from src.orchestrator.workbook_parser import WorkbookParser
+
+        wb = Workbook()
+        wb.create_sheet("config")
+        wb.create_sheet("prompts")
+
+        ws_tools = wb.create_sheet("tools")
+        tool_headers = ["name", "description", "parameters", "implementation", "enabled"]
+        for col, header in enumerate(tool_headers, start=1):
+            ws_tools.cell(row=1, column=col, value=header)
+
+        ws_tools.cell(row=2, column=1, value="calculate")
+        ws_tools.cell(row=2, column=2, value="Evaluate math")
+        ws_tools.cell(row=2, column=3, value='{"type":"object"}')
+        ws_tools.cell(row=2, column=4, value="builtin:calculate")
+        ws_tools.cell(row=2, column=5, value=True)
+
+        del wb["Sheet"]
+        wb.save(temp_workbook)
+
+        builder = WorkbookParser(temp_workbook)
+        tools = builder.load_tools()
+
+        assert len(tools) == 1
+        assert tools[0]["name"] == "calculate"
+        assert tools[0]["implementation"] == "builtin:calculate"

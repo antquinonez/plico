@@ -84,6 +84,7 @@ class WorkbookManifestExporter:
         data = self.builder.load_data()
         clients = self.builder.load_clients()
         documents = self.builder.load_documents()
+        tools = self.builder.load_tools()
 
         manifest_name_value = config.get("name", workbook_name)
         manifest_description = config.get("description", "")
@@ -95,6 +96,7 @@ class WorkbookManifestExporter:
             has_data=len(data) > 0,
             has_clients=len(clients) > 0,
             has_documents=len(documents) > 0,
+            has_tools=len(tools) > 0,
             prompt_count=len(prompts),
         )
         self._write_config_yaml(manifest_path, config)
@@ -105,6 +107,8 @@ class WorkbookManifestExporter:
             self._write_clients_yaml(manifest_path, clients)
         if documents:
             self._write_documents_yaml(manifest_path, documents)
+        if tools:
+            self._write_tools_yaml(manifest_path, tools)
 
         logger.info(f"Manifest exported to: {manifest_path}")
         return str(manifest_path)
@@ -117,7 +121,8 @@ class WorkbookManifestExporter:
         has_data: bool,
         has_clients: bool,
         has_documents: bool,
-        prompt_count: int,
+        has_tools: bool = False,
+        prompt_count: int = 0,
     ) -> None:
         """Write the main manifest metadata file."""
         manifest_data = {
@@ -129,6 +134,7 @@ class WorkbookManifestExporter:
             "has_data": has_data,
             "has_clients": has_clients,
             "has_documents": has_documents,
+            "has_tools": has_tools,
             "prompt_count": prompt_count,
         }
 
@@ -158,6 +164,11 @@ class WorkbookManifestExporter:
                 "query_expansion": prompt.get("query_expansion"),
                 "rerank": prompt.get("rerank"),
             }
+            if prompt.get("agent_mode"):
+                prompt_entry["agent_mode"] = True
+                prompt_entry["tools"] = prompt.get("tools") or []
+                if prompt.get("max_tool_rounds"):
+                    prompt_entry["max_tool_rounds"] = prompt.get("max_tool_rounds")
             prompts_data["prompts"].append(prompt_entry)
 
         with open(manifest_path / "prompts.yaml", "w", encoding="utf-8") as f:
@@ -185,6 +196,12 @@ class WorkbookManifestExporter:
         docs_yaml = {"documents": documents}
         with open(manifest_path / "documents.yaml", "w", encoding="utf-8") as f:
             yaml.dump(docs_yaml, f, default_flow_style=False, sort_keys=False)
+
+    def _write_tools_yaml(self, manifest_path: Path, tools: list[dict[str, Any]]) -> None:
+        """Write tool definitions to YAML file."""
+        tools_yaml = {"tools": tools}
+        with open(manifest_path / "tools.yaml", "w", encoding="utf-8") as f:
+            yaml.dump(tools_yaml, f, default_flow_style=False, sort_keys=False)
 
 
 class ManifestOrchestrator(OrchestratorBase):
@@ -345,6 +362,12 @@ class ManifestOrchestrator(OrchestratorBase):
                 )
                 self._init_documents(documents_data, workbook_dir)
 
+        if self._manifest_meta.get("has_tools"):
+            tools_yaml = self._load_yaml_file("tools.yaml")
+            tools_data = tools_yaml.get("tools", [])
+            if tools_data:
+                self._init_tools(tools_data)
+
         logger.info(
             f"Manifest loaded: {len(self.prompts)} prompts, batch_mode={self.is_batch_mode}"
         )
@@ -447,6 +470,10 @@ class ManifestOrchestrator(OrchestratorBase):
                 "semantic_filter": r.get("semantic_filter"),
                 "query_expansion": r.get("query_expansion"),
                 "rerank": r.get("rerank"),
+                "agent_mode": r.get("agent_mode"),
+                "tool_calls": json.dumps(r.get("tool_calls")) if r.get("tool_calls") else None,
+                "total_rounds": r.get("total_rounds"),
+                "total_llm_calls": r.get("total_llm_calls"),
             }
             rows.append(row)
 

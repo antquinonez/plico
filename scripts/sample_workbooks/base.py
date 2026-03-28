@@ -48,6 +48,9 @@ class PromptSpec:
     semantic_filter: str | None = None
     query_expansion: str | None = None
     rerank: str | None = None
+    agent_mode: str | None = None
+    tools: str | None = None
+    max_tool_rounds: int | None = None
 
     def to_row(
         self,
@@ -66,6 +69,9 @@ class PromptSpec:
             "semantic_filter": self.semantic_filter or "",
             "query_expansion": self.query_expansion or "",
             "rerank": self.rerank or "",
+            "agent_mode": self.agent_mode or "",
+            "tools": self.tools or "",
+            "max_tool_rounds": self.max_tool_rounds or "",
         }
         if extra_columns:
             row.update(extra_columns)
@@ -129,6 +135,9 @@ DEFAULT_PROMPT_HEADERS = [
     "semantic_filter",
     "query_expansion",
     "rerank",
+    "agent_mode",
+    "tools",
+    "max_tool_rounds",
 ]
 
 DEFAULT_PROMPT_COLUMN_WIDTHS = {
@@ -184,6 +193,22 @@ DEFAULT_DOCUMENTS_HEADERS = [
     "tags",
     "notes",
 ]
+
+DEFAULT_TOOLS_HEADERS = [
+    "name",
+    "description",
+    "parameters",
+    "implementation",
+    "enabled",
+]
+
+DEFAULT_TOOLS_COLUMN_WIDTHS = {
+    "A": 22,
+    "B": 60,
+    "C": 80,
+    "D": 30,
+    "E": 10,
+}
 
 DEFAULT_DOCUMENTS_COLUMN_WIDTHS = {
     "A": 18,

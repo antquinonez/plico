@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict
 
 
@@ -61,6 +61,7 @@ def _load_all_configs() -> dict[str, Any]:
         "retry": _load_yaml_file("main.yaml").get("retry", {}),
         "document_processor": _load_yaml_file("main.yaml").get("document_processor", {}),
         "rag": _load_yaml_file("main.yaml").get("rag", {}),
+        "agent": _load_yaml_file("main.yaml").get("agent", {}),
         "clients": clients_yaml,
         "model_defaults": _load_yaml_file("model_defaults.yaml").get("model_defaults", {}),
         "sample": _load_yaml_file("sample_workbook.yaml").get("sample_workbooks", {}),
@@ -118,6 +119,7 @@ class WorkbookSheetNamesConfig(BaseSettings):
     data: str = "data"
     clients: str = "clients"
     documents: str = "documents"
+    tools: str = "tools"
 
 
 class WorkbookDefaultsConfig(BaseSettings):
@@ -297,6 +299,15 @@ class RAGConfig(BaseSettings):
     hierarchical: RAGHierarchicalConfig = Field(default_factory=RAGHierarchicalConfig)
 
 
+class AgentConfig(BaseSettings):
+    """Agent mode configuration."""
+
+    enabled: bool = True
+    max_tool_rounds: int = 5
+    tool_timeout: float = 30.0
+    continue_on_tool_error: bool = True
+
+
 class ClientConfig(BaseSettings):
     """Individual client configuration (legacy format)."""
 
@@ -379,6 +390,7 @@ class SampleWorkbookPathsConfig(BaseSettings):
     documents: str = "./sample_workbook_documents.xlsx"
     batch: str = "./sample_workbook_batch.xlsx"
     max: str = "./sample_workbook_max.xlsx"
+    agent: str = "./sample_workbook_agent.xlsx"
 
 
 class SampleClientConfig(BaseSettings):
@@ -424,9 +436,21 @@ class Config(BaseSettings):
     retry: RetryConfig = Field(default_factory=RetryConfig)
     document_processor: DocumentProcessorConfig = Field(default_factory=DocumentProcessorConfig)
     rag: RAGConfig = Field(default_factory=RAGConfig)
+    agent: AgentConfig = Field(default_factory=AgentConfig)
     clients: ClientsConfig = Field(default_factory=ClientsConfig)
     model_defaults: ModelDefaultsConfig = Field(default_factory=ModelDefaultsConfig)
     sample: SampleConfig = Field(default_factory=SampleConfig)
+
+    @model_validator(mode="before")
+    @classmethod
+    def _validate_agent_field(cls, values: Any) -> Any:  # noqa: ANN401
+        if (
+            isinstance(values, dict)
+            and "agent" in values
+            and not isinstance(values["agent"], dict | AgentConfig)
+        ):
+            values["agent"] = AgentConfig()
+        return values
 
     @classmethod
     def settings_customise_sources(

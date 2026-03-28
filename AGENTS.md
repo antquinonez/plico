@@ -51,6 +51,7 @@ inv wb.conditional            # Create, run, and validate conditional workbook
 inv wb.documents              # Create, run, and validate documents workbook
 inv wb.batch                  # Create, run, and validate batch workbook
 inv wb.max                    # Create, run, and validate max workbook
+inv wb.agent                  # Create, run, and validate agent workbook
 ```
 
 ### RAG Tasks (rag namespace)
@@ -111,14 +112,20 @@ src/
 │   ├── condition_evaluator.py # Conditional expression evaluation
 │   ├── client_registry.py     # Multi-client configuration registry
 │   ├── document_registry.py   # Document reference management
-│   └── document_processor.py  # Document loading and caching
+│   ├── document_processor.py  # Document loading and caching
+│   ├── tool_registry.py       # Tool registration and execution for agent mode
+│   └── builtin_tools.py       # Built-in tool implementations
+│
+├── agent/                       # Agentic execution (opt-in tool-call loop)
+│   ├── __init__.py              # Exports AgentResult, ToolCallRecord
+│   ├── agent_result.py          # AgentResult, ToolCallRecord dataclasses
+│   └── agent_loop.py            # Native agentic loop for tool-call execution
 │
 └── RAG/                       # Retrieval-Augmented Generation
     ├── __init__.py            # Exports all RAG components
     ├── FFRAGClient.py         # High-level RAG client
     ├── FFEmbeddings.py        # LiteLLM-based embeddings
     ├── FFVectorStore.py       # ChromaDB vector storage
-    ├── mcp_tools.py           # MCP tool definitions
     ├── text_splitter.py       # Legacy text chunking
     ├── text_splitters/        # Chunking strategies
     │   ├── __init__.py
@@ -428,6 +435,61 @@ retry:
 - Check that `src.retry_utils` is imported
 - Ensure client has retry decorator
 
+## Agent Module
+
+The agent module provides opt-in agentic tool-call execution within the deterministic DAG orchestrator. Prompts can use tools like `calculate`, `json_extract`, and `http_get` via a multi-round LLM loop.
+
+### Usage
+
+Enable agent mode by setting `agent_mode=true` in the prompts sheet and specifying available tools:
+
+| Column | Description |
+|--------|-------------|
+| `agent_mode` | Set to `true` to enable tool-call loop |
+| `tools` | JSON array of tool names (e.g., `["calculate", "json_extract"]`) |
+| `max_tool_rounds` | Max tool-call rounds (default from config, typically 5) |
+
+Tools are defined in a `tools` sheet with columns: `name`, `description`, `parameters` (JSON Schema), `implementation` (`builtin:<name>` or `python:<module.func>`), `enabled`.
+
+### Built-in Tools
+
+| Tool | Description |
+|------|-------------|
+| `calculate` | Evaluate math expressions safely via AST |
+| `json_extract` | Extract fields from JSON using dot notation |
+| `http_get` | Fetch text content from a URL |
+| `rag_search` | Semantic search across indexed documents |
+| `read_document` | Read a document's full content |
+| `list_documents` | List available document names |
+
+### Result Fields
+
+Agent execution populates additional fields on the result:
+- `agent_mode`: `true` if agent loop was used
+- `tool_calls`: List of tool call records (name, arguments, result, duration, errors)
+- `total_rounds`: Number of agentic loop rounds
+- `total_llm_calls`: Total LLM API calls within the loop
+
+### Condition Properties
+
+Conditions can reference agent result properties:
+```
+{{research.tool_calls_count}} > 0
+{{research.total_rounds}} <= 3
+{{research.last_tool_name}} == "rag_search"
+{{research.agent_mode}} == True
+```
+
+### Configuration (config/main.yaml)
+
+```yaml
+agent:
+  enabled: true
+  max_tool_rounds: 5
+  tool_timeout: 30.0
+  continue_on_tool_error: true
+```
+
 ## Manifest Workflow
 
 **For comprehensive manifest documentation, see [MANIFEST_README.md](./MANIFEST_README.md)**
@@ -586,6 +648,7 @@ When creating a new workbook type:
 | Multiclient | Multi-client execution | Named client configurations, client-specific prompts |
 | Batch | Batch execution with variables | 35 prompts × 5 batches, variable templating |
 | Max | Combined features | Batch + conditional + multi-client in one workbook |
+| Agent | Agentic tool-call loop | Opt-in agent mode with built-in tools, multi-round execution |
 
 ### Workflow
 

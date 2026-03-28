@@ -28,6 +28,8 @@ Plico is a declarative orchestration framework for AI workflows. At its center i
 
 Same manifest. Same execution engine. Same audit trail.
 
+Prompts can also opt into **agent mode** — a multi-turn tool-call loop where the LLM decides which tools to use (RAG search, calculators, HTTP fetches) and iterates until it has a final answer. See [AGENTIC_README.md](AGENTIC_README.md).
+
 ---
 
 ## Three Paths to a Manifest
@@ -461,6 +463,7 @@ Plico is declarative across multiple dimensions:
 | **Clients** | Named configurations per prompt | Multi-model orchestration |
 | **Documents** | Reference names in prompts | Automatic injection/indexing |
 | **RAG** | Semantic queries per prompt | Relevant chunk retrieval |
+| **Agent Mode** | `agent_mode: true` on a prompt | Multi-turn tool-call loop (optional) |
 
 **Result:** You describe *what* you want; Plico figures out *how* to execute it.
 
@@ -807,7 +810,7 @@ client = FFLiteLLMClient(
 
 ### Where Others Win
 
-**Agent capabilities.** LangChain, AutoGen, CrewAI excel at dynamic agent systems with tool use and autonomous reasoning. Plico is for structured workflows.
+**Dynamic agent systems.** LangChain, AutoGen, CrewAI excel at multi-agent collaboration with shared state and real-time coordination. Plico's agent mode is single-agent per prompt with tool access within the DAG.
 
 **RAG depth.** LlamaIndex offers more index types and agentic retrieval.
 
@@ -839,13 +842,14 @@ client = FFLiteLLMClient(
                                                  v
 +--------------------------------------------------------------------------------------------------+
 |                                        EXECUTION LAYER                                           |
-|                                                                                                  |
+|                                                                                                 |
 |   ManifestOrchestrator                                                                           |
 |   +-- Dependency DAG construction                                                                |
 |   +-- Parallel scheduling (ThreadPoolExecutor)                                                   |
 |   +-- Condition evaluation (AST-sandboxed)                                                       |
 |   +-- Context assembly (declarative history)                                                     |
 |   +-- Client isolation (clone pattern)                                                           |
+|   +-- Agent mode (optional tool-call loop)                                                      |
 |                                                                                                  |
 +------------------------------------------------+-------------------------------------------------+
                                                  |
@@ -899,12 +903,11 @@ client = FFLiteLLMClient(
 - Prefer declarative configuration over imperative code
 - Need version-controllable prompt configurations
 - Want document Q&A with semantic search
+- Need prompts that can call tools (search, calculate, fetch) at runtime
 
 ### Consider alternatives if you need:
 
-- Multi-agent collaboration (CrewAI, AutoGen)
 - Real-time streaming chat (LangChain)
-- Tool/function calling at runtime (LangChain, LlamaIndex)
 - Production API services (LangServe)
 
 ---
@@ -959,6 +962,9 @@ Plico/
 │   ├── FFAIClientBase.py              # Client abstract base class
 │   ├── config.py                      # Pydantic-settings configuration
 │   ├── retry_utils.py                 # Retry decorators and rate-limit handling
+│   ├── agent/                         # Agentic execution (opt-in)
+│   │   ├── agent_loop.py              # Native multi-round tool-call loop
+│   │   └── agent_result.py            # AgentResult, ToolCallRecord dataclasses
 │   ├── Clients/                       # Provider implementations
 │   │   ├── FFLiteLLMClient.py         # Universal client (recommended)
 │   │   ├── FFMistral.py...
@@ -1014,6 +1020,7 @@ Plico/
 | [ARCHITECTURE](https://github.com/antquinonez/plico/blob/main/docs/architecture/ARCHITECTURE.md) | System design and data flows |
 | [RAG ARCHITECTURE](https://github.com/antquinonez/plico/blob/main/docs/architecture/RAG_ARCHITECTURE.md) | Semantic search subsystem |
 | [CLIENTS ARCHITECTURE](https://github.com/antquinonez/plico/blob/main/docs/architecture/CLIENTS_ARCHITECTURE.md) | Adding new providers |
+| [AGENTIC_README](AGENTIC_README.md) | Agent mode and built-in tools |
 
 ---
 
