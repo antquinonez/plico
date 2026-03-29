@@ -44,12 +44,14 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
-VALIDATION_PROMPT_TEMPLATE = (
-    "You are a response validator. Evaluate the response against the criteria below.\n"
-    'Reply with exactly "PASS" if acceptable, or "FAIL: <reason>" if not.\n\n'
-    "Criteria: {validation_prompt}\n\n"
-    "Response to evaluate:\n{response}"
-)
+
+def _build_validation_prompt(validation_prompt: str, response: str) -> str:
+    return (
+        "You are a response validator. Evaluate the response against the criteria below.\n"
+        'Reply with exactly "PASS" if acceptable, or "FAIL: <reason>" if not.\n\n'
+        f"Criteria: {validation_prompt}\n\n"
+        f"Response to evaluate:\n{response}"
+    )
 
 
 class OrchestratorBase(ABC):
@@ -720,9 +722,9 @@ class OrchestratorBase(ABC):
         from ...agent.agent_loop import AgentLoop
 
         response = agent_result.response or ""
-        validation_prompt_text = VALIDATION_PROMPT_TEMPLATE.format(
-            validation_prompt=validation_prompt,
-            response=response,
+        validation_prompt_text = _build_validation_prompt(
+            validation_prompt,
+            response,
         )
 
         best_agent_result = agent_result
@@ -739,16 +741,19 @@ class OrchestratorBase(ABC):
                 )
             except Exception as e:
                 logger.warning(f"{seq_label} validation LLM call failed: {e}")
-                builder.with_validation_result(
-                    passed=None,
-                    attempts=attempt,
-                    critique=f"Validation call failed: {e}",
-                )
-                return
+                last_critique = f"Validation call failed: {e}"
+                if attempt > max_val_retries:
+                    builder.with_validation_result(
+                        passed=None,
+                        attempts=attempt,
+                        critique=last_critique,
+                    )
+                    return
+                continue
 
             val_response = val_response.strip()
 
-            if val_response.upper().startswith("PASS"):
+            if re.match(r"^PASS\s*$", val_response, re.IGNORECASE):
                 logger.info(
                     f"{seq_label} validation passed on attempt {attempt}/{max_val_retries + 1}"
                 )
@@ -803,14 +808,13 @@ class OrchestratorBase(ABC):
                 if retry_result.status == "success" or retry_result.status == "max_rounds_exceeded":
                     best_agent_result = retry_result
                     builder.with_agent_result(retry_result)
-                    builder.with_resolved_prompt(augmented_prompt)
                     if retry_result.status == "success" and retry_result.response:
                         self._record_agent_result_in_shared_history(prompt, retry_result.response)
 
                 response = retry_result.response or ""
-                validation_prompt_text = VALIDATION_PROMPT_TEMPLATE.format(
-                    validation_prompt=validation_prompt,
-                    response=response,
+                validation_prompt_text = _build_validation_prompt(
+                    validation_prompt,
+                    response,
                 )
 
             except Exception as e:

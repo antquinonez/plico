@@ -452,7 +452,10 @@ class TestExcelOrchestratorAgentValidation:
         assert result["total_llm_calls"] == 2
         assert len(result["tool_calls"]) == 1
         assert result["tool_calls"][0]["tool_name"] == "calculate"
-        assert "Use digits only" in result["resolved_prompt"]
+        assert (
+            result["resolved_prompt"]
+            == "Use the calculate tool to compute 2 + 2. Return digits only."
+        )
 
     def test_agent_validation_failure_records_critique(self, temp_workbook):
         """Validation failure after all retries should keep the last critique."""
