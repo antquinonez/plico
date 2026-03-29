@@ -29,7 +29,7 @@ import yaml
 from ..config import get_config
 from ..FFAIClientBase import FFAIClientBase
 from .base import OrchestratorBase
-from .workbook_parser import WorkbookParser
+from .workbook_parser import WorkbookParser, _serialize_result_value
 
 logger = logging.getLogger(__name__)
 
@@ -156,6 +156,7 @@ class WorkbookManifestExporter:
                 "prompt_name": prompt.get("prompt_name"),
                 "prompt": prompt.get("prompt"),
                 "history": prompt.get("history") or [],
+                "notes": prompt.get("notes"),
                 "client": prompt.get("client"),
                 "condition": prompt.get("condition"),
                 "references": prompt.get("references") or [],
@@ -169,6 +170,10 @@ class WorkbookManifestExporter:
                 prompt_entry["tools"] = prompt.get("tools") or []
                 if prompt.get("max_tool_rounds"):
                     prompt_entry["max_tool_rounds"] = prompt.get("max_tool_rounds")
+                if prompt.get("validation_prompt"):
+                    prompt_entry["validation_prompt"] = prompt.get("validation_prompt")
+                if prompt.get("max_validation_retries"):
+                    prompt_entry["max_validation_retries"] = prompt.get("max_validation_retries")
             prompts_data["prompts"].append(prompt_entry)
 
         with open(manifest_path / "prompts.yaml", "w", encoding="utf-8") as f:
@@ -450,30 +455,8 @@ class ManifestOrchestrator(OrchestratorBase):
         rows = []
         for r in results:
             row = {
-                "batch_id": r.get("batch_id"),
-                "batch_name": r.get("batch_name"),
-                "sequence": r["sequence"],
-                "prompt_name": r.get("prompt_name"),
-                "prompt": r.get("prompt"),
-                "resolved_prompt": r.get("resolved_prompt"),
-                "history": json.dumps(r.get("history")) if r.get("history") else None,
-                "client": r.get("client"),
-                "condition": r.get("condition"),
-                "condition_result": r.get("condition_result"),
-                "condition_error": r.get("condition_error"),
-                "response": r.get("response"),
-                "status": r["status"],
-                "attempts": r["attempts"],
-                "error": r.get("error"),
-                "references": json.dumps(r.get("references")) if r.get("references") else None,
-                "semantic_query": r.get("semantic_query"),
-                "semantic_filter": r.get("semantic_filter"),
-                "query_expansion": r.get("query_expansion"),
-                "rerank": r.get("rerank"),
-                "agent_mode": r.get("agent_mode"),
-                "tool_calls": json.dumps(r.get("tool_calls")) if r.get("tool_calls") else None,
-                "total_rounds": r.get("total_rounds"),
-                "total_llm_calls": r.get("total_llm_calls"),
+                header: _serialize_result_value(header, r.get(header))
+                for header in WorkbookParser.RESULTS_HEADERS
             }
             rows.append(row)
 

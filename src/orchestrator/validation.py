@@ -388,6 +388,15 @@ class OrchestratorValidator:
             name = prompt.get("prompt_name", "(unnamed)")
             seq = prompt.get("sequence")
 
+            if prompt.get("validation_prompt") and not prompt.get("agent_mode"):
+                result.add_warning(
+                    "VALIDATION_WITHOUT_AGENT",
+                    "validation_prompt is set but agent_mode is not enabled; "
+                    "validation only applies to agent-mode prompts",
+                    prompt_name=name,
+                    prompt_sequence=seq,
+                )
+
             if not prompt.get("agent_mode"):
                 continue
 
@@ -435,6 +444,34 @@ class OrchestratorValidator:
                     result.add_error(
                         "AGENT_INVALID_MAX_ROUNDS",
                         f"max_tool_rounds must be an integer, got '{max_rounds}'",
+                        prompt_name=name,
+                        prompt_sequence=seq,
+                    )
+
+            val_prompt = prompt.get("validation_prompt")
+            if val_prompt is not None and not isinstance(val_prompt, str):
+                result.add_error(
+                    "AGENT_INVALID_VALIDATION_PROMPT",
+                    f"validation_prompt must be a string, got {type(val_prompt).__name__}",
+                    prompt_name=name,
+                    prompt_sequence=seq,
+                )
+
+            max_val_retries = prompt.get("max_validation_retries")
+            if max_val_retries is not None:
+                try:
+                    retries = int(max_val_retries)
+                    if retries < 1 or retries > 10:
+                        result.add_error(
+                            "AGENT_INVALID_MAX_VALIDATION_RETRIES",
+                            f"max_validation_retries must be 1-10, got {retries}",
+                            prompt_name=name,
+                            prompt_sequence=seq,
+                        )
+                except (TypeError, ValueError):
+                    result.add_error(
+                        "AGENT_INVALID_MAX_VALIDATION_RETRIES",
+                        f"max_validation_retries must be an integer, got '{max_val_retries}'",
                         prompt_name=name,
                         prompt_sequence=seq,
                     )

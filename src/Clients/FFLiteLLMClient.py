@@ -304,7 +304,25 @@ class FFLiteLLMClient(FFAIClientBase):
         for attempt in range(1, max_attempts + 1):
             try:
                 response = completion(**api_params)
-                assistant_response = response.choices[0].message.content
+                message = response.choices[0].message
+                tool_calls = getattr(message, "tool_calls", None)
+
+                if tool_calls:
+                    assistant_response = message.content or ""
+                    self.conversation_history.append(
+                        {
+                            "role": "assistant",
+                            "content": assistant_response,
+                            "tool_calls": self._serialize_tool_calls(tool_calls),
+                        }
+                    )
+                    logger.debug(
+                        "Response received with %s tool call(s)",
+                        len(tool_calls),
+                    )
+                    return assistant_response
+
+                assistant_response = message.content or ""
 
                 self.conversation_history.append(
                     {"role": "assistant", "content": assistant_response}
@@ -351,6 +369,34 @@ class FFLiteLLMClient(FFAIClientBase):
 
         # This should never be reached, but just in case
         raise RuntimeError(f"Unexpected error in retry loop for {model_string}")
+
+    def _serialize_tool_calls(self, tool_calls: list[Any]) -> list[dict[str, Any]]:
+        """Convert provider tool calls into history-safe dictionaries."""
+        serialized: list[dict[str, Any]] = []
+
+        for tool_call in tool_calls:
+            if isinstance(tool_call, dict):
+                tool_id = tool_call.get("id", "")
+                function = tool_call.get("function", {})
+                function_name = function.get("name", "")
+                function_arguments = function.get("arguments", "{}")
+            else:
+                tool_id = getattr(tool_call, "id", "")
+                function = getattr(tool_call, "function", None)
+                function_name = getattr(function, "name", "") if function else ""
+                function_arguments = getattr(function, "arguments", "{}") if function else "{}"
+
+            serialized.append(
+                {
+                    "id": tool_id,
+                    "function": {
+                        "name": function_name,
+                        "arguments": function_arguments,
+                    },
+                }
+            )
+
+        return serialized
 
     def _build_messages(self, system_instructions: str | None = None) -> list[dict[str, str]]:
         """Build messages list for LiteLLM API call."""

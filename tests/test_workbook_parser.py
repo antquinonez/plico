@@ -119,7 +119,6 @@ class TestWorkbookParserValidate:
 
         wb = Workbook()
         wb.create_sheet("prompts")
-        del wb["Sheet"]
         wb.save(temp_workbook)
 
         builder = WorkbookParser(temp_workbook)
@@ -135,7 +134,6 @@ class TestWorkbookParserValidate:
 
         wb = Workbook()
         wb.create_sheet("config")
-        del wb["Sheet"]
         wb.save(temp_workbook)
 
         builder = WorkbookParser(temp_workbook)
@@ -154,7 +152,6 @@ class TestWorkbookParserValidate:
         wb.create_sheet("prompts")
         ws = wb["prompts"]
         ws["A1"] = "sequence"
-        del wb["Sheet"]
         wb.save(temp_workbook)
 
         builder = WorkbookParser(temp_workbook)
@@ -449,6 +446,9 @@ class TestWorkbookParserWriteResults:
         assert "status" in headers
         assert "attempts" in headers
         assert "error" in headers
+        assert "validation_passed" in headers
+        assert "validation_attempts" in headers
+        assert "validation_critique" in headers
 
     def test_write_results_converts_history_to_json(self, temp_workbook_with_data):
         """Test that history is converted to JSON string."""
@@ -639,7 +639,6 @@ class TestWorkbookParserClientsSheet:
         wb.create_sheet("config")
         wb.create_sheet("prompts")
         wb.create_sheet("clients")
-        del wb["Sheet"]
         wb.save(temp_workbook)
 
         builder = WorkbookParser(temp_workbook)
@@ -677,7 +676,6 @@ class TestWorkbookParserClientsSheet:
         ws_clients.cell(row=3, column=2, value="anthropic")
         ws_clients.cell(row=3, column=3, value="ANTHROPIC_API_KEY")
 
-        del wb["Sheet"]
         wb.save(temp_workbook)
 
         builder = WorkbookParser(temp_workbook)
@@ -760,6 +758,12 @@ class TestWorkbookParserAgentHeaders:
         assert "tools" in WorkbookParser.PROMPTS_HEADERS
         assert "max_tool_rounds" in WorkbookParser.PROMPTS_HEADERS
 
+    def test_prompts_headers_include_notes_column(self):
+        """PROMPTS_HEADERS should include notes for user annotations."""
+        from src.orchestrator.workbook_parser import WorkbookParser
+
+        assert "notes" in WorkbookParser.PROMPTS_HEADERS
+
     def test_results_headers_includes_agent_columns(self):
         """RESULTS_HEADERS should include agent metadata columns."""
         from src.orchestrator.workbook_parser import WorkbookParser
@@ -791,6 +795,38 @@ class TestWorkbookParserAgentHeaders:
         ws_prompts = wb["prompts"]
         headers = [ws_prompts.cell(row=1, column=col).value for col in range(1, 20)]
         assert "agent_mode" in headers
+
+    def test_load_prompts_reads_notes_column(self, temp_workbook):
+        """Prompt notes should round-trip through workbook loading."""
+        from openpyxl import Workbook
+
+        from src.orchestrator.workbook_parser import WorkbookParser
+
+        wb = Workbook()
+        ws_config = wb.active
+        ws_config.title = "config"
+        ws_prompts = wb.create_sheet("prompts")
+
+        headers = WorkbookParser.PROMPTS_HEADERS
+        for col, header in enumerate(headers, start=1):
+            ws_prompts.cell(row=1, column=col, value=header)
+
+        values = {
+            "sequence": 1,
+            "prompt_name": "annotated_prompt",
+            "prompt": "Say hello",
+            "history": "",
+            "notes": "This prompt is for smoke testing.",
+        }
+        for col, header in enumerate(headers, start=1):
+            ws_prompts.cell(row=2, column=col, value=values.get(header, ""))
+
+        wb.save(temp_workbook)
+
+        parser = WorkbookParser(temp_workbook)
+        prompts = parser.load_prompts()
+
+        assert prompts[0]["notes"] == "This prompt is for smoke testing."
 
     def test_create_template_with_tools_sheet(self, temp_workbook):
         """Template workbook can be created with a tools sheet."""
@@ -832,3 +868,264 @@ class TestWorkbookParserAgentHeaders:
         assert len(tools) == 1
         assert tools[0]["name"] == "calculate"
         assert tools[0]["implementation"] == "builtin:calculate"
+
+
+class TestPrepareResultValue:
+    """Tests for _prepare_result_value serialization helper."""
+
+    def test_none_returns_empty_string(self):
+        from src.orchestrator.workbook_parser import _prepare_result_value
+
+        assert _prepare_result_value("status", None) == ""
+
+    def test_string_passes_through(self):
+        from src.orchestrator.workbook_parser import _prepare_result_value
+
+        assert _prepare_result_value("status", "success") == "success"
+
+    def test_int_passes_through(self):
+        from src.orchestrator.workbook_parser import _prepare_result_value
+
+        assert _prepare_result_value("sequence", 5) == 5
+
+    def test_bool_false_passes_through(self):
+        from src.orchestrator.workbook_parser import _prepare_result_value
+
+        assert _prepare_result_value("agent_mode", False) is False
+
+    def test_int_zero_passes_through(self):
+        from src.orchestrator.workbook_parser import _prepare_result_value
+
+        assert _prepare_result_value("total_rounds", 0) == 0
+
+    def test_history_serialized_to_json(self):
+        import json
+
+        from src.orchestrator.workbook_parser import _prepare_result_value
+
+        result = _prepare_result_value("history", ["a", "b"])
+        assert json.loads(result) == ["a", "b"]
+
+    def test_references_serialized_to_json(self):
+        import json
+
+        from src.orchestrator.workbook_parser import _prepare_result_value
+
+        result = _prepare_result_value("references", ["doc1", "doc2"])
+        assert json.loads(result) == ["doc1", "doc2"]
+
+    def test_tool_calls_serialized_to_json(self):
+        import json
+
+        from src.orchestrator.workbook_parser import _prepare_result_value
+
+        result = _prepare_result_value("tool_calls", [{"tool_name": "calc"}])
+        assert json.loads(result) == [{"tool_name": "calc"}]
+
+    def test_empty_list_history_serialized_to_json(self):
+        from src.orchestrator.workbook_parser import _prepare_result_value
+
+        assert _prepare_result_value("history", []) == "[]"
+
+    def test_response_string_passes_through(self):
+        from src.orchestrator.workbook_parser import _prepare_result_value
+
+        assert _prepare_result_value("response", "Hello") == "Hello"
+
+    def test_response_dict_serialized_to_json(self):
+        import json
+
+        from src.orchestrator.workbook_parser import _prepare_result_value
+
+        result = _prepare_result_value("response", {"key": "value"})
+        assert json.loads(result) == {"key": "value"}
+
+    def test_response_list_serialized_to_json(self):
+        import json
+
+        from src.orchestrator.workbook_parser import _prepare_result_value
+
+        result = _prepare_result_value("response", [1, 2, 3])
+        assert json.loads(result) == [1, 2, 3]
+
+
+class TestWriteResultsRoundTrip:
+    """Tests that verify header-to-data alignment after writing results."""
+
+    def test_header_data_alignment(self, temp_workbook_with_data):
+        """Each header should map to the correct data column."""
+        from src.orchestrator.workbook_parser import WorkbookParser
+
+        builder = WorkbookParser(temp_workbook_with_data)
+
+        results = [
+            {
+                "sequence": 1,
+                "prompt_name": "test",
+                "prompt": "Hello?",
+                "resolved_prompt": "Hello? resolved",
+                "history": ["a"],
+                "response": "Hi!",
+                "status": "success",
+                "attempts": 2,
+            }
+        ]
+
+        builder.write_results(results, "results_test")
+
+        wb = load_workbook(temp_workbook_with_data)
+        ws = wb["results_test"]
+
+        for col_idx, header in enumerate(builder.RESULTS_HEADERS, start=1):
+            header_cell = ws.cell(row=1, column=col_idx).value
+            assert header_cell == header, (
+                f"Column {col_idx}: expected '{header}', got '{header_cell}'"
+            )
+
+        assert ws.cell(row=2, column=3).value == 1
+        assert ws.cell(row=2, column=4).value == "test"
+        assert ws.cell(row=2, column=5).value == "Hello?"
+        assert ws.cell(row=2, column=6).value == "Hello? resolved"
+        assert ws.cell(row=2, column=7).value == '["a"]'
+        assert ws.cell(row=2, column=12).value == "Hi!"
+        assert ws.cell(row=2, column=13).value == "success"
+        assert ws.cell(row=2, column=14).value == 2
+
+    def test_falsy_values_written_correctly(self, temp_workbook_with_data):
+        """agent_mode=False, total_rounds=0, total_llm_calls=0 should not become empty string."""
+        from src.orchestrator.workbook_parser import WorkbookParser
+
+        builder = WorkbookParser(temp_workbook_with_data)
+
+        results = [
+            {
+                "sequence": 1,
+                "prompt_name": "test",
+                "prompt": "Hello?",
+                "agent_mode": False,
+                "total_rounds": 0,
+                "total_llm_calls": 0,
+                "status": "success",
+                "attempts": 1,
+            }
+        ]
+
+        builder.write_results(results, "results_test")
+
+        wb = load_workbook(temp_workbook_with_data)
+        ws = wb["results_test"]
+
+        agent_mode_col = builder.RESULTS_HEADERS.index("agent_mode") + 1
+        total_rounds_col = builder.RESULTS_HEADERS.index("total_rounds") + 1
+        total_llm_calls_col = builder.RESULTS_HEADERS.index("total_llm_calls") + 1
+
+        assert ws.cell(row=2, column=agent_mode_col).value is False
+        assert ws.cell(row=2, column=total_rounds_col).value == 0
+        assert ws.cell(row=2, column=total_llm_calls_col).value == 0
+
+    def test_validation_fields_written_correctly(self, temp_workbook_with_data):
+        """validation_passed, validation_attempts, validation_critique round-trip correctly."""
+        from src.orchestrator.workbook_parser import WorkbookParser
+
+        builder = WorkbookParser(temp_workbook_with_data)
+
+        results = [
+            {
+                "sequence": 1,
+                "prompt_name": "test",
+                "prompt": "Hello?",
+                "status": "success",
+                "attempts": 1,
+                "validation_passed": False,
+                "validation_attempts": 3,
+                "validation_critique": "Response too short",
+            }
+        ]
+
+        builder.write_results(results, "results_test")
+
+        wb = load_workbook(temp_workbook_with_data)
+        ws = wb["results_test"]
+
+        vp_col = builder.RESULTS_HEADERS.index("validation_passed") + 1
+        va_col = builder.RESULTS_HEADERS.index("validation_attempts") + 1
+        vc_col = builder.RESULTS_HEADERS.index("validation_critique") + 1
+
+        assert ws.cell(row=2, column=vp_col).value is False
+        assert ws.cell(row=2, column=va_col).value == 3
+        assert ws.cell(row=2, column=vc_col).value == "Response too short"
+
+    def test_none_values_written_as_empty_string(self, temp_workbook_with_data):
+        """None values should become empty string in Excel (openpyxl reads back as None)."""
+        from src.orchestrator.workbook_parser import WorkbookParser
+
+        builder = WorkbookParser(temp_workbook_with_data)
+
+        results = [
+            {
+                "sequence": 1,
+                "prompt": "Hello?",
+                "status": "success",
+                "attempts": 1,
+                "error": None,
+                "response": None,
+            }
+        ]
+
+        builder.write_results(results, "results_test")
+
+        wb = load_workbook(temp_workbook_with_data)
+        ws = wb["results_test"]
+
+        error_col = builder.RESULTS_HEADERS.index("error") + 1
+        response_col = builder.RESULTS_HEADERS.index("response") + 1
+
+        assert ws.cell(row=2, column=error_col).value in ("", None)
+        assert ws.cell(row=2, column=response_col).value in ("", None)
+
+    def test_batch_results_same_alignment_as_write_results(self, temp_workbook_with_data):
+        """write_batch_results should produce identical column layout to write_results."""
+        from src.orchestrator.workbook_parser import WorkbookParser
+
+        builder = WorkbookParser(temp_workbook_with_data)
+
+        results = [
+            {
+                "batch_id": 1,
+                "batch_name": "test_batch",
+                "sequence": 1,
+                "prompt_name": "test",
+                "prompt": "Hello?",
+                "response": "Hi!",
+                "status": "success",
+                "attempts": 1,
+            }
+        ]
+
+        builder.write_results(results, "results_test")
+        builder.write_batch_results(results, "batch1")
+
+        wb = load_workbook(temp_workbook_with_data)
+        ws_main = wb["results_test"]
+
+        batch_sheet_name = None
+        for name in wb.sheetnames:
+            if name.startswith("results_batch1"):
+                batch_sheet_name = name
+                break
+        assert batch_sheet_name is not None
+
+        ws_batch = wb[batch_sheet_name]
+
+        for col_idx, header in enumerate(builder.RESULTS_HEADERS, start=1):
+            main_header = ws_main.cell(row=1, column=col_idx).value
+            batch_header = ws_batch.cell(row=1, column=col_idx).value
+            assert main_header == batch_header == header
+
+        for col_idx in range(1, len(builder.RESULTS_HEADERS) + 1):
+            main_val = ws_main.cell(row=2, column=col_idx).value
+            batch_val = ws_batch.cell(row=2, column=col_idx).value
+            assert main_val == batch_val, (
+                f"Column {col_idx} ({builder.RESULTS_HEADERS[col_idx - 1]}): "
+                f"write_results={main_val!r}, write_batch_results={batch_val!r}"
+            )

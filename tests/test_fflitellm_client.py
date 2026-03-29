@@ -227,6 +227,68 @@ class TestFFLiteLLMClientGenerateResponse:
         call_args = mock_completion.call_args
         assert call_args[1]["temperature"] == 0.3
 
+    @patch("src.Clients.FFLiteLLMClient.completion")
+    def test_generate_response_with_tool_calls_adds_tool_history(self, mock_completion):
+        """Tool-call responses should preserve tool_calls in history for agent mode."""
+        mock_response = MagicMock()
+        mock_message = MagicMock()
+        mock_message.content = None
+
+        mock_function = MagicMock()
+        mock_function.name = "calculate"
+        mock_function.arguments = '{"expression": "2 + 2"}'
+
+        mock_tool_call = MagicMock()
+        mock_tool_call.id = "tc_123"
+        mock_tool_call.function = mock_function
+
+        mock_message.tool_calls = [mock_tool_call]
+        mock_response.choices = [MagicMock(message=mock_message)]
+        mock_completion.return_value = mock_response
+
+        client = FFLiteLLMClient(model_string="openai/gpt-4")
+        response = client.generate_response(
+            "Use the calculate tool.",
+            tools=[{"type": "function", "function": {"name": "calculate"}}],
+            tool_choice="auto",
+        )
+
+        assert response == ""
+        assert len(client.conversation_history) == 2
+        assistant_message = client.conversation_history[-1]
+        assert assistant_message["role"] == "assistant"
+        assert "tool_calls" in assistant_message
+        assert assistant_message["tool_calls"][0]["id"] == "tc_123"
+        assert assistant_message["tool_calls"][0]["function"]["name"] == "calculate"
+        assert (
+            assistant_message["tool_calls"][0]["function"]["arguments"] == '{"expression": "2 + 2"}'
+        )
+
+    @patch("src.Clients.FFLiteLLMClient.completion")
+    def test_generate_response_with_tool_calls_none_content(self, mock_completion):
+        """Tool-call responses with no textual content should not crash."""
+        mock_response = MagicMock()
+        mock_message = MagicMock()
+        mock_message.content = None
+        mock_message.tool_calls = [
+            {
+                "id": "tc_456",
+                "function": {"name": "json_extract", "arguments": '{"path": "value"}'},
+            }
+        ]
+        mock_response.choices = [MagicMock(message=mock_message)]
+        mock_completion.return_value = mock_response
+
+        client = FFLiteLLMClient(model_string="openai/gpt-4")
+        response = client.generate_response(
+            "Use a tool.",
+            tools=[{"type": "function", "function": {"name": "json_extract"}}],
+            tool_choice="auto",
+        )
+
+        assert response == ""
+        assert client.conversation_history[-1]["tool_calls"][0]["id"] == "tc_456"
+
     def test_generate_response_empty_prompt_raises(self):
         """Should raise ValueError for empty prompt."""
         client = FFLiteLLMClient(model_string="openai/gpt-4")

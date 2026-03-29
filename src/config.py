@@ -299,6 +299,13 @@ class RAGConfig(BaseSettings):
     hierarchical: RAGHierarchicalConfig = Field(default_factory=RAGHierarchicalConfig)
 
 
+class AgentValidationConfig(BaseSettings):
+    """Agent response validation configuration."""
+
+    enabled: bool = True
+    max_retries: int = 2
+
+
 class AgentConfig(BaseSettings):
     """Agent mode configuration."""
 
@@ -306,6 +313,7 @@ class AgentConfig(BaseSettings):
     max_tool_rounds: int = 5
     tool_timeout: float = 30.0
     continue_on_tool_error: bool = True
+    validation: AgentValidationConfig = AgentValidationConfig()
 
 
 class ClientConfig(BaseSettings):

@@ -411,6 +411,14 @@ class ConditionEvaluator:
         if prop == "total_llm_calls":
             return int(value) if value is not None else 0
 
+        if prop == "validation_passed":
+            if value is None:
+                return None
+            return bool(value)
+
+        if prop == "validation_attempts":
+            return int(value) if value is not None else 0
+
         if prop == "status":
             return value if value else "pending"
 

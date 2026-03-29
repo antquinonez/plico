@@ -6,12 +6,13 @@
 """
 Generate sample workbook for agentic tool-call testing.
 
-Creates 10 prompts testing agentic execution:
+Creates 11 prompts testing agentic execution:
 - Prompts 1-2: Non-agent baseline (no tools)
 - Prompts 3-5: Agent mode with single tools (calculate, json_extract)
 - Prompts 6-7: Agent mode with multiple tools
 - Prompts 8-9: Agent mode with conditions on tool results
-- Prompt 10: Agent mode with max_tool_rounds=1 (edge case)
+- Prompt 10: Agent mode with response validation + retry
+- Prompt 11: Agent mode with max_tool_rounds=1 (edge case)
 
 Uses built-in tools: calculate, json_extract, http_get.
 No external API keys required beyond the default client.
@@ -123,7 +124,7 @@ def get_prompts() -> list[PromptSpec]:
         PromptSpec(
             9,
             "agent_condition_consumer",
-            "Based on the result from agent_condition_source, use calculate to multiply that result by 10.",
+            "Based on the result {{agent_condition_source.response}} from agent_condition_source, use calculate to multiply that number by 10.",
             '["agent_condition_source"]',
             agent_mode="true",
             tools='["calculate"]',
@@ -131,9 +132,21 @@ def get_prompts() -> list[PromptSpec]:
         ),
         PromptSpec(
             10,
+            "agent_validation_retry",
+            "Use the calculate tool to compute 81 / 9. Return digits only.",
+            None,
+            notes="Demonstrates response validation after tool use; should pass validation with final response '9'.",
+            agent_mode="true",
+            tools='["calculate"]',
+            validation_prompt="The final response must be exactly the digits 9.",
+            max_validation_retries=2,
+        ),
+        PromptSpec(
+            11,
             "agent_max_rounds_one",
             "Use calculate to compute the square root of 2. Give the result to 5 decimal places.",
             None,
+            notes="Intentional edge case: max_tool_rounds=1 allows the tool call but prevents a second round for final answer synthesis, so this row should end as max_rounds_exceeded.",
             agent_mode="true",
             tools='["calculate"]',
             max_tool_rounds=1,
@@ -160,7 +173,8 @@ def create_sample_workbook(output_path: str, config_overrides: dict | None = Non
                 "Single tool (3-5)": "Agent mode with calculate or json_extract",
                 "Multi tool (6-7)": "Agent mode with multiple tools in sequence",
                 "Conditional (8-9)": "Agent with condition on previous agent result",
-                "Edge case (10)": "Agent with max_tool_rounds=1",
+                "Validation (10)": "Agent mode with response validation + retry",
+                "Edge case (11)": "Agent with max_tool_rounds=1",
             },
             "Tools sheet": f"{len(TOOLS)} tools: calculate, json_extract, http_get",
             "Client": config_overrides.get("client_type", "default")

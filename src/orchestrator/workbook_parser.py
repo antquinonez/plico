@@ -24,6 +24,34 @@ from .workbook_formatter import WorkbookFormatter
 
 logger = logging.getLogger(__name__)
 
+JSON_SERIALIZE_COLUMNS = frozenset({"history", "references", "tool_calls"})
+
+
+def _serialize_result_value(header: str, value: Any) -> Any:
+    """JSON-serialize complex result values for output.
+
+    Converts list/dict values in JSON_SERIALIZE_COLUMNS and response
+    to JSON strings. All other values pass through unchanged, including None.
+    """
+    if header in JSON_SERIALIZE_COLUMNS:
+        if value is not None:
+            return json.dumps(value)
+        return value
+    if header == "response" and isinstance(value, list | dict):
+        return json.dumps(value)
+    return value
+
+
+def _prepare_result_value(header: str, value: Any) -> Any:
+    """Convert a raw result value for Excel output.
+
+    Like _serialize_result_value but also converts None to empty string
+    for Excel cells where null is not desired.
+    """
+    if value is None:
+        return ""
+    return _serialize_result_value(header, value)
+
 
 class WorkbookParser:
     """Parses and validates Excel workbooks for prompt orchestration."""
@@ -109,6 +137,7 @@ class WorkbookParser:
         "prompt_name",
         "prompt",
         "history",
+        "notes",
         "client",
         "condition",
         "references",
@@ -119,6 +148,8 @@ class WorkbookParser:
         "agent_mode",
         "tools",
         "max_tool_rounds",
+        "validation_prompt",
+        "max_validation_retries",
     ]
     REQUIRED_PROMPTS_HEADERS = ["sequence", "prompt_name", "prompt", "history"]
     DOCUMENTS_HEADERS = [
@@ -163,6 +194,9 @@ class WorkbookParser:
         "tool_calls",
         "total_rounds",
         "total_llm_calls",
+        "validation_passed",
+        "validation_attempts",
+        "validation_critique",
     ]
     TOOLS_HEADERS = [
         "name",
@@ -436,6 +470,7 @@ class WorkbookParser:
                 "history": self.parse_history_string(row_dict.get("history"))
                 if row_dict.get("history")
                 else None,
+                "notes": str(row_dict.get("notes", "")).strip() if row_dict.get("notes") else None,
                 "client": str(row_dict.get("client", "")).strip()
                 if row_dict.get("client")
                 else None,
@@ -466,6 +501,12 @@ class WorkbookParser:
                 else None,
                 "max_tool_rounds": int(row_dict["max_tool_rounds"])
                 if row_dict.get("max_tool_rounds")
+                else None,
+                "validation_prompt": str(row_dict.get("validation_prompt", "")).strip()
+                if row_dict.get("validation_prompt")
+                else None,
+                "max_validation_retries": int(row_dict["max_validation_retries"])
+                if row_dict.get("max_validation_retries")
                 else None,
             }
 
@@ -754,6 +795,9 @@ class WorkbookParser:
     def write_results(self, results: list[dict[str, Any]], sheet_name: str) -> str:
         """Write execution results to a new sheet."""
         wb = load_workbook(self.workbook_path)
+        ordered_results = sorted(
+            results, key=lambda r: ((r.get("batch_id") or 0), r.get("sequence", 0))
+        )
 
         if sheet_name in wb.sheetnames:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
@@ -764,58 +808,13 @@ class WorkbookParser:
         for col_idx, header in enumerate(self.RESULTS_HEADERS, start=1):
             ws.cell(row=1, column=col_idx, value=header)
 
-        for row_idx, result in enumerate(results, start=2):
-            ws.cell(row=row_idx, column=1, value=result.get("batch_id"))
-            ws.cell(row=row_idx, column=2, value=result.get("batch_name"))
-            ws.cell(row=row_idx, column=3, value=result.get("sequence"))
-            ws.cell(row=row_idx, column=4, value=result.get("prompt_name"))
-            ws.cell(row=row_idx, column=5, value=result.get("prompt"))
-            ws.cell(row=row_idx, column=6, value=result.get("resolved_prompt"))
-
-            history = result.get("history")
-            history_str = json.dumps(history) if history else ""
-            ws.cell(row=row_idx, column=7, value=history_str)
-
-            ws.cell(row=row_idx, column=8, value=result.get("client"))
-            ws.cell(row=row_idx, column=9, value=result.get("condition"))
-            ws.cell(row=row_idx, column=10, value=result.get("condition_result"))
-            ws.cell(row=row_idx, column=11, value=result.get("condition_error"))
-            response = result.get("response")
-            if isinstance(response, list | dict):
-                response = json.dumps(response)
-            ws.cell(row=row_idx, column=12, value=response)
-            ws.cell(row=row_idx, column=13, value=result.get("status"))
-            ws.cell(row=row_idx, column=14, value=result.get("attempts"))
-            ws.cell(row=row_idx, column=15, value=result.get("error"))
-
-            references = result.get("references")
-            references_str = json.dumps(references) if references else ""
-            ws.cell(row=row_idx, column=16, value=references_str)
-
-            semantic_query = result.get("semantic_query")
-            ws.cell(row=row_idx, column=17, value=semantic_query if semantic_query else "")
-
-            semantic_filter = result.get("semantic_filter")
-            ws.cell(row=row_idx, column=18, value=semantic_filter if semantic_filter else "")
-
-            query_expansion = result.get("query_expansion")
-            ws.cell(row=row_idx, column=19, value=query_expansion if query_expansion else "")
-
-            rerank = result.get("rerank")
-            ws.cell(row=row_idx, column=20, value=rerank if rerank else "")
-
-            agent_mode = result.get("agent_mode")
-            ws.cell(row=row_idx, column=21, value=agent_mode if agent_mode else "")
-
-            tool_calls = result.get("tool_calls")
-            tool_calls_str = json.dumps(tool_calls) if tool_calls else ""
-            ws.cell(row=row_idx, column=22, value=tool_calls_str)
-
-            total_rounds = result.get("total_rounds")
-            ws.cell(row=row_idx, column=23, value=total_rounds if total_rounds else "")
-
-            total_llm_calls = result.get("total_llm_calls")
-            ws.cell(row=row_idx, column=24, value=total_llm_calls if total_llm_calls else "")
+        for row_idx, result in enumerate(ordered_results, start=2):
+            for col_idx, header in enumerate(self.RESULTS_HEADERS, start=1):
+                ws.cell(
+                    row=row_idx,
+                    column=col_idx,
+                    value=_prepare_result_value(header, result.get(header)),
+                )
 
         self.formatter.apply_formatting(ws, "results")
 
@@ -831,6 +830,7 @@ class WorkbookParser:
     ) -> str:
         """Write results for a single batch to a separate sheet."""
         wb = load_workbook(self.workbook_path)
+        ordered_results = sorted(results, key=lambda r: r.get("sequence", 0))
 
         sheet_name = f"{base_sheet_name}_{batch_name}"
         original_name = sheet_name
@@ -844,83 +844,15 @@ class WorkbookParser:
         for col_idx, header in enumerate(self.RESULTS_HEADERS, start=1):
             ws.cell(row=1, column=col_idx, value=header)
 
-        for row_idx, result in enumerate(results, start=2):
-            ws.cell(row=row_idx, column=1, value=result.get("batch_id"))
-            ws.cell(row=row_idx, column=2, value=result.get("batch_name"))
-            ws.cell(row=row_idx, column=3, value=result.get("sequence"))
-            ws.cell(row=row_idx, column=4, value=result.get("prompt_name"))
-            ws.cell(row=row_idx, column=5, value=result.get("prompt"))
-            ws.cell(row=row_idx, column=6, value=result.get("resolved_prompt"))
+        for row_idx, result in enumerate(ordered_results, start=2):
+            for col_idx, header in enumerate(self.RESULTS_HEADERS, start=1):
+                ws.cell(
+                    row=row_idx,
+                    column=col_idx,
+                    value=_prepare_result_value(header, result.get(header)),
+                )
 
-            history = result.get("history")
-            history_str = json.dumps(history) if history else ""
-            ws.cell(row=row_idx, column=7, value=history_str)
-
-            ws.cell(row=row_idx, column=8, value=result.get("client"))
-            ws.cell(row=row_idx, column=9, value=result.get("condition"))
-            ws.cell(row=row_idx, column=10, value=result.get("condition_result"))
-            ws.cell(row=row_idx, column=11, value=result.get("condition_error"))
-            response = result.get("response")
-            if isinstance(response, list | dict):
-                response = json.dumps(response)
-            ws.cell(row=row_idx, column=12, value=response)
-            ws.cell(row=row_idx, column=13, value=result.get("status"))
-            ws.cell(row=row_idx, column=14, value=result.get("attempts"))
-            ws.cell(row=row_idx, column=15, value=result.get("error"))
-
-            references = result.get("references")
-            references_str = json.dumps(references) if references else ""
-            ws.cell(row=row_idx, column=16, value=references_str)
-
-            semantic_query = result.get("semantic_query")
-            ws.cell(row=row_idx, column=17, value=semantic_query if semantic_query else "")
-
-            semantic_filter = result.get("semantic_filter")
-            ws.cell(row=row_idx, column=18, value=semantic_filter if semantic_filter else "")
-
-            query_expansion = result.get("query_expansion")
-            ws.cell(row=row_idx, column=19, value=query_expansion if query_expansion else "")
-
-            rerank = result.get("rerank")
-            ws.cell(row=row_idx, column=20, value=rerank if rerank else "")
-
-            agent_mode = result.get("agent_mode")
-            ws.cell(row=row_idx, column=21, value=agent_mode if agent_mode else "")
-
-            tool_calls = result.get("tool_calls")
-            tool_calls_str = json.dumps(tool_calls) if tool_calls else ""
-            ws.cell(row=row_idx, column=22, value=tool_calls_str)
-
-            total_rounds = result.get("total_rounds")
-            ws.cell(row=row_idx, column=23, value=total_rounds if total_rounds else "")
-
-            total_llm_calls = result.get("total_llm_calls")
-            ws.cell(row=row_idx, column=24, value=total_llm_calls if total_llm_calls else "")
-
-        ws.column_dimensions["A"].width = 10
-        ws.column_dimensions["B"].width = 25
-        ws.column_dimensions["C"].width = 10
-        ws.column_dimensions["D"].width = 18
-        ws.column_dimensions["E"].width = 50
-        ws.column_dimensions["F"].width = 60
-        ws.column_dimensions["G"].width = 30
-        ws.column_dimensions["H"].width = 15
-        ws.column_dimensions["I"].width = 40
-        ws.column_dimensions["J"].width = 15
-        ws.column_dimensions["K"].width = 25
-        ws.column_dimensions["L"].width = 60
-        ws.column_dimensions["M"].width = 10
-        ws.column_dimensions["N"].width = 10
-        ws.column_dimensions["O"].width = 40
-        ws.column_dimensions["P"].width = 30
-        ws.column_dimensions["Q"].width = 30
-        ws.column_dimensions["R"].width = 15
-        ws.column_dimensions["S"].width = 18
-        ws.column_dimensions["T"].width = 10
-        ws.column_dimensions["U"].width = 12
-        ws.column_dimensions["V"].width = 50
-        ws.column_dimensions["W"].width = 14
-        ws.column_dimensions["X"].width = 16
+        self.formatter.apply_formatting(ws, "results")
 
         wb.save(self.workbook_path)
         logger.info(f"Batch results written to sheet: {sheet_name}")

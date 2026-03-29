@@ -41,6 +41,7 @@ class PromptSpec:
     name: str
     prompt: str
     history: str | None = None
+    notes: str | None = None
     client: str | None = None
     condition: str | None = None
     references: str | None = None
@@ -51,6 +52,8 @@ class PromptSpec:
     agent_mode: str | None = None
     tools: str | None = None
     max_tool_rounds: int | None = None
+    validation_prompt: str | None = None
+    max_validation_retries: int | None = None
 
     def to_row(
         self,
@@ -62,6 +65,7 @@ class PromptSpec:
             "prompt_name": self.name,
             "prompt": self.prompt,
             "history": self.history or "",
+            "notes": self.notes or "",
             "client": self.client or "",
             "condition": self.condition or "",
             "references": self.references or "",
@@ -72,6 +76,8 @@ class PromptSpec:
             "agent_mode": self.agent_mode or "",
             "tools": self.tools or "",
             "max_tool_rounds": self.max_tool_rounds or "",
+            "validation_prompt": self.validation_prompt or "",
+            "max_validation_retries": self.max_validation_retries or "",
         }
         if extra_columns:
             row.update(extra_columns)
@@ -87,6 +93,13 @@ class SectionDefinition:
         description: Human-readable description
         features: List of features tested in this section (optional)
         extra_fields: Additional fields to track per prompt (optional)
+        field_checks: Dict mapping sequence numbers to field validation rules.
+            Each rule is a dict with keys:
+            - column: int - column number in results sheet
+            - expected: Any - expected value (exact match)
+            - expected_one_of: list[Any] - value must be one of these
+            - not_empty: bool - value must not be empty/None
+            - greater_than: int/float - value must be greater than this (numeric)
 
     """
 
@@ -94,6 +107,7 @@ class SectionDefinition:
     description: str
     features: list[str] | None = None
     extra_fields: list[str] = field(default_factory=list)
+    field_checks: dict[int, dict[str, Any]] = field(default_factory=dict)
 
 
 DEFAULT_CONFIG_FIELDS: list[tuple[str, str | None, str]] = [
@@ -128,6 +142,7 @@ DEFAULT_PROMPT_HEADERS = [
     "prompt_name",
     "prompt",
     "history",
+    "notes",
     "client",
     "condition",
     "references",
@@ -138,6 +153,8 @@ DEFAULT_PROMPT_HEADERS = [
     "agent_mode",
     "tools",
     "max_tool_rounds",
+    "validation_prompt",
+    "max_validation_retries",
 ]
 
 DEFAULT_PROMPT_COLUMN_WIDTHS = {
@@ -145,13 +162,19 @@ DEFAULT_PROMPT_COLUMN_WIDTHS = {
     "B": 24,
     "C": 80,
     "D": 40,
-    "E": 12,
-    "F": 80,
-    "G": 40,
-    "H": 30,
-    "I": 45,
-    "J": 15,
-    "K": 10,
+    "E": 36,
+    "F": 12,
+    "G": 80,
+    "H": 40,
+    "I": 30,
+    "J": 45,
+    "K": 15,
+    "L": 10,
+    "M": 18,
+    "N": 18,
+    "O": 18,
+    "P": 18,
+    "Q": 20,
 }
 
 DEFAULT_CONFIG_COLUMN_WIDTHS = {
@@ -218,9 +241,16 @@ DEFAULT_DOCUMENTS_COLUMN_WIDTHS = {
     "E": 30,
 }
 
-STATUS_COLUMN = 12
+STATUS_COLUMN = 13
 SEQUENCE_COLUMN = 3
 PROMPT_NAME_COLUMN = 4
-CONDITION_RESULT_COLUMN = 9
-CONDITION_ERROR_COLUMN = 10
+CONDITION_RESULT_COLUMN = 10
+CONDITION_ERROR_COLUMN = 11
 BATCH_INDEX_COLUMN = 2
+AGENT_MODE_COLUMN = 21
+TOOL_CALLS_COLUMN = 22
+TOTAL_ROUNDS_COLUMN = 23
+TOTAL_LLM_CALLS_COLUMN = 24
+VALIDATION_PASSED_COLUMN = 25
+VALIDATION_ATTEMPTS_COLUMN = 26
+VALIDATION_CRITIQUE_COLUMN = 27

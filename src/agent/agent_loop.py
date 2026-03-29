@@ -27,6 +27,7 @@ from .agent_result import AgentResult, ToolCallRecord
 logger = logging.getLogger(__name__)
 
 _TOOL_CALLS_DATA_KEY = "tool_calls"
+_CONTINUE_PROMPT = "Continue using the tool results to answer the original request."
 
 
 class AgentLoop:
@@ -88,6 +89,10 @@ class AgentLoop:
             AgentResult with response, tool call records, and round/LLM counts.
 
         """
+        kwargs = dict(kwargs)
+        kwargs.pop("prompt_name", None)
+        kwargs.pop("history", None)
+
         tool_schemas = self.tool_registry.get_tools_schema(tools)
 
         if not tool_schemas:
@@ -156,7 +161,7 @@ class AgentLoop:
                         status="failed",
                     )
 
-            current_prompt = ""
+            current_prompt = _CONTINUE_PROMPT
         else:
             logger.warning(f"Agent loop reached max rounds ({self.max_rounds})")
             return AgentResult(

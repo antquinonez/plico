@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from typing import Any
 
 
@@ -38,6 +38,9 @@ class PromptResult:
         tool_calls: List of tool call records from agentic execution.
         total_rounds: Number of rounds in the agentic loop.
         total_llm_calls: Total LLM API calls within the agentic loop.
+        validation_passed: Whether the response passed validation (None if no validation).
+        validation_attempts: Number of validation attempts.
+        validation_critique: Last validation critique if validation failed.
 
     """
 
@@ -65,41 +68,15 @@ class PromptResult:
     tool_calls: list[dict[str, Any]] | None = None
     total_rounds: int | None = None
     total_llm_calls: int | None = None
+    validation_passed: bool | None = None
+    validation_attempts: int | None = None
+    validation_critique: str | None = None
 
     VALID_STATUSES = ("pending", "success", "failed", "skipped", "max_rounds_exceeded")
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for backward compatibility."""
-        result = {
-            "sequence": self.sequence,
-            "prompt_name": self.prompt_name,
-            "prompt": self.prompt,
-            "resolved_prompt": self.resolved_prompt,
-            "history": self.history,
-            "client": self.client,
-            "condition": self.condition,
-            "condition_result": self.condition_result,
-            "condition_error": self.condition_error,
-            "response": self.response,
-            "status": self.status,
-            "attempts": self.attempts,
-            "error": self.error,
-            "references": self.references,
-            "semantic_query": self.semantic_query,
-            "semantic_filter": self.semantic_filter,
-            "query_expansion": self.query_expansion,
-            "rerank": self.rerank,
-        }
-        if self.batch_id is not None:
-            result["batch_id"] = self.batch_id
-        if self.batch_name is not None:
-            result["batch_name"] = self.batch_name
-        if self.agent_mode:
-            result["agent_mode"] = self.agent_mode
-            result["tool_calls"] = self.tool_calls
-            result["total_rounds"] = self.total_rounds
-            result["total_llm_calls"] = self.total_llm_calls
-        return result
+        return {f.name: getattr(self, f.name) for f in fields(self)}
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> PromptResult:
@@ -129,4 +106,7 @@ class PromptResult:
             tool_calls=data.get("tool_calls"),
             total_rounds=data.get("total_rounds"),
             total_llm_calls=data.get("total_llm_calls"),
+            validation_passed=data.get("validation_passed"),
+            validation_attempts=data.get("validation_attempts"),
+            validation_critique=data.get("validation_critique"),
         )

@@ -480,3 +480,91 @@ class TestManifestIntegration:
 
         assert len(results) == 3
         assert all(r["status"] == "success" for r in results)
+
+    def test_export_notes_in_prompts_yaml(self, tmp_path):
+        """Test that notes column is preserved in manifest export."""
+        from openpyxl import Workbook
+
+        from src.orchestrator.manifest import WorkbookManifestExporter
+
+        wb = Workbook()
+        ws_config = wb.active
+        ws_config.title = "config"
+        ws_config["A1"] = "field"
+        ws_config["B1"] = "value"
+        ws_config["A2"] = "model"
+        ws_config["B2"] = "mistral-small-2503"
+
+        ws_prompts = wb.create_sheet(title="prompts")
+        ws_prompts["A1"] = "sequence"
+        ws_prompts["B1"] = "prompt_name"
+        ws_prompts["C1"] = "prompt"
+        ws_prompts["D1"] = "history"
+        ws_prompts["E1"] = "notes"
+        ws_prompts["A2"] = 1
+        ws_prompts["B2"] = "hello"
+        ws_prompts["C2"] = "Say hello"
+        ws_prompts["E2"] = "This is a test note for the hello prompt"
+        ws_prompts["A3"] = 2
+        ws_prompts["B3"] = "goodbye"
+        ws_prompts["C3"] = "Say goodbye"
+
+        workbook_path = str(tmp_path / "notes_test.xlsx")
+        wb.save(workbook_path)
+
+        manifest_dir = str(tmp_path / "manifests")
+        exporter = WorkbookManifestExporter(workbook_path)
+        manifest_path = exporter.export(manifest_dir=manifest_dir)
+
+        with open(os.path.join(manifest_path, "prompts.yaml"), encoding="utf-8") as f:
+            prompts_data = yaml.safe_load(f)
+
+        prompts = prompts_data["prompts"]
+        assert len(prompts) == 2
+        assert prompts[0]["notes"] == "This is a test note for the hello prompt"
+        assert prompts[1]["notes"] is None
+
+    def test_export_notes_roundtrip_through_manifest_orchestrator(self, tmp_path):
+        """Test that notes round-trips: workbook -> export -> load into ManifestOrchestrator."""
+        from unittest.mock import MagicMock
+
+        from openpyxl import Workbook
+
+        from src.orchestrator.manifest import ManifestOrchestrator, WorkbookManifestExporter
+
+        mock_client = MagicMock()
+
+        wb = Workbook()
+        ws_config = wb.active
+        ws_config.title = "config"
+        ws_config["A1"] = "field"
+        ws_config["B1"] = "value"
+        ws_config["A2"] = "model"
+        ws_config["B2"] = "mistral-small-2503"
+
+        ws_prompts = wb.create_sheet(title="prompts")
+        ws_prompts["A1"] = "sequence"
+        ws_prompts["B1"] = "prompt_name"
+        ws_prompts["C1"] = "prompt"
+        ws_prompts["D1"] = "history"
+        ws_prompts["E1"] = "notes"
+        ws_prompts["A2"] = 1
+        ws_prompts["B2"] = "test_prompt"
+        ws_prompts["C2"] = "Test"
+        ws_prompts["E2"] = "Important note about this prompt"
+
+        workbook_path = str(tmp_path / "notes_rt.xlsx")
+        wb.save(workbook_path)
+
+        manifest_dir = str(tmp_path / "manifests")
+        exporter = WorkbookManifestExporter(workbook_path)
+        manifest_path = exporter.export(manifest_dir=manifest_dir)
+
+        orchestrator = ManifestOrchestrator(
+            manifest_dir=manifest_path,
+            client=mock_client,
+        )
+        orchestrator._load_source()
+
+        assert len(orchestrator.prompts) == 1
+        assert orchestrator.prompts[0]["notes"] == "Important note about this prompt"
