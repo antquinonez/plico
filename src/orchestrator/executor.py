@@ -60,11 +60,15 @@ class Executor:
         total = len(orchestrator.prompts)
 
         nodes = orchestrator._build_execution_graph()
-        sorted_prompts = sorted(
-            orchestrator.prompts, key=lambda p: (nodes[p["sequence"]].level, p["sequence"])
-        )
+        ready = [node for node in nodes.values() if not node.dependencies]
+        ready.sort(key=lambda n: (n.level, n.sequence))
+        executed: set[int] = set()
 
-        for prompt in sorted_prompts:
+        while ready:
+            node = ready.pop(0)
+            if node.sequence in executed:
+                continue
+            prompt = node.prompt
             if orchestrator.progress_callback:
                 orchestrator.progress_callback(
                     len(results),
@@ -77,9 +81,20 @@ class Executor:
 
             result = orchestrator._execute_prompt(prompt, results_by_name)
             results.append(result)
+            executed.add(node.sequence)
 
             if result.get("prompt_name"):
                 results_by_name[result["prompt_name"]] = result
+
+            for candidate in nodes.values():
+                if candidate.sequence in executed:
+                    continue
+                if candidate.sequence in {n.sequence for n in ready}:
+                    continue
+                if candidate.dependencies.issubset(executed):
+                    ready.append(candidate)
+
+            ready.sort(key=lambda n: (n.level, n.sequence))
 
         self._log_completion(results, "Execution")
 

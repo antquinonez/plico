@@ -119,7 +119,6 @@ class TestWorkbookParserValidate:
 
         wb = Workbook()
         wb.create_sheet("prompts")
-        del wb["Sheet"]
         wb.save(temp_workbook)
 
         builder = WorkbookParser(temp_workbook)
@@ -135,7 +134,6 @@ class TestWorkbookParserValidate:
 
         wb = Workbook()
         wb.create_sheet("config")
-        del wb["Sheet"]
         wb.save(temp_workbook)
 
         builder = WorkbookParser(temp_workbook)
@@ -154,7 +152,6 @@ class TestWorkbookParserValidate:
         wb.create_sheet("prompts")
         ws = wb["prompts"]
         ws["A1"] = "sequence"
-        del wb["Sheet"]
         wb.save(temp_workbook)
 
         builder = WorkbookParser(temp_workbook)
@@ -449,6 +446,9 @@ class TestWorkbookParserWriteResults:
         assert "status" in headers
         assert "attempts" in headers
         assert "error" in headers
+        assert "validation_passed" in headers
+        assert "validation_attempts" in headers
+        assert "validation_critique" in headers
 
     def test_write_results_converts_history_to_json(self, temp_workbook_with_data):
         """Test that history is converted to JSON string."""
@@ -639,7 +639,6 @@ class TestWorkbookParserClientsSheet:
         wb.create_sheet("config")
         wb.create_sheet("prompts")
         wb.create_sheet("clients")
-        del wb["Sheet"]
         wb.save(temp_workbook)
 
         builder = WorkbookParser(temp_workbook)
@@ -677,7 +676,6 @@ class TestWorkbookParserClientsSheet:
         ws_clients.cell(row=3, column=2, value="anthropic")
         ws_clients.cell(row=3, column=3, value="ANTHROPIC_API_KEY")
 
-        del wb["Sheet"]
         wb.save(temp_workbook)
 
         builder = WorkbookParser(temp_workbook)
@@ -760,6 +758,12 @@ class TestWorkbookParserAgentHeaders:
         assert "tools" in WorkbookParser.PROMPTS_HEADERS
         assert "max_tool_rounds" in WorkbookParser.PROMPTS_HEADERS
 
+    def test_prompts_headers_include_notes_column(self):
+        """PROMPTS_HEADERS should include notes for user annotations."""
+        from src.orchestrator.workbook_parser import WorkbookParser
+
+        assert "notes" in WorkbookParser.PROMPTS_HEADERS
+
     def test_results_headers_includes_agent_columns(self):
         """RESULTS_HEADERS should include agent metadata columns."""
         from src.orchestrator.workbook_parser import WorkbookParser
@@ -791,6 +795,38 @@ class TestWorkbookParserAgentHeaders:
         ws_prompts = wb["prompts"]
         headers = [ws_prompts.cell(row=1, column=col).value for col in range(1, 20)]
         assert "agent_mode" in headers
+
+    def test_load_prompts_reads_notes_column(self, temp_workbook):
+        """Prompt notes should round-trip through workbook loading."""
+        from openpyxl import Workbook
+
+        from src.orchestrator.workbook_parser import WorkbookParser
+
+        wb = Workbook()
+        ws_config = wb.active
+        ws_config.title = "config"
+        ws_prompts = wb.create_sheet("prompts")
+
+        headers = WorkbookParser.PROMPTS_HEADERS
+        for col, header in enumerate(headers, start=1):
+            ws_prompts.cell(row=1, column=col, value=header)
+
+        values = {
+            "sequence": 1,
+            "prompt_name": "annotated_prompt",
+            "prompt": "Say hello",
+            "history": "",
+            "notes": "This prompt is for smoke testing.",
+        }
+        for col, header in enumerate(headers, start=1):
+            ws_prompts.cell(row=2, column=col, value=values.get(header, ""))
+
+        wb.save(temp_workbook)
+
+        parser = WorkbookParser(temp_workbook)
+        prompts = parser.load_prompts()
+
+        assert prompts[0]["notes"] == "This prompt is for smoke testing."
 
     def test_create_template_with_tools_sheet(self, temp_workbook):
         """Template workbook can be created with a tools sheet."""

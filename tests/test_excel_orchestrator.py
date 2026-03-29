@@ -7,6 +7,55 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from src.FFAIClientBase import FFAIClientBase
+
+
+class ScriptedAgentClient(FFAIClientBase):
+    """Minimal scripted client for agent orchestration tests."""
+
+    model = "scripted-model"
+    system_instructions = "You are a test assistant."
+
+    def __init__(
+        self,
+        responses: list[dict] | None = None,
+        clone_queue: list["ScriptedAgentClient"] | None = None,
+    ) -> None:
+        self.chat_history: list[dict] = []
+        self.responses = list(responses or [])
+        self.clone_queue = clone_queue
+
+    def generate_response(self, prompt: str, **kwargs) -> str:
+        if not self.responses:
+            return ""
+
+        response = self.responses.pop(0)
+        content = response["content"]
+        tool_calls = response.get("tool_calls")
+
+        self.chat_history.append({"role": "user", "content": prompt})
+        assistant_message = {"role": "assistant", "content": content}
+        if tool_calls is not None:
+            assistant_message["tool_calls"] = tool_calls
+        self.chat_history.append(assistant_message)
+        return content
+
+    def clear_conversation(self) -> None:
+        self.chat_history = []
+
+    def get_conversation_history(self) -> list[dict]:
+        return list(self.chat_history)
+
+    def set_conversation_history(self, history: list[dict]) -> None:
+        self.chat_history = list(history)
+
+    def clone(self) -> "ScriptedAgentClient":
+        if self.clone_queue is None:
+            return ScriptedAgentClient()
+        if not self.clone_queue:
+            raise AssertionError("No scripted clone available")
+        return self.clone_queue.pop(0)
+
 
 class TestExcelOrchestratorInit:
     """Tests for ExcelOrchestrator initialization."""
@@ -257,6 +306,629 @@ class TestExcelOrchestratorExecute:
 
         assert results[0]["status"] == "success"
         assert results[0]["attempts"] == 3
+
+
+class TestExcelOrchestratorAgentValidation:
+    """Tests for agent response validation in orchestrator execution."""
+
+    def test_agent_validation_retry_updates_result(self, temp_workbook):
+        """Agent validation should retry and keep final validated output."""
+        from openpyxl import Workbook
+
+        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
+
+        wb = Workbook()
+        ws_config = wb.active
+        ws_config.title = "config"
+        ws_config["A1"] = "field"
+        ws_config["B1"] = "value"
+
+        config_items = [
+            ("model", "test-model"),
+            ("api_key_env", "TEST_API_KEY"),
+            ("max_retries", 1),
+            ("temperature", 0.1),
+            ("max_tokens", 1000),
+            ("system_instructions", "You are a helpful assistant."),
+        ]
+        for idx, (field, value) in enumerate(config_items, start=2):
+            ws_config[f"A{idx}"] = field
+            ws_config[f"B{idx}"] = value
+
+        ws_prompts = wb.create_sheet("prompts")
+        headers = [
+            "sequence",
+            "prompt_name",
+            "prompt",
+            "history",
+            "client",
+            "condition",
+            "references",
+            "semantic_query",
+            "semantic_filter",
+            "query_expansion",
+            "rerank",
+            "agent_mode",
+            "tools",
+            "max_tool_rounds",
+            "validation_prompt",
+            "max_validation_retries",
+        ]
+        for col, header in enumerate(headers, start=1):
+            ws_prompts.cell(row=1, column=col, value=header)
+
+        row = [
+            1,
+            "validated_agent",
+            "Use the calculate tool to compute 2 + 2. Return digits only.",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "true",
+            '["calculate"]',
+            5,
+            "The response must be exactly the digits 4.",
+            2,
+        ]
+        for col, value in enumerate(row, start=1):
+            ws_prompts.cell(row=2, column=col, value=value)
+
+        ws_tools = wb.create_sheet("tools")
+        tool_headers = ["name", "description", "parameters", "implementation", "enabled"]
+        for col, header in enumerate(tool_headers, start=1):
+            ws_tools.cell(row=1, column=col, value=header)
+
+        tool_row = [
+            "calculate",
+            "Evaluate math",
+            '{"type":"object","properties":{"expression":{"type":"string"}},"required":["expression"]}',
+            "builtin:calculate",
+            True,
+        ]
+        for col, value in enumerate(tool_row, start=1):
+            ws_tools.cell(row=2, column=col, value=value)
+
+        wb.save(temp_workbook)
+
+        main_client = ScriptedAgentClient(
+            clone_queue=[
+                ScriptedAgentClient(
+                    responses=[
+                        {
+                            "content": "The result is four.",
+                            "tool_calls": [
+                                {
+                                    "id": "tc_1",
+                                    "function": {
+                                        "name": "calculate",
+                                        "arguments": '{"expression": "2 + 2"}',
+                                    },
+                                }
+                            ],
+                        },
+                        {"content": "The result is four."},
+                    ]
+                ),
+                ScriptedAgentClient(responses=[{"content": "FAIL: Use digits only."}]),
+                ScriptedAgentClient(
+                    responses=[
+                        {
+                            "content": "Let me calculate that.",
+                            "tool_calls": [
+                                {
+                                    "id": "tc_2",
+                                    "function": {
+                                        "name": "calculate",
+                                        "arguments": '{"expression": "2 + 2"}',
+                                    },
+                                }
+                            ],
+                        },
+                        {"content": "4"},
+                    ]
+                ),
+                ScriptedAgentClient(responses=[{"content": "PASS"}]),
+            ]
+        )
+
+        orchestrator = ExcelOrchestrator(temp_workbook, main_client)
+        orchestrator.run()
+
+        assert len(orchestrator.results) == 1
+        result = orchestrator.results[0]
+        assert result["status"] == "success"
+        assert result["response"] == "4"
+        assert result["agent_mode"] is True
+        assert result["validation_passed"] is True
+        assert result["validation_attempts"] == 2
+        assert result["validation_critique"] is None
+        assert result["attempts"] == 2
+        assert result["total_rounds"] == 2
+        assert result["total_llm_calls"] == 2
+        assert len(result["tool_calls"]) == 1
+        assert result["tool_calls"][0]["tool_name"] == "calculate"
+        assert "Use digits only" in result["resolved_prompt"]
+
+    def test_agent_validation_failure_records_critique(self, temp_workbook):
+        """Validation failure after all retries should keep the last critique."""
+        from openpyxl import Workbook
+
+        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
+
+        wb = Workbook()
+        ws_config = wb.active
+        ws_config.title = "config"
+        ws_config["A1"] = "field"
+        ws_config["B1"] = "value"
+
+        config_items = [
+            ("model", "test-model"),
+            ("api_key_env", "TEST_API_KEY"),
+            ("max_retries", 1),
+            ("temperature", 0.1),
+            ("max_tokens", 1000),
+            ("system_instructions", "You are a helpful assistant."),
+        ]
+        for idx, (field, value) in enumerate(config_items, start=2):
+            ws_config[f"A{idx}"] = field
+            ws_config[f"B{idx}"] = value
+
+        ws_prompts = wb.create_sheet("prompts")
+        headers = [
+            "sequence",
+            "prompt_name",
+            "prompt",
+            "history",
+            "client",
+            "condition",
+            "references",
+            "semantic_query",
+            "semantic_filter",
+            "query_expansion",
+            "rerank",
+            "agent_mode",
+            "tools",
+            "max_tool_rounds",
+            "validation_prompt",
+            "max_validation_retries",
+        ]
+        for col, header in enumerate(headers, start=1):
+            ws_prompts.cell(row=1, column=col, value=header)
+
+        row = [
+            1,
+            "validated_agent_failure",
+            "Use the calculate tool to compute 5 + 5. Return digits only.",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "true",
+            '["calculate"]',
+            5,
+            "The final response must be exactly the digits 10.",
+            1,
+        ]
+        for col, value in enumerate(row, start=1):
+            ws_prompts.cell(row=2, column=col, value=value)
+
+        ws_tools = wb.create_sheet("tools")
+        tool_headers = ["name", "description", "parameters", "implementation", "enabled"]
+        for col, header in enumerate(tool_headers, start=1):
+            ws_tools.cell(row=1, column=col, value=header)
+
+        tool_row = [
+            "calculate",
+            "Evaluate math",
+            '{"type":"object","properties":{"expression":{"type":"string"}},"required":["expression"]}',
+            "builtin:calculate",
+            True,
+        ]
+        for col, value in enumerate(tool_row, start=1):
+            ws_tools.cell(row=2, column=col, value=value)
+
+        wb.save(temp_workbook)
+
+        main_client = ScriptedAgentClient(
+            clone_queue=[
+                ScriptedAgentClient(
+                    responses=[
+                        {
+                            "content": "ten",
+                            "tool_calls": [
+                                {
+                                    "id": "tc_1",
+                                    "function": {
+                                        "name": "calculate",
+                                        "arguments": '{"expression": "5 + 5"}',
+                                    },
+                                }
+                            ],
+                        },
+                        {"content": "ten"},
+                    ]
+                ),
+                ScriptedAgentClient(responses=[{"content": "FAIL: Response must contain digits."}]),
+                ScriptedAgentClient(
+                    responses=[
+                        {
+                            "content": "still ten",
+                            "tool_calls": [
+                                {
+                                    "id": "tc_2",
+                                    "function": {
+                                        "name": "calculate",
+                                        "arguments": '{"expression": "5 + 5"}',
+                                    },
+                                }
+                            ],
+                        },
+                        {"content": "still ten"},
+                    ]
+                ),
+                ScriptedAgentClient(responses=[{"content": "FAIL: Response must contain digits."}]),
+            ]
+        )
+
+        orchestrator = ExcelOrchestrator(temp_workbook, main_client)
+        orchestrator.run()
+
+        result = orchestrator.results[0]
+        assert result["status"] == "success"
+        assert result["validation_passed"] is False
+        assert result["validation_attempts"] == 2
+        assert result["validation_critique"] == "Response must contain digits."
+        assert result["attempts"] == 2
+
+    def test_agent_mode_does_not_forward_prompt_metadata_to_client(self, temp_workbook):
+        """Agent-mode LLM calls should not forward prompt_name/history to providers."""
+        from openpyxl import Workbook
+
+        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
+
+        class CaptureKwargsClient(ScriptedAgentClient):
+            def __init__(self, responses):
+                super().__init__(responses=responses)
+                self.captured_kwargs: list[dict] = []
+
+            def generate_response(self, prompt: str, **kwargs) -> str:
+                self.captured_kwargs.append(dict(kwargs))
+                return super().generate_response(prompt, **kwargs)
+
+        wb = Workbook()
+        ws_config = wb.active
+        ws_config.title = "config"
+        ws_config["A1"] = "field"
+        ws_config["B1"] = "value"
+
+        config_items = [
+            ("model", "test-model"),
+            ("api_key_env", "TEST_API_KEY"),
+            ("max_retries", 1),
+            ("temperature", 0.1),
+            ("max_tokens", 1000),
+            ("system_instructions", "You are a helpful assistant."),
+        ]
+        for idx, (field, value) in enumerate(config_items, start=2):
+            ws_config[f"A{idx}"] = field
+            ws_config[f"B{idx}"] = value
+
+        ws_prompts = wb.create_sheet("prompts")
+        headers = [
+            "sequence",
+            "prompt_name",
+            "prompt",
+            "history",
+            "client",
+            "condition",
+            "references",
+            "semantic_query",
+            "semantic_filter",
+            "query_expansion",
+            "rerank",
+            "agent_mode",
+            "tools",
+            "max_tool_rounds",
+            "validation_prompt",
+            "max_validation_retries",
+        ]
+        for col, header in enumerate(headers, start=1):
+            ws_prompts.cell(row=1, column=col, value=header)
+
+        row = [
+            1,
+            "capture_agent_kwargs",
+            "Use calculate to compute 6 * 7.",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "true",
+            '["calculate"]',
+            5,
+            "",
+            "",
+        ]
+        for col, value in enumerate(row, start=1):
+            ws_prompts.cell(row=2, column=col, value=value)
+
+        ws_tools = wb.create_sheet("tools")
+        tool_headers = ["name", "description", "parameters", "implementation", "enabled"]
+        for col, header in enumerate(tool_headers, start=1):
+            ws_tools.cell(row=1, column=col, value=header)
+
+        tool_row = [
+            "calculate",
+            "Evaluate math",
+            '{"type":"object","properties":{"expression":{"type":"string"}},"required":["expression"]}',
+            "builtin:calculate",
+            True,
+        ]
+        for col, value in enumerate(tool_row, start=1):
+            ws_tools.cell(row=2, column=col, value=value)
+
+        wb.save(temp_workbook)
+
+        capture_client = CaptureKwargsClient(
+            responses=[
+                {
+                    "content": "Let me calculate that.",
+                    "tool_calls": [
+                        {
+                            "id": "tc_1",
+                            "function": {
+                                "name": "calculate",
+                                "arguments": '{"expression": "6 * 7"}',
+                            },
+                        }
+                    ],
+                },
+                {"content": "42"},
+            ]
+        )
+        main_client = ScriptedAgentClient(clone_queue=[capture_client])
+
+        orchestrator = ExcelOrchestrator(temp_workbook, main_client)
+        orchestrator.run()
+
+        assert len(capture_client.captured_kwargs) == 2
+        for kwargs in capture_client.captured_kwargs:
+            assert "prompt_name" not in kwargs
+            assert "history" not in kwargs
+            assert kwargs.get("model") == "test-model"
+
+    def test_agent_mode_resolves_interpolated_history_prompt(self, temp_workbook):
+        """Agent prompts should interpolate prior responses before tool use."""
+        from openpyxl import Workbook
+
+        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
+
+        class CapturePromptClient(ScriptedAgentClient):
+            def __init__(self, responses):
+                super().__init__(responses=responses)
+                self.prompts_seen: list[str] = []
+
+            def generate_response(self, prompt: str, **kwargs) -> str:
+                self.prompts_seen.append(prompt)
+                return super().generate_response(prompt, **kwargs)
+
+        wb = Workbook()
+        ws_config = wb.active
+        ws_config.title = "config"
+        ws_config["A1"] = "field"
+        ws_config["B1"] = "value"
+
+        config_items = [
+            ("model", "test-model"),
+            ("api_key_env", "TEST_API_KEY"),
+            ("max_retries", 1),
+            ("temperature", 0.1),
+            ("max_tokens", 1000),
+            ("system_instructions", "You are a helpful assistant."),
+        ]
+        for idx, (field, value) in enumerate(config_items, start=2):
+            ws_config[f"A{idx}"] = field
+            ws_config[f"B{idx}"] = value
+
+        ws_prompts = wb.create_sheet("prompts")
+        headers = [
+            "sequence",
+            "prompt_name",
+            "prompt",
+            "history",
+            "client",
+            "condition",
+            "references",
+            "semantic_query",
+            "semantic_filter",
+            "query_expansion",
+            "rerank",
+            "agent_mode",
+            "tools",
+            "max_tool_rounds",
+            "validation_prompt",
+            "max_validation_retries",
+        ]
+        for col, header in enumerate(headers, start=1):
+            ws_prompts.cell(row=1, column=col, value=header)
+
+        row1 = [1, "seed", "What is 3 * 7?", "", "", "", "", "", "", "", "", "", "", "", "", ""]
+        row2 = [
+            2,
+            "consumer",
+            "Use calculate to compute {{seed.response}} * 10.",
+            '["seed"]',
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "",
+            "true",
+            '["calculate"]',
+            5,
+            "",
+            "",
+        ]
+        for col, value in enumerate(row1, start=1):
+            ws_prompts.cell(row=2, column=col, value=value)
+        for col, value in enumerate(row2, start=1):
+            ws_prompts.cell(row=3, column=col, value=value)
+
+        ws_tools = wb.create_sheet("tools")
+        tool_headers = ["name", "description", "parameters", "implementation", "enabled"]
+        for col, header in enumerate(tool_headers, start=1):
+            ws_tools.cell(row=1, column=col, value=header)
+        tool_row = [
+            "calculate",
+            "Evaluate math",
+            '{"type":"object","properties":{"expression":{"type":"string"}},"required":["expression"]}',
+            "builtin:calculate",
+            True,
+        ]
+        for col, value in enumerate(tool_row, start=1):
+            ws_tools.cell(row=2, column=col, value=value)
+
+        wb.save(temp_workbook)
+
+        consumer_client = CapturePromptClient(
+            responses=[
+                {
+                    "content": "Calculating.",
+                    "tool_calls": [
+                        {
+                            "id": "tc_1",
+                            "function": {
+                                "name": "calculate",
+                                "arguments": '{"expression": "21 * 10"}',
+                            },
+                        }
+                    ],
+                },
+                {"content": "210"},
+            ]
+        )
+        main_client = ScriptedAgentClient(
+            clone_queue=[
+                ScriptedAgentClient(responses=[{"content": "21"}]),
+                consumer_client,
+            ]
+        )
+
+        orchestrator = ExcelOrchestrator(temp_workbook, main_client)
+        orchestrator.run()
+
+        consumer_result = next(r for r in orchestrator.results if r["prompt_name"] == "consumer")
+        assert consumer_result["response"] == "210"
+        assert "{{seed.response}}" not in consumer_result["resolved_prompt"]
+        assert "21 * 10" in consumer_client.prompts_seen[0]
+        assert any(
+            entry.get("prompt_name") == "consumer" and entry.get("response") == "210"
+            for entry in orchestrator.shared_prompt_attr_history
+        )
+
+
+class TestExcelOrchestratorOrdering:
+    """Tests for dependency-aware result ordering."""
+
+    def test_sequential_execution_preserves_dependency_order_and_sequence_order(
+        self, temp_workbook
+    ):
+        """Dependent prompts should execute after prerequisites but remain sequence sorted."""
+        from openpyxl import Workbook
+
+        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
+
+        wb = Workbook()
+        ws_config = wb.active
+        ws_config.title = "config"
+        ws_config["A1"] = "field"
+        ws_config["B1"] = "value"
+
+        config_items = [
+            ("model", "test-model"),
+            ("api_key_env", "TEST_API_KEY"),
+            ("max_retries", 1),
+            ("temperature", 0.1),
+            ("max_tokens", 1000),
+            ("system_instructions", "You are a helpful assistant."),
+        ]
+        for idx, (field, value) in enumerate(config_items, start=2):
+            ws_config[f"A{idx}"] = field
+            ws_config[f"B{idx}"] = value
+
+        ws_prompts = wb.create_sheet("prompts")
+        headers = ["sequence", "prompt_name", "prompt", "history"]
+        for col, header in enumerate(headers, start=1):
+            ws_prompts.cell(row=1, column=col, value=header)
+
+        rows = [
+            [1, "one", "first", ""],
+            [2, "two", "second", ""],
+            [3, "three", "third", ""],
+            [4, "four", "fourth", ""],
+            [5, "five", "fifth", ""],
+            [6, "six", "sixth", ""],
+            [7, "seven", "seventh", ""],
+            [8, "eight", "eighth", ""],
+            [9, "nine", "depends on eight", '["eight"]'],
+            [10, "ten", "tenth", ""],
+            [11, "eleven", "eleventh", ""],
+        ]
+        for row_idx, row in enumerate(rows, start=2):
+            for col_idx, value in enumerate(row, start=1):
+                ws_prompts.cell(row=row_idx, column=col_idx, value=value)
+
+        wb.save(temp_workbook)
+
+        response_client = ScriptedAgentClient(
+            clone_queue=[ScriptedAgentClient(responses=[{"content": str(i)}]) for i in range(1, 12)]
+        )
+        orchestrator = ExcelOrchestrator(temp_workbook, response_client)
+        orchestrator.run()
+
+        assert [result["sequence"] for result in orchestrator.results] == list(range(1, 12))
+
+
+class TestWorkbookResultOrdering:
+    """Tests for workbook result sheet ordering."""
+
+    def test_write_results_sorts_rows_by_sequence(self, temp_workbook):
+        from openpyxl import Workbook, load_workbook
+
+        from src.orchestrator.workbook_parser import WorkbookParser
+
+        wb = Workbook()
+        wb.save(temp_workbook)
+
+        parser = WorkbookParser(temp_workbook)
+        parser.write_results(
+            [
+                {"sequence": 10, "prompt_name": "ten", "prompt": "p10", "status": "success"},
+                {"sequence": 2, "prompt_name": "two", "prompt": "p2", "status": "success"},
+                {"sequence": 9, "prompt_name": "nine", "prompt": "p9", "status": "success"},
+            ],
+            "results_sorted",
+        )
+
+        wb = load_workbook(temp_workbook)
+        ws = wb["results_sorted"]
+        sequences = [ws.cell(row=row, column=3).value for row in range(2, 5)]
+        assert sequences == [2, 9, 10]
 
 
 class TestExcelOrchestratorRun:

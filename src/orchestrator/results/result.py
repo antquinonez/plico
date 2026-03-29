@@ -38,6 +38,9 @@ class PromptResult:
         tool_calls: List of tool call records from agentic execution.
         total_rounds: Number of rounds in the agentic loop.
         total_llm_calls: Total LLM API calls within the agentic loop.
+        validation_passed: Whether the response passed validation (None if no validation).
+        validation_attempts: Number of validation attempts.
+        validation_critique: Last validation critique if validation failed.
 
     """
 
@@ -65,6 +68,9 @@ class PromptResult:
     tool_calls: list[dict[str, Any]] | None = None
     total_rounds: int | None = None
     total_llm_calls: int | None = None
+    validation_passed: bool | None = None
+    validation_attempts: int | None = None
+    validation_critique: str | None = None
 
     VALID_STATUSES = ("pending", "success", "failed", "skipped", "max_rounds_exceeded")
 
@@ -99,6 +105,10 @@ class PromptResult:
             result["tool_calls"] = self.tool_calls
             result["total_rounds"] = self.total_rounds
             result["total_llm_calls"] = self.total_llm_calls
+        if self.validation_passed is not None:
+            result["validation_passed"] = self.validation_passed
+            result["validation_attempts"] = self.validation_attempts
+            result["validation_critique"] = self.validation_critique
         return result
 
     @classmethod
@@ -129,4 +139,7 @@ class PromptResult:
             tool_calls=data.get("tool_calls"),
             total_rounds=data.get("total_rounds"),
             total_llm_calls=data.get("total_llm_calls"),
+            validation_passed=data.get("validation_passed"),
+            validation_attempts=data.get("validation_attempts"),
+            validation_critique=data.get("validation_critique"),
         )

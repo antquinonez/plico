@@ -107,6 +107,16 @@ class ResultBuilder:
         self._result.attempts = attempts
         return self
 
+    def increment_attempts(self) -> ResultBuilder:
+        """Increment the number of execution attempts.
+
+        Returns:
+            Self for chaining.
+
+        """
+        self._result.attempts += 1
+        return self
+
     def as_skipped(
         self, condition_result: Any = None, condition_error: str | None = None
     ) -> ResultBuilder:
@@ -198,6 +208,28 @@ class ResultBuilder:
             self._result.status = "failed"
         else:
             self._result.status = "success"
+        return self
+
+    def with_validation_result(
+        self,
+        passed: bool | None,
+        attempts: int,
+        critique: str | None = None,
+    ) -> ResultBuilder:
+        """Set result from response validation.
+
+        Args:
+            passed: Whether the response passed validation.
+            attempts: Number of validation attempts made.
+            critique: Last critique if validation failed.
+
+        Returns:
+            Self for chaining.
+
+        """
+        self._result.validation_passed = passed
+        self._result.validation_attempts = attempts
+        self._result.validation_critique = critique
         return self
 
     def build(self) -> PromptResult:

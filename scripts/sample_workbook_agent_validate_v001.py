@@ -8,7 +8,8 @@ Validate agent workbook results.
 
 Validates workbooks created by sample_workbook_agent_create_v001.py
 by checking agent-specific result fields (agent_mode, tool_calls,
-total_rounds, total_llm_calls) alongside standard result checks.
+total_rounds, total_llm_calls, validation_passed, validation_attempts)
+alongside standard result checks.
 
 Usage:
     python scripts/sample_workbook_agent_validate_v001.py <workbook_path>
@@ -41,8 +42,12 @@ SECTIONS = {
         (8, 9),
         "Agent with condition on previous agent result",
     ),
-    "Edge case": SectionDefinition(
+    "Validated agent": SectionDefinition(
         (10, 10),
+        "Agent mode with validation prompt and retry support",
+    ),
+    "Edge case": SectionDefinition(
+        (11, 11),
         "Agent with max_tool_rounds=1",
     ),
 }

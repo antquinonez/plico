@@ -458,6 +458,36 @@ class TestAgentLoop:
         assert result.tool_calls_count == 1
         assert result.tool_calls[0].tool_name == "rag_search"
         assert result.tool_calls[0].round == 1
+        user_messages = [m for m in client.chat_history if m.get("role") == "user"]
+        assert user_messages[1]["content"] == (
+            "Continue using the tool results to answer the original request."
+        )
+
+    def test_second_round_uses_continue_prompt_instead_of_empty_prompt(self):
+        client = MockClient()
+        client.queue_response(
+            "Let me calculate",
+            tool_calls=[
+                {
+                    "id": "tc_1",
+                    "function": {"name": "calculate", "arguments": '{"expression": "2 + 2"}'},
+                },
+            ],
+        )
+        client.queue_response("The answer is 4", tool_calls=None)
+        registry = ToolRegistry()
+        registry.register(ToolDefinition(name="calculate", description="Calc"))
+        registry.register_executor("calculate", lambda args: json.dumps({"result": 4}))
+        loop = AgentLoop(client, registry, max_rounds=3)
+
+        result = loop.execute("solve this", tools=["calculate"])
+
+        assert result.status == "success"
+        assert result.response == "The answer is 4"
+        user_messages = [m for m in client.chat_history if m.get("role") == "user"]
+        assert user_messages[-1]["content"] == (
+            "Continue using the tool results to answer the original request."
+        )
 
     def test_max_rounds_exceeded(self):
         client = MockClient()
@@ -665,6 +695,35 @@ class TestAgentLoop:
         assert result.status == "success"
         assert call_kwargs.get("temperature") == 0.5
         assert call_kwargs.get("max_tokens") == 100
+        assert "prompt_name" not in call_kwargs
+        assert "history" not in call_kwargs
+
+    def test_prompt_name_and_history_are_filtered_before_llm_call(self):
+        client = MockClient()
+        client.queue_response("answer")
+        registry = ToolRegistry()
+        registry.register(ToolDefinition(name="search", description="Search"))
+        loop = AgentLoop(client, registry, max_rounds=3)
+        call_kwargs: dict[str, Any] = {}
+        original_generate = client.generate_response
+
+        def capture(prompt, **kwargs):
+            call_kwargs.update(kwargs)
+            return original_generate(prompt, **kwargs)
+
+        client.generate_response = capture
+        result = loop.execute(
+            "test",
+            tools=["search"],
+            prompt_name="agent_test",
+            history=["foo"],
+            temperature=0.2,
+        )
+
+        assert result.status == "success"
+        assert call_kwargs.get("temperature") == 0.2
+        assert "prompt_name" not in call_kwargs
+        assert "history" not in call_kwargs
 
     def test_tool_timeout(self):
         import time
@@ -698,3 +757,315 @@ class TestAgentLoop:
         import src.agent.agent_loop as mod
 
         assert not hasattr(mod, "_TOOL_CALLS_PATTERN") or mod._TOOL_CALLS_PATTERN is None
+
+
+class TestValidationResultFields:
+    def test_prompt_result_validation_defaults(self):
+        from src.orchestrator.results.result import PromptResult
+
+        result = PromptResult(sequence=1)
+        assert result.validation_passed is None
+        assert result.validation_attempts is None
+        assert result.validation_critique is None
+
+    def test_prompt_result_validation_in_to_dict_when_set(self):
+        from src.orchestrator.results.result import PromptResult
+
+        result = PromptResult(
+            sequence=1,
+            agent_mode=True,
+            validation_passed=True,
+            validation_attempts=1,
+        )
+        d = result.to_dict()
+        assert d["validation_passed"] is True
+        assert d["validation_attempts"] == 1
+        assert d["validation_critique"] is None
+
+    def test_prompt_result_validation_not_in_to_dict_when_unset(self):
+        from src.orchestrator.results.result import PromptResult
+
+        result = PromptResult(sequence=1, agent_mode=True)
+        d = result.to_dict()
+        assert "validation_passed" not in d
+        assert "validation_attempts" not in d
+
+    def test_prompt_result_validation_from_dict(self):
+        from src.orchestrator.results.result import PromptResult
+
+        data = {
+            "sequence": 1,
+            "validation_passed": False,
+            "validation_attempts": 3,
+            "validation_critique": "Response too short",
+        }
+        result = PromptResult.from_dict(data)
+        assert result.validation_passed is False
+        assert result.validation_attempts == 3
+        assert result.validation_critique == "Response too short"
+
+    def test_prompt_result_validation_roundtrip(self):
+        from src.orchestrator.results.result import PromptResult
+
+        original = PromptResult(
+            sequence=5,
+            agent_mode=True,
+            validation_passed=False,
+            validation_attempts=2,
+            validation_critique="Missing numeric value",
+        )
+        restored = PromptResult.from_dict(original.to_dict())
+        assert restored.validation_passed == original.validation_passed
+        assert restored.validation_attempts == original.validation_attempts
+        assert restored.validation_critique == original.validation_critique
+
+
+class TestValidationBuilder:
+    def test_with_validation_result_pass(self):
+        from src.orchestrator.results.builder import ResultBuilder
+
+        builder = ResultBuilder({"sequence": 1, "prompt": "test"})
+        builder.with_validation_result(passed=True, attempts=1)
+        result = builder.build()
+        assert result.validation_passed is True
+        assert result.validation_attempts == 1
+        assert result.validation_critique is None
+
+    def test_with_validation_result_fail(self):
+        from src.orchestrator.results.builder import ResultBuilder
+
+        builder = ResultBuilder({"sequence": 1, "prompt": "test"})
+        builder.with_validation_result(passed=False, attempts=3, critique="Must be numeric")
+        result = builder.build()
+        assert result.validation_passed is False
+        assert result.validation_attempts == 3
+        assert result.validation_critique == "Must be numeric"
+
+    def test_with_validation_result_chains(self):
+        from src.orchestrator.results.builder import ResultBuilder
+
+        builder = ResultBuilder({"sequence": 1, "prompt": "test"})
+        result = builder.with_validation_result(passed=True, attempts=1).build()
+        assert result.validation_passed is True
+
+    def test_with_validation_result_in_dict(self):
+        from src.orchestrator.results.builder import ResultBuilder
+
+        builder = ResultBuilder({"sequence": 1, "prompt": "test"})
+        builder.with_validation_result(passed=True, attempts=2)
+        d = builder.build_dict()
+        assert d["validation_passed"] is True
+        assert d["validation_attempts"] == 2
+
+
+class TestValidationConfig:
+    def test_agent_validation_config_defaults(self):
+        from src.config import AgentValidationConfig
+
+        config = AgentValidationConfig()
+        assert config.enabled is True
+        assert config.max_retries == 2
+
+    def test_agent_config_has_validation(self):
+        from src.config import AgentConfig
+
+        config = AgentConfig()
+        assert hasattr(config, "validation")
+        assert config.validation.enabled is True
+        assert config.validation.max_retries == 2
+
+
+class TestValidationWorkbookParsing:
+    def test_prompts_headers_include_validation(self):
+        from src.orchestrator.workbook_parser import WorkbookParser
+
+        parser = WorkbookParser.__new__(WorkbookParser)
+        assert "validation_prompt" in WorkbookParser.PROMPTS_HEADERS
+        assert "max_validation_retries" in WorkbookParser.PROMPTS_HEADERS
+
+    def test_results_headers_include_validation(self):
+        from src.orchestrator.workbook_parser import WorkbookParser
+
+        assert "validation_passed" in WorkbookParser.RESULTS_HEADERS
+        assert "validation_attempts" in WorkbookParser.RESULTS_HEADERS
+        assert "validation_critique" in WorkbookParser.RESULTS_HEADERS
+
+    def test_sample_prompt_spec_includes_validation_columns(self):
+        from scripts.sample_workbooks import DEFAULT_PROMPT_HEADERS, PromptSpec
+
+        prompt = PromptSpec(
+            sequence=1,
+            name="validated",
+            prompt="Use calculate to compute 9.",
+            validation_prompt="The result must be 9.",
+            max_validation_retries=2,
+        )
+
+        row = prompt.to_row()
+        assert "validation_prompt" in DEFAULT_PROMPT_HEADERS
+        assert "max_validation_retries" in DEFAULT_PROMPT_HEADERS
+        assert row["validation_prompt"] == "The result must be 9."
+        assert row["max_validation_retries"] == 2
+
+    def test_sample_prompt_spec_includes_notes(self):
+        from scripts.sample_workbooks import DEFAULT_PROMPT_HEADERS, PromptSpec
+
+        prompt = PromptSpec(
+            sequence=1,
+            name="annotated",
+            prompt="Say hello",
+            notes="Helpful note for workbook users.",
+        )
+
+        row = prompt.to_row()
+        assert "notes" in DEFAULT_PROMPT_HEADERS
+        assert row["notes"] == "Helpful note for workbook users."
+
+
+class TestValidationConditionEvaluator:
+    def test_validation_passed_true(self):
+        from src.orchestrator.condition_evaluator import ConditionEvaluator
+
+        evaluator = ConditionEvaluator(results_by_name={})
+        result = {
+            "validation_passed": True,
+            "validation_attempts": 1,
+        }
+        value = evaluator._compute_property(result, "validation_passed", True)
+        assert value is True
+
+    def test_validation_passed_false(self):
+        from src.orchestrator.condition_evaluator import ConditionEvaluator
+
+        evaluator = ConditionEvaluator(results_by_name={})
+        result = {
+            "validation_passed": False,
+            "validation_attempts": 3,
+        }
+        value = evaluator._compute_property(result, "validation_passed", False)
+        assert value is False
+
+    def test_validation_passed_none(self):
+        from src.orchestrator.condition_evaluator import ConditionEvaluator
+
+        evaluator = ConditionEvaluator(results_by_name={})
+        result = {"validation_passed": None}
+        value = evaluator._compute_property(result, "validation_passed", None)
+        assert value is None
+
+    def test_validation_attempts(self):
+        from src.orchestrator.condition_evaluator import ConditionEvaluator
+
+        evaluator = ConditionEvaluator(results_by_name={})
+        result = {"validation_attempts": 3}
+        value = evaluator._compute_property(result, "validation_attempts", 3)
+        assert value == 3
+
+    def test_validation_attempts_none(self):
+        from src.orchestrator.condition_evaluator import ConditionEvaluator
+
+        evaluator = ConditionEvaluator(results_by_name={})
+        result = {}
+        value = evaluator._compute_property(result, "validation_attempts", None)
+        assert value == 0
+
+    def test_validation_condition_in_expression(self):
+        from src.orchestrator.condition_evaluator import ConditionEvaluator
+
+        evaluator = ConditionEvaluator(
+            results_by_name={
+                "my_prompt": {
+                    "validation_passed": True,
+                    "validation_attempts": 1,
+                },
+            }
+        )
+        assert evaluator.evaluate("{{my_prompt.validation_passed}} == True")
+        assert evaluator.evaluate("{{my_prompt.validation_attempts}} == 1")
+
+    def test_validation_failed_condition(self):
+        from src.orchestrator.condition_evaluator import ConditionEvaluator
+
+        evaluator = ConditionEvaluator(
+            results_by_name={
+                "my_prompt": {
+                    "validation_passed": False,
+                    "validation_attempts": 3,
+                    "validation_critique": "Response too short",
+                },
+            }
+        )
+        result, error = evaluator.evaluate("{{my_prompt.validation_passed}} == True")
+        assert not result
+        result, error = evaluator.evaluate("{{my_prompt.validation_attempts}} >= 3")
+        assert result
+
+
+class TestValidationValidator:
+    def test_validation_prompt_without_agent_mode_warns(self):
+        from src.orchestrator.validation import OrchestratorValidator, ValidationResult
+
+        validator = OrchestratorValidator(
+            prompts=[
+                {
+                    "sequence": 1,
+                    "prompt_name": "test",
+                    "prompt": "test prompt",
+                    "agent_mode": False,
+                    "validation_prompt": "Must be a number",
+                },
+            ],
+            config={},
+        )
+        result = ValidationResult()
+        validator._validate_agent_mode(result)
+        warnings = [
+            e
+            for e in result.errors
+            if e.severity == "warning" and e.code == "VALIDATION_WITHOUT_AGENT"
+        ]
+        assert len(warnings) == 1
+
+    def test_max_validation_retries_out_of_range(self):
+        from src.orchestrator.validation import OrchestratorValidator, ValidationResult
+
+        validator = OrchestratorValidator(
+            prompts=[
+                {
+                    "sequence": 1,
+                    "prompt_name": "test",
+                    "prompt": "test",
+                    "agent_mode": True,
+                    "tools": ["calculate"],
+                    "validation_prompt": "Must be a number",
+                    "max_validation_retries": 20,
+                },
+            ],
+            config={},
+        )
+        result = ValidationResult()
+        validator._validate_agent_mode(result)
+        errors = [e for e in result.errors if e.code == "AGENT_INVALID_MAX_VALIDATION_RETRIES"]
+        assert len(errors) == 1
+
+    def test_max_validation_retries_valid(self):
+        from src.orchestrator.validation import OrchestratorValidator, ValidationResult
+
+        validator = OrchestratorValidator(
+            prompts=[
+                {
+                    "sequence": 1,
+                    "prompt_name": "test",
+                    "prompt": "test",
+                    "agent_mode": True,
+                    "tools": ["calculate"],
+                    "validation_prompt": "Must be a number",
+                    "max_validation_retries": 3,
+                },
+            ],
+            config={},
+        )
+        result = ValidationResult()
+        validator._validate_agent_mode(result)
+        errors = [e for e in result.errors if e.code == "AGENT_INVALID_MAX_VALIDATION_RETRIES"]
+        assert len(errors) == 0

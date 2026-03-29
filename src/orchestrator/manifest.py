@@ -169,6 +169,10 @@ class WorkbookManifestExporter:
                 prompt_entry["tools"] = prompt.get("tools") or []
                 if prompt.get("max_tool_rounds"):
                     prompt_entry["max_tool_rounds"] = prompt.get("max_tool_rounds")
+                if prompt.get("validation_prompt"):
+                    prompt_entry["validation_prompt"] = prompt.get("validation_prompt")
+                if prompt.get("max_validation_retries"):
+                    prompt_entry["max_validation_retries"] = prompt.get("max_validation_retries")
             prompts_data["prompts"].append(prompt_entry)
 
         with open(manifest_path / "prompts.yaml", "w", encoding="utf-8") as f:
@@ -474,6 +478,9 @@ class ManifestOrchestrator(OrchestratorBase):
                 "tool_calls": json.dumps(r.get("tool_calls")) if r.get("tool_calls") else None,
                 "total_rounds": r.get("total_rounds"),
                 "total_llm_calls": r.get("total_llm_calls"),
+                "validation_passed": r.get("validation_passed"),
+                "validation_attempts": r.get("validation_attempts"),
+                "validation_critique": r.get("validation_critique"),
             }
             rows.append(row)
 

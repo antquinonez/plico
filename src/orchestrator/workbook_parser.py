@@ -109,6 +109,7 @@ class WorkbookParser:
         "prompt_name",
         "prompt",
         "history",
+        "notes",
         "client",
         "condition",
         "references",
@@ -119,6 +120,8 @@ class WorkbookParser:
         "agent_mode",
         "tools",
         "max_tool_rounds",
+        "validation_prompt",
+        "max_validation_retries",
     ]
     REQUIRED_PROMPTS_HEADERS = ["sequence", "prompt_name", "prompt", "history"]
     DOCUMENTS_HEADERS = [
@@ -163,6 +166,9 @@ class WorkbookParser:
         "tool_calls",
         "total_rounds",
         "total_llm_calls",
+        "validation_passed",
+        "validation_attempts",
+        "validation_critique",
     ]
     TOOLS_HEADERS = [
         "name",
@@ -436,6 +442,7 @@ class WorkbookParser:
                 "history": self.parse_history_string(row_dict.get("history"))
                 if row_dict.get("history")
                 else None,
+                "notes": str(row_dict.get("notes", "")).strip() if row_dict.get("notes") else None,
                 "client": str(row_dict.get("client", "")).strip()
                 if row_dict.get("client")
                 else None,
@@ -466,6 +473,12 @@ class WorkbookParser:
                 else None,
                 "max_tool_rounds": int(row_dict["max_tool_rounds"])
                 if row_dict.get("max_tool_rounds")
+                else None,
+                "validation_prompt": str(row_dict.get("validation_prompt", "")).strip()
+                if row_dict.get("validation_prompt")
+                else None,
+                "max_validation_retries": int(row_dict["max_validation_retries"])
+                if row_dict.get("max_validation_retries")
                 else None,
             }
 
@@ -754,6 +767,9 @@ class WorkbookParser:
     def write_results(self, results: list[dict[str, Any]], sheet_name: str) -> str:
         """Write execution results to a new sheet."""
         wb = load_workbook(self.workbook_path)
+        ordered_results = sorted(
+            results, key=lambda r: ((r.get("batch_id") or 0), r.get("sequence", 0))
+        )
 
         if sheet_name in wb.sheetnames:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
@@ -764,7 +780,7 @@ class WorkbookParser:
         for col_idx, header in enumerate(self.RESULTS_HEADERS, start=1):
             ws.cell(row=1, column=col_idx, value=header)
 
-        for row_idx, result in enumerate(results, start=2):
+        for row_idx, result in enumerate(ordered_results, start=2):
             ws.cell(row=row_idx, column=1, value=result.get("batch_id"))
             ws.cell(row=row_idx, column=2, value=result.get("batch_name"))
             ws.cell(row=row_idx, column=3, value=result.get("sequence"))
@@ -816,6 +832,25 @@ class WorkbookParser:
 
             total_llm_calls = result.get("total_llm_calls")
             ws.cell(row=row_idx, column=24, value=total_llm_calls if total_llm_calls else "")
+
+            validation_passed = result.get("validation_passed")
+            ws.cell(
+                row=row_idx,
+                column=25,
+                value=validation_passed if validation_passed is not None else "",
+            )
+
+            validation_attempts = result.get("validation_attempts")
+            ws.cell(
+                row=row_idx,
+                column=26,
+                value=validation_attempts if validation_attempts is not None else "",
+            )
+
+            validation_critique = result.get("validation_critique")
+            ws.cell(
+                row=row_idx, column=27, value=validation_critique if validation_critique else ""
+            )
 
         self.formatter.apply_formatting(ws, "results")
 
@@ -831,6 +866,7 @@ class WorkbookParser:
     ) -> str:
         """Write results for a single batch to a separate sheet."""
         wb = load_workbook(self.workbook_path)
+        ordered_results = sorted(results, key=lambda r: r.get("sequence", 0))
 
         sheet_name = f"{base_sheet_name}_{batch_name}"
         original_name = sheet_name
@@ -844,7 +880,7 @@ class WorkbookParser:
         for col_idx, header in enumerate(self.RESULTS_HEADERS, start=1):
             ws.cell(row=1, column=col_idx, value=header)
 
-        for row_idx, result in enumerate(results, start=2):
+        for row_idx, result in enumerate(ordered_results, start=2):
             ws.cell(row=row_idx, column=1, value=result.get("batch_id"))
             ws.cell(row=row_idx, column=2, value=result.get("batch_name"))
             ws.cell(row=row_idx, column=3, value=result.get("sequence"))
@@ -896,6 +932,25 @@ class WorkbookParser:
 
             total_llm_calls = result.get("total_llm_calls")
             ws.cell(row=row_idx, column=24, value=total_llm_calls if total_llm_calls else "")
+
+            validation_passed = result.get("validation_passed")
+            ws.cell(
+                row=row_idx,
+                column=25,
+                value=validation_passed if validation_passed is not None else "",
+            )
+
+            validation_attempts = result.get("validation_attempts")
+            ws.cell(
+                row=row_idx,
+                column=26,
+                value=validation_attempts if validation_attempts is not None else "",
+            )
+
+            validation_critique = result.get("validation_critique")
+            ws.cell(
+                row=row_idx, column=27, value=validation_critique if validation_critique else ""
+            )
 
         ws.column_dimensions["A"].width = 10
         ws.column_dimensions["B"].width = 25
@@ -921,6 +976,9 @@ class WorkbookParser:
         ws.column_dimensions["V"].width = 50
         ws.column_dimensions["W"].width = 14
         ws.column_dimensions["X"].width = 16
+        ws.column_dimensions["Y"].width = 18
+        ws.column_dimensions["Z"].width = 20
+        ws.column_dimensions["AA"].width = 50
 
         wb.save(self.workbook_path)
         logger.info(f"Batch results written to sheet: {sheet_name}")

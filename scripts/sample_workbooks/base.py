@@ -41,6 +41,7 @@ class PromptSpec:
     name: str
     prompt: str
     history: str | None = None
+    notes: str | None = None
     client: str | None = None
     condition: str | None = None
     references: str | None = None
@@ -51,6 +52,8 @@ class PromptSpec:
     agent_mode: str | None = None
     tools: str | None = None
     max_tool_rounds: int | None = None
+    validation_prompt: str | None = None
+    max_validation_retries: int | None = None
 
     def to_row(
         self,
@@ -62,6 +65,7 @@ class PromptSpec:
             "prompt_name": self.name,
             "prompt": self.prompt,
             "history": self.history or "",
+            "notes": self.notes or "",
             "client": self.client or "",
             "condition": self.condition or "",
             "references": self.references or "",
@@ -72,6 +76,8 @@ class PromptSpec:
             "agent_mode": self.agent_mode or "",
             "tools": self.tools or "",
             "max_tool_rounds": self.max_tool_rounds or "",
+            "validation_prompt": self.validation_prompt or "",
+            "max_validation_retries": self.max_validation_retries or "",
         }
         if extra_columns:
             row.update(extra_columns)
@@ -128,6 +134,7 @@ DEFAULT_PROMPT_HEADERS = [
     "prompt_name",
     "prompt",
     "history",
+    "notes",
     "client",
     "condition",
     "references",
@@ -138,6 +145,8 @@ DEFAULT_PROMPT_HEADERS = [
     "agent_mode",
     "tools",
     "max_tool_rounds",
+    "validation_prompt",
+    "max_validation_retries",
 ]
 
 DEFAULT_PROMPT_COLUMN_WIDTHS = {
@@ -145,13 +154,19 @@ DEFAULT_PROMPT_COLUMN_WIDTHS = {
     "B": 24,
     "C": 80,
     "D": 40,
-    "E": 12,
-    "F": 80,
-    "G": 40,
-    "H": 30,
-    "I": 45,
-    "J": 15,
-    "K": 10,
+    "E": 36,
+    "F": 12,
+    "G": 80,
+    "H": 40,
+    "I": 30,
+    "J": 45,
+    "K": 15,
+    "L": 10,
+    "M": 18,
+    "N": 18,
+    "O": 18,
+    "P": 18,
+    "Q": 20,
 }
 
 DEFAULT_CONFIG_COLUMN_WIDTHS = {

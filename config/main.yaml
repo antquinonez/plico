@@ -195,6 +195,9 @@ agent:
   max_tool_rounds: 5
   tool_timeout: 30.0
   continue_on_tool_error: true
+  validation:
+    enabled: true
+    max_retries: 2
 
 retry:
   max_attempts: 3
