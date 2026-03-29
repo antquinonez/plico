@@ -246,6 +246,55 @@ class TestChunkDeduplication:
         assert stats["seen_hashes"] == 1
 
 
+class TestChunkDeduplicationExtended:
+    """Extended tests for chunk deduplication."""
+
+    def test_similarity_dedup_detects_near_duplicate(self) -> None:
+        """Similarity mode detects near-duplicates above threshold."""
+        dedup = ChunkDeduplicator(mode="similarity", similarity_threshold=0.99)
+
+        vec1 = [1.0, 0.0, 0.0]
+        vec2 = [0.5, 0.5, 0.0]
+        vec3 = [1.0, 0.0, 0.0]  # identical to vec1
+
+        assert dedup.is_duplicate("text1", embedding=vec1) is False
+        assert dedup.is_duplicate("text2", embedding=vec2) is False
+        assert dedup.is_duplicate("text3", embedding=vec3) is True  # near-duplicate of text1
+
+    def test_filter_duplicates_empty_inputs(self) -> None:
+        """filter_duplicates handles empty inputs."""
+        dedup = ChunkDeduplicator(mode="exact")
+        chunks, embeddings = dedup.filter_duplicates([], [])
+        assert chunks == []
+        assert embeddings == []
+
+    def test_cosine_similarity_zero_vectors(self) -> None:
+        """Cosine similarity returns 0 for zero vectors."""
+        dedup = ChunkDeduplicator()
+        result = dedup._cosine_similarity([0.0, 0.0], [1.0, 0.0])
+        assert result == 0.0
+
+    def test_cosine_similarity_identical(self) -> None:
+        """Cosine similarity returns 1.0 for identical vectors."""
+        dedup = ChunkDeduplicator()
+        result = dedup._cosine_similarity([1.0, 2.0], [1.0, 2.0])
+        assert abs(result - 1.0) < 0.001
+
+    def test_similarity_mode_no_embedding(self) -> None:
+        """Similarity mode without embedding returns False (not duplicate)."""
+        dedup = ChunkDeduplicator(mode="similarity")
+        assert dedup.is_duplicate("some text", embedding=None) is False
+
+    def test_get_stats_includes_seen_embeddings(self) -> None:
+        """get_stats includes seen_embeddings count."""
+        dedup = ChunkDeduplicator(mode="similarity")
+        dedup.is_duplicate("text1", embedding=[1.0, 0.0])
+        dedup.is_duplicate("text2", embedding=[0.0, 1.0])
+
+        stats = dedup.get_stats()
+        assert stats["seen_embeddings"] == 2
+
+
 class TestCosineSimilarity:
     """Tests for cosine similarity computation."""
 
@@ -297,3 +346,110 @@ class TestLocalEmbeddings:
         with patch.dict("sys.modules", {"sentence_transformers": None}):
             with pytest.raises(ImportError, match="sentence-transformers"):
                 FFEmbeddings(model="local/all-MiniLM-L6-v2")
+
+
+class TestFFEmbeddingsExtended:
+    """Extended tests for FFEmbeddings."""
+
+    def test_embed_empty_list(self) -> None:
+        """embed returns empty list for empty input."""
+        with patch.object(FFEmbeddings, "_get_default_api_key", return_value="test-key"):
+            emb = FFEmbeddings(model="mistral/mistral-embed")
+            result = emb.embed([])
+            assert result == []
+
+    def test_embed_single_string(self) -> None:
+        """embed converts single string to list."""
+        with patch.object(FFEmbeddings, "_get_default_api_key", return_value="test-key"):
+            emb = FFEmbeddings(model="mistral/mistral-embed")
+            mock_response = MagicMock()
+            mock_response.data = [{"index": 0, "embedding": [0.1, 0.2, 0.3]}]
+            with patch("src.RAG.FFEmbeddings.embedding", return_value=mock_response):
+                result = emb.embed("hello")
+                assert len(result) == 1
+                assert result[0] == [0.1, 0.2, 0.3]
+
+    def test_embed_single_method(self) -> None:
+        """embed_single returns single vector."""
+        with patch.object(FFEmbeddings, "_get_default_api_key", return_value="test-key"):
+            emb = FFEmbeddings(model="mistral/mistral-embed")
+            mock_response = MagicMock()
+            mock_response.data = [{"index": 0, "embedding": [0.1, 0.2, 0.3]}]
+            with patch("src.RAG.FFEmbeddings.embedding", return_value=mock_response):
+                result = emb.embed_single("test")
+                assert result == [0.1, 0.2, 0.3]
+
+    def test_get_dimension(self) -> None:
+        """get_dimension returns embedding dimension."""
+        with patch.object(FFEmbeddings, "_get_default_api_key", return_value="test-key"):
+            emb = FFEmbeddings(model="mistral/mistral-embed")
+            mock_response = MagicMock()
+            mock_response.data = [{"index": 0, "embedding": [0.1] * 768}]
+            with patch("src.RAG.FFEmbeddings.embedding", return_value=mock_response):
+                dim = emb.get_dimension()
+                assert dim == 768
+
+    def test_embed_api_no_api_key_raises(self) -> None:
+        """embed_api raises ValueError when no API key."""
+        emb = FFEmbeddings(model="mistral/mistral-embed", api_key=None)
+        emb._is_local = False
+        emb.api_key = None
+        with pytest.raises(ValueError, match="No API key"):
+            emb._embed_api(["test"])
+
+    def test_embed_api_error_raises_runtime(self) -> None:
+        """embed_api raises RuntimeError on API failure."""
+        with patch.object(FFEmbeddings, "_get_default_api_key", return_value="test-key"):
+            emb = FFEmbeddings(model="mistral/mistral-embed")
+            with patch("src.RAG.FFEmbeddings.embedding", side_effect=Exception("API error")):
+                with pytest.raises(RuntimeError, match="Embedding generation failed"):
+                    emb._embed_api(["test"])
+
+    def test_embed_api_with_base_url(self) -> None:
+        """embed_api passes api_base when configured."""
+        with patch.object(FFEmbeddings, "_get_default_api_key", return_value="test-key"):
+            emb = FFEmbeddings(model="mistral/mistral-embed", api_base="https://custom.api/v1")
+            mock_response = MagicMock()
+            mock_response.data = [{"index": 0, "embedding": [0.1]}]
+            with patch("src.RAG.FFEmbeddings.embedding", return_value=mock_response) as mock_emb:
+                emb._embed_api(["test"])
+                call_kwargs = mock_emb.call_args[1]
+                assert call_kwargs["api_base"] == "https://custom.api/v1"
+
+    def test_embed_api_caches_results(self) -> None:
+        """API embeddings are cached."""
+        with patch.object(FFEmbeddings, "_get_default_api_key", return_value="test-key"):
+            emb = FFEmbeddings(model="mistral/mistral-embed", cache_enabled=True, cache_size=10)
+            mock_response = MagicMock()
+            mock_response.data = [{"index": 0, "embedding": [0.1]}]
+            with patch("src.RAG.FFEmbeddings.embedding", return_value=mock_response) as mock_emb:
+                emb._embed_api(["test"])
+                emb._embed_api(["test"])
+                assert mock_emb.call_count == 1
+
+    def test_embed_api_cache_eviction(self) -> None:
+        """Cache evicts oldest entries when full."""
+        with patch.object(FFEmbeddings, "_get_default_api_key", return_value="test-key"):
+            emb = FFEmbeddings(model="mistral/mistral-embed", cache_enabled=True, cache_size=2)
+            mock_response = MagicMock()
+            mock_response.data = [{"index": 0, "embedding": [0.1]}]
+            with patch("src.RAG.FFEmbeddings.embedding", return_value=mock_response):
+                emb._embed_api(["text1"])
+                emb._embed_api(["text2"])
+                emb._embed_api(["text3"])
+                assert len(emb._cache) == 2
+                assert "text1" not in emb._cache
+
+    def test_provider_unknown_model(self) -> None:
+        """Provider returns 'unknown' for model without slash."""
+        with patch.object(FFEmbeddings, "_get_default_api_key", return_value="test-key"):
+            emb = FFEmbeddings(model="unknownmodel")
+            assert emb.provider == "unknown"
+
+    def test_get_default_api_key_unknown_provider(self) -> None:
+        """_get_default_api_key constructs env var for unknown provider."""
+        emb = FFEmbeddings.__new__(FFEmbeddings)
+        emb.model = "custom/model"
+        with patch.dict("os.environ", {}, clear=True):
+            key = emb._get_default_api_key()
+            assert key is None

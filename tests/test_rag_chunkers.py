@@ -355,6 +355,114 @@ const bar = () => {
         assert len(chunks) >= 1
 
 
+class TestCodeChunkerExtended:
+    """Extended tests for CodeChunker edge cases."""
+
+    def test_whitespace_only_returns_empty(self) -> None:
+        """Whitespace-only text returns empty list."""
+        chunker = CodeChunker(language="python")
+        assert chunker.chunk("   \n\t  ") == []
+
+    def test_fallback_chunking(self) -> None:
+        """Fallback chunking triggers when no structural blocks found."""
+        chunker = CodeChunker(language="python", chunk_size=50, chunk_overlap=10)
+        code = "# comment\nx = 1\ny = 2\n"
+        code = code * 10
+
+        chunks = chunker.chunk(code)
+        assert len(chunks) >= 1
+        non_fallback = [c for c in chunks if c.metadata.get("block_type") != "fallback"]
+        assert len(non_fallback) == 0 or all(
+            c.metadata.get("block_type") in ("module_level", "fallback") for c in chunks
+        )
+
+    def test_split_by_class(self) -> None:
+        """split_by='class' detects classes and functions."""
+        chunker = CodeChunker(language="python", split_by="class", chunk_size=500)
+        code = """
+class MyClass:
+    def method_one(self):
+        return 1
+
+class AnotherClass:
+    def method_two(self):
+        return 2
+
+def standalone_func():
+    return 3
+"""
+        chunks = chunker.chunk(code)
+        assert len(chunks) >= 2
+
+    def test_split_by_module(self) -> None:
+        """split_by='module' detects both classes and functions."""
+        chunker = CodeChunker(language="python", split_by="module", chunk_size=500)
+        code = """
+class MyClass:
+    pass
+
+def my_func():
+    pass
+"""
+        chunks = chunker.chunk(code)
+        assert len(chunks) >= 2
+
+    def test_extract_name_for_class(self) -> None:
+        """Class names are extracted."""
+        chunker = CodeChunker(language="python", split_by="module")
+        code = "class MyClassName:\n    pass"
+        chunks = chunker.chunk(code)
+        assert len(chunks) >= 1
+        class_chunks = [c for c in chunks if c.metadata.get("block_type") == "class"]
+        assert len(class_chunks) >= 1
+        assert class_chunks[0].metadata.get("block_name") == "MyClassName"
+
+    def test_get_overlap_lines_zero_overlap(self) -> None:
+        """_get_overlap_lines returns empty list when overlap is 0."""
+        chunker = CodeChunker(language="python", chunk_size=100, chunk_overlap=0)
+        result = chunker._get_overlap_lines(["line1", "line2"])
+        assert result == []
+
+    def test_get_overlap_lines_empty_input(self) -> None:
+        """_get_overlap_lines returns empty list for empty input."""
+        chunker = CodeChunker(language="python", chunk_size=100, chunk_overlap=20)
+        result = chunker._get_overlap_lines([])
+        assert result == []
+
+    def test_large_block_split(self) -> None:
+        """Large blocks are split into sub-chunks."""
+        chunker = CodeChunker(language="python", chunk_size=50, chunk_overlap=10)
+        code = "def big_function():\n"
+        code += "    x = 1\n" * 20
+
+        chunks = chunker.chunk(code)
+        assert len(chunks) >= 2
+        assert all(c.metadata.get("block_type") == "function" for c in chunks)
+
+    def test_language_defaults_to_python(self) -> None:
+        """Default language is python."""
+        chunker = CodeChunker()
+        assert chunker.language == "python"
+
+    def test_generic_language_fallback(self) -> None:
+        """Unknown language falls back to generic patterns."""
+        chunker = CodeChunker(language="brainfuck", chunk_size=500)
+        code = "function test()\n  return 1\n"
+        chunks = chunker.chunk(code)
+        assert len(chunks) >= 1
+
+    def test_metadata_includes_language(self) -> None:
+        """Chunks include language in metadata."""
+        chunker = CodeChunker(language="python")
+        chunks = chunker.chunk("def foo():\n    pass")
+        assert chunks[0].metadata.get("language") == "python"
+
+    def test_empty_code_returns_empty(self) -> None:
+        """Empty code returns empty list."""
+        chunker = CodeChunker(language="python")
+        assert chunker.chunk("") == []
+
+
 class TestHierarchicalChunker:
     """Tests for HierarchicalChunker."""
 

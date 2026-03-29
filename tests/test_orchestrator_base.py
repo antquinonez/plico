@@ -11,12 +11,23 @@ Tests cover:
 - Consistent logging (#8)
 - Orchestration complete log message (#11)
 - Dead code removal verification (#2, #3)
+- Document initialization with RAG (194-235)
+- Tool registry initialization (252, 281-286)
+- Agent result recording (332, 347)
+- Validation edge cases (364, 373-374)
+- Reference injection with semantic query (422-439, 452)
+- Agent mode execution paths (612-616, 658, 660, 686-688, 894)
+- Agent response validation (742-752, 820-822)
 """
 
+import json
+import threading
 import time
 from unittest.mock import MagicMock, patch
 
 import pytest
+
+from src.orchestrator.base.orchestrator_base import OrchestratorBase
 
 
 class TestDependencyCycleDetection:
@@ -544,3 +555,720 @@ class TestRetryBackoffInBatch:
         delay_2_3 = attempt_times[2] - attempt_times[1]
         assert delay_1_2 >= 0.04
         assert delay_2_3 > delay_1_2  # Exponential: second delay > first delay
+
+
+class _TestOrchestrator(OrchestratorBase):
+    """Minimal concrete subclass for testing OrchestratorBase paths."""
+
+    @property
+    def source_path(self) -> str:
+        return "/fake/path"
+
+    def _load_source(self) -> None:
+        pass
+
+    def _get_cache_dir(self) -> str:
+        return "/fake/cache"
+
+    def _write_results(self, results: list) -> str:
+        return "fake_output"
+
+
+def _make_base(mock_ffmistralsmall):
+    """Create a _TestOrchestrator with minimal setup."""
+    orch = _TestOrchestrator.__new__(_TestOrchestrator)
+    orch.client = mock_ffmistralsmall
+    orch.config_overrides = {}
+    orch.concurrency = 1
+    orch.progress_callback = None
+    orch.config = {}
+    orch.prompts = []
+    orch.results = []
+    orch.ffai = None
+    orch.shared_prompt_attr_history = []
+    orch.history_lock = threading.Lock()
+    orch.batch_data = []
+    orch.is_batch_mode = False
+    orch.client_registry = None
+    orch.has_multi_client = False
+    orch.document_processor = None
+    orch.document_registry = None
+    orch.has_documents = False
+    orch.tool_registry = None
+    orch.has_tools = False
+    orch._rag_client = None
+    orch._executor = MagicMock()
+    return orch
+
+
+class TestInitDocuments:
+    """Tests for _init_documents covering lines 194-235."""
+
+    def test_rag_enabled_chromadb_not_available(self, mock_ffmistralsmall):
+        """Test RAG disabled path when chromadb is not available (line 208)."""
+        orch = _make_base(mock_ffmistralsmall)
+        orch._get_cache_dir = MagicMock(return_value="/cache")
+
+        mock_config = MagicMock()
+        mock_config.rag.enabled = True
+        with patch("src.orchestrator.base.orchestrator_base.get_config", return_value=mock_config):
+            with (
+                patch(
+                    "src.orchestrator.base.orchestrator_base.DocumentProcessor",
+                    autospec=True,
+                ) as mock_dp_cls,
+                patch(
+                    "src.orchestrator.base.orchestrator_base.DocumentRegistry",
+                    autospec=True,
+                ) as mock_dr_cls,
+            ):
+                mock_dr_instance = MagicMock()
+                mock_dr_instance.validate_documents = MagicMock()
+                mock_dr_cls.return_value = mock_dr_instance
+
+                with patch("src.orchestrator.base.orchestrator_base.DocumentProcessor") as dp_patch:
+                    with patch(
+                        "src.orchestrator.base.orchestrator_base.DocumentRegistry"
+                    ) as dr_patch:
+                        dr_patch.return_value = mock_dr_instance
+                        dp_patch.return_value = MagicMock()
+
+                        with patch.dict("sys.modules", {"chromadb": None}):
+                            with (
+                                patch(
+                                    "src.RAG.CHROMADB_AVAILABLE",
+                                    False,
+                                ),
+                                patch(
+                                    "src.RAG.FFRAGClient",
+                                    autospec=True,
+                                ),
+                            ):
+                                orch._init_documents(
+                                    [{"name": "doc1", "path": "doc1.txt"}],
+                                    "/workbook_dir",
+                                )
+
+        assert orch.has_documents is True
+
+    def test_rag_import_fails(self, mock_ffmistralsmall):
+        """Test graceful failure when RAG import raises (line 210)."""
+        orch = _make_base(mock_ffmistralsmall)
+
+        mock_config = MagicMock()
+        mock_config.rag.enabled = True
+        with patch("src.orchestrator.base.orchestrator_base.get_config", return_value=mock_config):
+            with (
+                patch("src.orchestrator.base.orchestrator_base.DocumentProcessor") as dp_patch,
+                patch("src.orchestrator.base.orchestrator_base.DocumentRegistry") as dr_patch,
+            ):
+                mock_dr_instance = MagicMock()
+                mock_dr_instance.validate_documents = MagicMock()
+                dr_patch.return_value = mock_dr_instance
+                dp_patch.return_value = MagicMock()
+
+                with (
+                    patch(
+                        "src.RAG.CHROMADB_AVAILABLE",
+                        True,
+                    ),
+                    patch(
+                        "src.RAG.FFRAGClient",
+                        side_effect=RuntimeError("import failed"),
+                    ),
+                ):
+                    orch._init_documents(
+                        [{"name": "doc1", "path": "doc1.txt"}],
+                        "/workbook_dir",
+                    )
+
+        assert orch.has_documents is True
+
+    def test_rag_enabled_with_pre_indexing(self, mock_ffmistralsmall):
+        """Test successful RAG init with pre-indexing (lines 231-235)."""
+        orch = _make_base(mock_ffmistralsmall)
+
+        mock_rag_client = MagicMock()
+        mock_config = MagicMock()
+        mock_config.rag.enabled = True
+
+        with patch("src.orchestrator.base.orchestrator_base.get_config", return_value=mock_config):
+            with (
+                patch("src.orchestrator.base.orchestrator_base.DocumentProcessor") as dp_patch,
+                patch("src.orchestrator.base.orchestrator_base.DocumentRegistry") as dr_patch,
+                patch("src.RAG.CHROMADB_AVAILABLE", True),
+                patch("src.RAG.FFRAGClient", return_value=mock_rag_client),
+            ):
+                mock_dr_instance = MagicMock()
+                mock_dr_instance.rag_client = mock_rag_client
+                mock_dr_instance.validate_documents = MagicMock()
+                mock_dr_instance.index_all_documents = MagicMock(
+                    return_value={"doc1": 5, "doc2": 0}
+                )
+                dr_patch.return_value = mock_dr_instance
+                dp_patch.return_value = MagicMock()
+
+                orch._init_documents(
+                    [{"name": "doc1", "path": "doc1.txt"}, {"name": "doc2", "path": "doc2.txt"}],
+                    "/workbook_dir",
+                )
+
+        mock_dr_instance.index_all_documents.assert_called_once()
+        assert orch._rag_client is mock_rag_client
+
+
+class TestInitTools:
+    """Tests for _init_tools covering lines 252, 281-286."""
+
+    def test_empty_tools_data_returns_early(self, mock_ffmistralsmall):
+        """Test that empty tools_data list returns immediately (line 252)."""
+        orch = _make_base(mock_ffmistralsmall)
+        orch._init_tools([])
+        assert orch.has_tools is False
+        assert orch.tool_registry is None
+
+    def test_python_callable_loading(self, mock_ffmistralsmall):
+        """Test python: implementation loading (lines 281-284)."""
+        orch = _make_base(mock_ffmistralsmall)
+
+        mock_tool_def = MagicMock()
+        mock_tool_def.name = "my_tool"
+        mock_tool_def.description = "A tool"
+        mock_tool_def.parameters = {}
+        mock_tool_def.implementation = "python:json.dumps"
+        mock_tool_def.enabled = True
+
+        mock_registry = MagicMock()
+        mock_registry.get_registered_names.return_value = ["my_tool"]
+        mock_registry.get_tool.return_value = mock_tool_def
+        mock_registry.load_python_callable.return_value = json.dumps
+
+        tools_data = [
+            {
+                "name": "my_tool",
+                "description": "A tool",
+                "parameters": {},
+                "implementation": "python:json.dumps",
+                "enabled": True,
+            }
+        ]
+
+        with patch(
+            "src.orchestrator.base.orchestrator_base.ToolRegistry", return_value=mock_registry
+        ):
+            with (
+                patch(
+                    "src.orchestrator.builtin_tools.BUILTIN_TOOL_DEFINITIONS",
+                    {"builtin_tool": {"description": "builtin", "parameters": {}}},
+                ),
+                patch(
+                    "src.orchestrator.builtin_tools.create_context_tools",
+                    return_value={},
+                ),
+            ):
+                orch._init_tools(tools_data)
+
+        mock_registry.load_python_callable.assert_called_once_with("json.dumps")
+        mock_registry.register_executor.assert_called_once_with("my_tool", json.dumps)
+
+    def test_new_tool_not_in_builtins(self, mock_ffmistralsmall):
+        """Test registering a tool not in builtins (line 286)."""
+        orch = _make_base(mock_ffmistralsmall)
+
+        tools_data = [
+            {
+                "name": "custom_tool",
+                "description": "A custom tool",
+                "parameters": {},
+                "implementation": "builtin:custom_tool",
+                "enabled": True,
+            }
+        ]
+
+        mock_registry = MagicMock()
+        mock_registry.get_registered_names.return_value = ["existing_builtin"]
+
+        with patch(
+            "src.orchestrator.base.orchestrator_base.ToolRegistry", return_value=mock_registry
+        ):
+            with (
+                patch(
+                    "src.orchestrator.builtin_tools.BUILTIN_TOOL_DEFINITIONS",
+                    {"existing_builtin": {"description": "existing", "parameters": {}}},
+                ),
+                patch(
+                    "src.orchestrator.builtin_tools.create_context_tools",
+                    return_value={},
+                ),
+            ):
+                orch._init_tools(tools_data)
+
+        call_args_list = [call[0][0] for call in mock_registry.register.call_args_list]
+        registered_names = [td.name for td in call_args_list]
+        assert "custom_tool" in registered_names
+
+
+class TestRecordAgentResult:
+    """Tests for _record_agent_result_in_shared_history covering lines 332, 347."""
+
+    def test_none_response_returns_early(self, mock_ffmistralsmall):
+        """Test that None response returns immediately (line 332)."""
+        orch = _make_base(mock_ffmistralsmall)
+        orch.config = {"model": "test"}
+        initial_len = len(orch.shared_prompt_attr_history)
+        orch._record_agent_result_in_shared_history({"prompt": "hi"}, None)
+        assert len(orch.shared_prompt_attr_history) == initial_len
+
+    def test_no_history_lock(self, mock_ffmistralsmall):
+        """Test recording when history_lock is None (line 347)."""
+        orch = _make_base(mock_ffmistralsmall)
+        orch.history_lock = None
+        orch.config = {"model": "test"}
+        orch._record_agent_result_in_shared_history(
+            {"prompt": "hi", "prompt_name": "test", "history": None},
+            "response_text",
+        )
+        assert len(orch.shared_prompt_attr_history) == 1
+        assert orch.shared_prompt_attr_history[0]["response"] == "response_text"
+
+
+class TestValidateEdgeCases:
+    """Tests for _validate covering lines 364, 373-374."""
+
+    def test_validate_with_document_registry(self, mock_ffmistralsmall):
+        """Test _validate when document_registry is present (line 364)."""
+        orch = _make_base(mock_ffmistralsmall)
+        orch.config = {}
+        orch.prompts = [
+            {"sequence": 1, "prompt_name": "a", "prompt": "Hello", "history": None},
+        ]
+
+        mock_doc_reg = MagicMock()
+        mock_doc_reg.get_reference_names.return_value = ["doc1"]
+        orch.document_registry = mock_doc_reg
+
+        orch._validate()
+
+    def test_validate_get_available_client_types_raises(self, mock_ffmistralsmall):
+        """Test _validate when get_available_client_types raises (lines 373-374)."""
+        orch = _make_base(mock_ffmistralsmall)
+        orch.config = {}
+        orch.prompts = [
+            {"sequence": 1, "prompt_name": "a", "prompt": "Hello", "history": None},
+        ]
+
+        mock_config = MagicMock()
+        mock_config.get_available_client_types.side_effect = RuntimeError("config error")
+        with patch("src.orchestrator.base.orchestrator_base.get_config", return_value=mock_config):
+            orch._validate()
+
+
+class TestInjectReferences:
+    """Tests for _inject_references covering lines 422-439, 452."""
+
+    def test_semantic_query_with_rag(self, mock_ffmistralsmall):
+        """Test semantic query path with RAG client (lines 422-437)."""
+        orch = _make_base(mock_ffmistralsmall)
+        orch.has_documents = True
+
+        mock_doc_reg = MagicMock()
+        mock_doc_reg.rag_client = MagicMock()
+        mock_doc_reg.inject_semantic_query.return_value = "prompt with search results"
+        orch.document_registry = mock_doc_reg
+
+        prompt = {
+            "prompt": "original prompt",
+            "semantic_query": "search term",
+            "semantic_filter": None,
+            "query_expansion": None,
+            "rerank": None,
+        }
+
+        result = orch._inject_references(prompt)
+        assert result == "prompt with search results"
+        mock_doc_reg.inject_semantic_query.assert_called_once()
+
+    def test_semantic_query_with_filter(self, mock_ffmistralsmall):
+        """Test semantic query with JSON filter (line 426)."""
+        orch = _make_base(mock_ffmistralsmall)
+        orch.has_documents = True
+
+        mock_doc_reg = MagicMock()
+        mock_doc_reg.rag_client = MagicMock()
+        mock_doc_reg.inject_semantic_query.return_value = "filtered results"
+        orch.document_registry = mock_doc_reg
+
+        prompt = {
+            "prompt": "original prompt",
+            "semantic_query": "search term",
+            "semantic_filter": '{"source": "doc1"}',
+            "query_expansion": "true",
+            "rerank": "false",
+        }
+
+        result = orch._inject_references(prompt)
+        assert result == "filtered results"
+        call_kwargs = mock_doc_reg.inject_semantic_query.call_args[1]
+        assert call_kwargs["semantic_filter"] == {"source": "doc1"}
+        assert call_kwargs["query_expansion"] is True
+        assert call_kwargs["rerank"] is False
+
+    def test_semantic_query_fallback_on_error(self, mock_ffmistralsmall):
+        """Test fallback when semantic search fails (lines 438-439)."""
+        orch = _make_base(mock_ffmistralsmall)
+        orch.has_documents = True
+
+        mock_doc_reg = MagicMock()
+        mock_doc_reg.rag_client = MagicMock()
+        mock_doc_reg.inject_semantic_query.side_effect = RuntimeError("search failed")
+        mock_doc_reg.get_reference_names.return_value = []
+        orch.document_registry = mock_doc_reg
+
+        prompt = {
+            "prompt": "original prompt",
+            "semantic_query": "search term",
+            "references": None,
+        }
+
+        result = orch._inject_references(prompt)
+        assert result == "original prompt"
+
+    def test_references_empty_list(self, mock_ffmistralsmall):
+        """Test that empty references list returns prompt as-is (line 452)."""
+        orch = _make_base(mock_ffmistralsmall)
+        orch.has_documents = True
+
+        mock_doc_reg = MagicMock()
+        orch.document_registry = mock_doc_reg
+
+        prompt = {
+            "prompt": "original prompt",
+            "references": [],
+        }
+
+        result = orch._inject_references(prompt)
+        assert result == "original prompt"
+
+
+class TestExecuteAgentMode:
+    """Tests for _execute_agent_mode covering lines 612-616, 658, 660, 686-688."""
+
+    def test_openai_assistant_fallback(self, mock_ffmistralsmall):
+        """Test FFOpenAIAssistant fallback to single-shot (lines 612-616)."""
+        orch = _make_base(mock_ffmistralsmall)
+        orch.config = {"model": "gpt-4"}
+        orch.tool_registry = MagicMock()
+
+        mock_client = MagicMock()
+        mock_client.__class__.__name__ = "FFOpenAIAssistant"
+        mock_ffai = MagicMock()
+        mock_ffai.client = mock_client
+
+        mock_builder = MagicMock()
+        mock_builder.build_dict.return_value = {"status": "success"}
+
+        prompt = {
+            "sequence": 1,
+            "prompt_name": "test",
+            "prompt": "Hello",
+            "history": None,
+            "agent_mode": True,
+            "tools": ["calculate"],
+        }
+
+        result = orch._execute_agent_mode(prompt, mock_ffai, mock_builder, "Sequence 1")
+        assert result is None
+
+    def test_agent_result_failed(self, mock_ffmistralsmall):
+        """Test agent result with status failed (line 658)."""
+        from src.agent.agent_result import AgentResult
+
+        orch = _make_base(mock_ffmistralsmall)
+        orch.config = {"model": "test", "temperature": 0.7, "max_tokens": 4096}
+
+        mock_agent_result = AgentResult(
+            response="",
+            total_rounds=1,
+            total_llm_calls=1,
+            status="failed",
+        )
+
+        mock_tool_reg = MagicMock()
+        orch.tool_registry = mock_tool_reg
+
+        mock_ffai = MagicMock()
+        mock_ffai.client = mock_ffmistralsmall
+        mock_ffai._build_prompt.return_value = ("resolved prompt", None)
+        mock_ffai.last_resolved_prompt = "resolved prompt"
+
+        mock_builder = MagicMock()
+        mock_builder.build_dict.return_value = {"status": "failed"}
+
+        mock_config = MagicMock()
+        mock_config.agent.max_tool_rounds = 5
+        mock_config.agent.tool_timeout = 30.0
+        mock_config.agent.continue_on_tool_error = True
+        mock_config.agent.validation.enabled = False
+
+        with patch("src.orchestrator.base.orchestrator_base.get_config", return_value=mock_config):
+            with patch("src.agent.agent_loop.AgentLoop") as mock_loop_cls:
+                mock_loop = MagicMock()
+                mock_loop.execute.return_value = mock_agent_result
+                mock_loop_cls.return_value = mock_loop
+
+                orch._execute_agent_mode(
+                    {
+                        "sequence": 1,
+                        "prompt_name": "test",
+                        "prompt": "Hello",
+                        "history": None,
+                        "agent_mode": True,
+                        "tools": ["calculate"],
+                    },
+                    mock_ffai,
+                    mock_builder,
+                    "Sequence 1",
+                )
+
+        mock_builder.with_agent_result.assert_called_once_with(mock_agent_result)
+
+    def test_agent_result_max_rounds_exceeded(self, mock_ffmistralsmall):
+        """Test agent result with status max_rounds_exceeded (line 660)."""
+        from src.agent.agent_result import AgentResult
+
+        orch = _make_base(mock_ffmistralsmall)
+        orch.config = {"model": "test", "temperature": 0.7, "max_tokens": 4096}
+
+        mock_agent_result = AgentResult(
+            response="partial",
+            total_rounds=5,
+            total_llm_calls=5,
+            status="max_rounds_exceeded",
+        )
+
+        mock_tool_reg = MagicMock()
+        orch.tool_registry = mock_tool_reg
+
+        mock_ffai = MagicMock()
+        mock_ffai.client = mock_ffmistralsmall
+        mock_ffai._build_prompt.return_value = ("resolved prompt", None)
+        mock_ffai.last_resolved_prompt = "resolved prompt"
+
+        mock_builder = MagicMock()
+        mock_builder.build_dict.return_value = {"status": "max_rounds_exceeded"}
+
+        mock_config = MagicMock()
+        mock_config.agent.max_tool_rounds = 5
+        mock_config.agent.tool_timeout = 30.0
+        mock_config.agent.continue_on_tool_error = True
+        mock_config.agent.validation.enabled = False
+
+        with patch("src.orchestrator.base.orchestrator_base.get_config", return_value=mock_config):
+            with patch("src.agent.agent_loop.AgentLoop") as mock_loop_cls:
+                mock_loop = MagicMock()
+                mock_loop.execute.return_value = mock_agent_result
+                mock_loop_cls.return_value = mock_loop
+
+                orch._execute_agent_mode(
+                    {
+                        "sequence": 1,
+                        "prompt_name": "test",
+                        "prompt": "Hello",
+                        "history": None,
+                        "agent_mode": True,
+                        "tools": ["calculate"],
+                    },
+                    mock_ffai,
+                    mock_builder,
+                    "Sequence 1",
+                )
+
+        mock_builder.with_agent_result.assert_called_once_with(mock_agent_result)
+
+    def test_agent_mode_exception(self, mock_ffmistralsmall):
+        """Test exception in agent execution (lines 686-688)."""
+        orch = _make_base(mock_ffmistralsmall)
+        orch.config = {"model": "test", "temperature": 0.7, "max_tokens": 4096}
+        orch.tool_registry = MagicMock()
+
+        mock_ffai = MagicMock()
+        mock_ffai.client = mock_ffmistralsmall
+        mock_ffai._build_prompt.return_value = ("resolved prompt", None)
+        mock_ffai.last_resolved_prompt = "resolved prompt"
+
+        mock_builder = MagicMock()
+        mock_builder.build_dict.return_value = {"status": "failed", "error": "boom"}
+
+        mock_config = MagicMock()
+        mock_config.agent.max_tool_rounds = 5
+        mock_config.agent.tool_timeout = 30.0
+        mock_config.agent.continue_on_tool_error = True
+
+        with patch("src.orchestrator.base.orchestrator_base.get_config", return_value=mock_config):
+            with patch("src.agent.agent_loop.AgentLoop") as mock_loop_cls:
+                mock_loop_cls.return_value = MagicMock()
+                mock_loop_cls.return_value.execute.side_effect = RuntimeError("agent exploded")
+
+                result = orch._execute_agent_mode(
+                    {
+                        "sequence": 1,
+                        "prompt_name": "test",
+                        "prompt": "Hello",
+                        "history": None,
+                        "agent_mode": True,
+                        "tools": ["calculate"],
+                    },
+                    mock_ffai,
+                    mock_builder,
+                    "Sequence 1",
+                )
+
+        mock_builder.with_error.assert_called_once()
+        assert "agent exploded" in mock_builder.with_error.call_args[0][0]
+
+
+class TestValidateAgentResponse:
+    """Tests for _validate_agent_response covering lines 742-752, 820-822."""
+
+    def test_validation_llm_fails_all_retries(self, mock_ffmistralsmall):
+        """Test when validation LLM call fails and retries are exhausted (lines 742-752)."""
+        from src.agent.agent_result import AgentResult
+
+        orch = _make_base(mock_ffmistralsmall)
+        orch.config = {"model": "test", "temperature": 0.7, "max_tokens": 4096}
+        orch.tool_registry = MagicMock()
+
+        mock_agent_result = AgentResult(response="original response", status="success")
+
+        mock_ffai_val = MagicMock()
+        mock_ffai_val.generate_response.side_effect = RuntimeError("LLM down")
+        orch._get_isolated_ffai = MagicMock(return_value=mock_ffai_val)
+
+        mock_builder = MagicMock()
+
+        mock_config = MagicMock()
+        mock_config.agent.max_tool_rounds = 5
+        mock_config.agent.tool_timeout = 30.0
+        mock_config.agent.continue_on_tool_error = True
+
+        with patch("src.orchestrator.base.orchestrator_base.get_config", return_value=mock_config):
+            with patch("src.agent.agent_loop.AgentLoop") as mock_loop_cls:
+                orch._validate_agent_response(
+                    prompt={"sequence": 1, "prompt_name": "test", "history": None},
+                    builder=mock_builder,
+                    agent_result=mock_agent_result,
+                    tool_names=["calculate"],
+                    validation_prompt="Must include numbers",
+                    max_val_retries=2,
+                    seq_label="Sequence 1",
+                    original_prompt="original prompt",
+                    max_rounds=5,
+                    tool_timeout=30.0,
+                    continue_on_tool_error=True,
+                )
+
+        mock_builder.with_validation_result.assert_called_once()
+        call_kwargs = mock_builder.with_validation_result.call_args[1]
+        assert call_kwargs["passed"] is None
+        assert "Validation call failed" in call_kwargs["critique"]
+
+    def test_validation_retry_execution_fails(self, mock_ffmistralsmall):
+        """Test when retry execution in validation loop fails (lines 820-822)."""
+        from src.agent.agent_result import AgentResult
+
+        orch = _make_base(mock_ffmistralsmall)
+        orch.config = {"model": "test", "temperature": 0.7, "max_tokens": 4096}
+        orch.tool_registry = MagicMock()
+
+        mock_agent_result = AgentResult(response="bad response", status="success")
+
+        call_count = [0]
+
+        def mock_val_generate(*args, **kwargs):
+            call_count[0] += 1
+            return "FAIL: Not good enough"
+
+        mock_ffai_val = MagicMock()
+        mock_ffai_val.generate_response = mock_val_generate
+        orch._get_isolated_ffai = MagicMock(return_value=mock_ffai_val)
+
+        mock_builder = MagicMock()
+
+        mock_config = MagicMock()
+        mock_config.agent.max_tool_rounds = 5
+        mock_config.agent.tool_timeout = 30.0
+        mock_config.agent.continue_on_tool_error = True
+
+        with patch("src.orchestrator.base.orchestrator_base.get_config", return_value=mock_config):
+            with patch("src.agent.agent_loop.AgentLoop") as mock_loop_cls:
+                mock_loop = MagicMock()
+                mock_loop.execute.side_effect = RuntimeError("retry failed")
+                mock_loop_cls.return_value = mock_loop
+
+                orch._validate_agent_response(
+                    prompt={"sequence": 1, "prompt_name": "test", "history": None},
+                    builder=mock_builder,
+                    agent_result=mock_agent_result,
+                    tool_names=["calculate"],
+                    validation_prompt="Must be perfect",
+                    max_val_retries=1,
+                    seq_label="Sequence 1",
+                    original_prompt="original prompt",
+                    max_rounds=5,
+                    tool_timeout=30.0,
+                    continue_on_tool_error=True,
+                )
+
+        last_call = mock_builder.with_validation_result.call_args[1]
+        assert last_call["passed"] is False
+        assert last_call["critique"] is not None
+
+
+class TestExecuteWithRetryAgentMode:
+    """Tests for _execute_with_retry covering line 894."""
+
+    def test_agent_mode_no_tool_registry_falls_back(self, mock_ffmistralsmall):
+        """Test agent_mode=true with no tool_registry falls back to single-shot (line 894)."""
+        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
+
+        orchestrator = ExcelOrchestrator.__new__(ExcelOrchestrator)
+        orchestrator.client = mock_ffmistralsmall
+        orchestrator.config = {"max_retries": 1, "retry_base_delay": 0.01}
+        orchestrator.prompts = []
+        orchestrator.results = []
+        orchestrator.ffai = None
+        orchestrator.shared_prompt_attr_history = []
+        orchestrator.history_lock = threading.Lock()
+        orchestrator.batch_data = []
+        orchestrator.is_batch_mode = False
+        orchestrator.client_registry = None
+        orchestrator.has_multi_client = False
+        orchestrator.document_processor = None
+        orchestrator.document_registry = None
+        orchestrator.has_documents = False
+        orchestrator.tool_registry = None
+        orchestrator.has_tools = False
+        orchestrator._rag_client = None
+        orchestrator.concurrency = 1
+        orchestrator._executor = MagicMock()
+        orchestrator.config_overrides = {}
+        orchestrator.progress_callback = None
+
+        mock_ffmistralsmall.clone = MagicMock(return_value=mock_ffmistralsmall)
+        mock_ffmistralsmall.generate_response = MagicMock(return_value="single shot response")
+
+        prompt = {
+            "sequence": 1,
+            "prompt_name": "agent_test",
+            "prompt": "Hello",
+            "history": None,
+            "agent_mode": True,
+        }
+
+        with patch("src.orchestrator.base.orchestrator_base.logger") as mock_logger:
+            result = orchestrator._execute_with_retry(prompt, {})
+
+        assert result["status"] == "success"
+        assert result["response"] == "single shot response"
+        warning_calls = [str(c) for c in mock_logger.warning.call_args_list]
+        assert any("no tool registry" in msg for msg in warning_calls)

@@ -358,3 +358,157 @@ class TestTextExtensions:
         assert ".xml" in text_extensions
         assert ".yaml" in text_extensions
         assert ".html" in text_extensions
+
+
+class TestNeedsParsingEdgeCases:
+    def test_needs_parsing_empty_parquet(self, processor, fixtures_dir, temp_cache_dir):
+        import polars as pl
+
+        file_path = fixtures_dir / "client_info.txt"
+        checksum = processor.compute_checksum(str(file_path))
+        parquet_path = processor.get_parquet_path(checksum, "empty_doc")
+        pl.DataFrame(
+            {
+                "reference_name": [""],
+                "common_name": [""],
+                "original_path": [""],
+                "checksum": [checksum],
+                "content": [""],
+                "parsed_at": [None],
+                "file_size": [0],
+            }
+        ).write_parquet(parquet_path)
+
+        empty_path = processor.get_parquet_path("b" * 64, "empty_doc")
+        pl.DataFrame(schema=DocumentProcessor.PARQUET_SCHEMA).write_parquet(empty_path)
+
+        checksum_for_empty = "b" * 64
+        path_for_empty = processor.get_parquet_path(checksum_for_empty, "empty_doc")
+        result = processor.needs_parsing(str(file_path), "empty_doc", checksum=checksum_for_empty)
+        assert result is True
+
+    def test_needs_parsing_checksum_mismatch(self, processor, fixtures_dir, temp_cache_dir):
+        import polars as pl
+
+        file_path = fixtures_dir / "client_info.txt"
+        real_checksum = processor.compute_checksum(str(file_path))
+        fake_checksum = "f" * 64
+        parquet_path = processor.get_parquet_path(real_checksum, "mismatch_doc")
+        pl.DataFrame(
+            {
+                "reference_name": ["mismatch_doc"],
+                "common_name": ["Mismatch"],
+                "original_path": [str(file_path)],
+                "checksum": [fake_checksum],
+                "content": ["old content"],
+                "parsed_at": [None],
+                "file_size": [100],
+            }
+        ).write_parquet(parquet_path)
+
+        result = processor.needs_parsing(str(file_path), "mismatch_doc", checksum=real_checksum)
+        assert result is True
+
+    def test_needs_parsing_corrupt_parquet(self, processor, fixtures_dir, temp_cache_dir):
+        file_path = fixtures_dir / "client_info.txt"
+        checksum = processor.compute_checksum(str(file_path))
+        parquet_path = processor.get_parquet_path(checksum, "corrupt_doc")
+        parquet_path.write_text("not valid parquet data")
+
+        result = processor.needs_parsing(str(file_path), "corrupt_doc", checksum=checksum)
+        assert result is True
+
+
+class TestParseDocumentNonText:
+    def test_parse_non_text_no_api_key(self, temp_cache_dir, fixtures_dir):
+        processor = DocumentProcessor(cache_dir=temp_cache_dir, api_key=None)
+        non_text = fixtures_dir / "client_info.txt"
+        ext = non_text.suffix
+        proc_copy = DocumentProcessor(cache_dir=temp_cache_dir, api_key=None)
+        if ext in proc_copy.TEXT_EXTENSIONS:
+            pytest.skip("file is a text extension")
+
+    def test_parse_llama_no_api_key_raises(self, temp_cache_dir, tmp_path, monkeypatch):
+        monkeypatch.delenv("LLAMACLOUD_TOKEN", raising=False)
+        processor = DocumentProcessor(cache_dir=temp_cache_dir, api_key=None)
+        fake_file = tmp_path / "document.xyz"
+        fake_file.write_text("some content")
+
+        with pytest.raises(ValueError, match="LlamaParse API key required"):
+            processor.parse_document(str(fake_file))
+
+
+class TestParseTextFileEncoding:
+    def test_parse_text_file_unicode_error_fallback(self, processor, tmp_path):
+        latin1_file = tmp_path / "latin1.txt"
+        latin1_file.write_bytes("Héllo Wörld".encode("latin-1"))
+
+        try:
+            import chardet  # noqa: F401
+        except ImportError:
+            pytest.skip("chardet not installed")
+
+        content = processor._parse_text_file(str(latin1_file))
+        assert isinstance(content, str)
+        assert len(content) > 0
+
+
+class TestLoadDocumentEdgeCases:
+    def test_load_empty_parquet_raises(self, processor, temp_cache_dir):
+        import polars as pl
+
+        empty_path = Path(temp_cache_dir) / "empty.parquet"
+        pl.DataFrame(schema=DocumentProcessor.PARQUET_SCHEMA).write_parquet(empty_path)
+
+        with pytest.raises(ValueError, match="Empty parquet"):
+            processor.load_document(str(empty_path))
+
+
+class TestGetDocumentContentMissingFile:
+    def test_get_document_content_missing_file_raises(self, processor, tmp_path):
+        missing = tmp_path / "nonexistent.txt"
+        with pytest.raises(FileNotFoundError):
+            processor.get_document_content(str(missing), "missing", "Missing")
+
+
+class TestGetDocumentChecksum:
+    def test_get_document_checksum(self, processor, fixtures_dir):
+        file_path = fixtures_dir / "client_info.txt"
+        checksum = processor.get_document_checksum(str(file_path))
+        assert len(checksum) == 64
+        assert checksum == processor.compute_checksum(str(file_path))
+
+
+class TestIndexToRag:
+    def test_index_to_rag_no_rag_client(self, processor):
+        result = processor.index_to_rag("ref", "name", "content", "abc123")
+        assert result == 0
+
+    def test_index_to_rag_with_mock_client(self, processor):
+        mock_rag = type("MockRAG", (), {"index_document": lambda self, **kw: 5})()
+        processor.rag_client = mock_rag
+
+        result = processor.index_to_rag("ref", "name", "content", "abc123")
+        assert result == 5
+
+    def test_index_to_rag_exception_returns_zero(self, processor):
+        mock_rag = type(
+            "MockRAG",
+            (),
+            {"index_document": lambda self, **kw: (_ for _ in ()).throw(RuntimeError("fail"))},
+        )()
+        processor.rag_client = mock_rag
+
+        result = processor.index_to_rag("ref", "name", "content", "abc123")
+        assert result == 0
+
+    def test_index_to_rag_with_tags_and_strategy(self, processor):
+        mock_rag = type(
+            "MockRAG", (), {"index_document": lambda self, **kw: 3 if kw.get("tags") else 0}
+        )()
+        processor.rag_client = mock_rag
+
+        result = processor.index_to_rag(
+            "ref", "name", "content", "abc123", tags=["tag1"], chunking_strategy="recursive"
+        )
+        assert result == 3
