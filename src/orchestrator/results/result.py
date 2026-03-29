@@ -6,7 +6,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, fields
 from typing import Any
 
 
@@ -76,40 +76,7 @@ class PromptResult:
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for backward compatibility."""
-        result = {
-            "sequence": self.sequence,
-            "prompt_name": self.prompt_name,
-            "prompt": self.prompt,
-            "resolved_prompt": self.resolved_prompt,
-            "history": self.history,
-            "client": self.client,
-            "condition": self.condition,
-            "condition_result": self.condition_result,
-            "condition_error": self.condition_error,
-            "response": self.response,
-            "status": self.status,
-            "attempts": self.attempts,
-            "error": self.error,
-            "references": self.references,
-            "semantic_query": self.semantic_query,
-            "semantic_filter": self.semantic_filter,
-            "query_expansion": self.query_expansion,
-            "rerank": self.rerank,
-        }
-        if self.batch_id is not None:
-            result["batch_id"] = self.batch_id
-        if self.batch_name is not None:
-            result["batch_name"] = self.batch_name
-        if self.agent_mode:
-            result["agent_mode"] = self.agent_mode
-            result["tool_calls"] = self.tool_calls
-            result["total_rounds"] = self.total_rounds
-            result["total_llm_calls"] = self.total_llm_calls
-        if self.validation_passed is not None:
-            result["validation_passed"] = self.validation_passed
-            result["validation_attempts"] = self.validation_attempts
-            result["validation_critique"] = self.validation_critique
-        return result
+        return {f.name: getattr(self, f.name) for f in fields(self)}
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> PromptResult:

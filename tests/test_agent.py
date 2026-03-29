@@ -782,13 +782,14 @@ class TestValidationResultFields:
         assert d["validation_attempts"] == 1
         assert d["validation_critique"] is None
 
-    def test_prompt_result_validation_not_in_to_dict_when_unset(self):
+    def test_prompt_result_validation_in_to_dict_when_unset(self):
         from src.orchestrator.results.result import PromptResult
 
         result = PromptResult(sequence=1, agent_mode=True)
         d = result.to_dict()
-        assert "validation_passed" not in d
-        assert "validation_attempts" not in d
+        assert "validation_passed" in d
+        assert d["validation_passed"] is None
+        assert d["validation_attempts"] is None
 
     def test_prompt_result_validation_from_dict(self):
         from src.orchestrator.results.result import PromptResult

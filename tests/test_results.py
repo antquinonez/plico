@@ -43,7 +43,7 @@ class TestPromptResult:
         assert d["prompt_name"] == "test"
         assert d["prompt"] == "Hello"
         assert d["status"] == "pending"
-        assert "batch_id" not in d
+        assert d["batch_id"] is None
 
     def test_to_dict_with_batch(self):
         """Test conversion to dictionary with batch info."""
@@ -251,7 +251,7 @@ class TestResultBuilder:
         assert result.total_llm_calls is None
 
     def test_to_dict_includes_agent_fields_when_set(self):
-        """to_dict should include agent fields when agent_mode is True."""
+        """to_dict should include agent fields with their values."""
         result = PromptResult(sequence=1, agent_mode=True, total_rounds=3, total_llm_calls=5)
         result.tool_calls = [{"tool_name": "calc"}]
         d = result.to_dict()
@@ -259,11 +259,11 @@ class TestResultBuilder:
         assert d["total_rounds"] == 3
         assert d["total_llm_calls"] == 5
 
-    def test_to_dict_omits_agent_fields_when_not_set(self):
-        """to_dict should omit agent fields when agent_mode is False."""
+    def test_to_dict_includes_agent_fields_when_not_set(self):
+        """to_dict should include agent fields with default values."""
         result = PromptResult(sequence=1)
         d = result.to_dict()
-        assert "agent_mode" not in d
-        assert "tool_calls" not in d
-        assert "total_rounds" not in d
-        assert "total_llm_calls" not in d
+        assert d["agent_mode"] is False
+        assert d["tool_calls"] is None
+        assert d["total_rounds"] is None
+        assert d["total_llm_calls"] is None

@@ -29,7 +29,7 @@ import yaml
 from ..config import get_config
 from ..FFAIClientBase import FFAIClientBase
 from .base import OrchestratorBase
-from .workbook_parser import WorkbookParser
+from .workbook_parser import WorkbookParser, _serialize_result_value
 
 logger = logging.getLogger(__name__)
 
@@ -455,33 +455,8 @@ class ManifestOrchestrator(OrchestratorBase):
         rows = []
         for r in results:
             row = {
-                "batch_id": r.get("batch_id"),
-                "batch_name": r.get("batch_name"),
-                "sequence": r["sequence"],
-                "prompt_name": r.get("prompt_name"),
-                "prompt": r.get("prompt"),
-                "resolved_prompt": r.get("resolved_prompt"),
-                "history": json.dumps(r.get("history")) if r.get("history") else None,
-                "client": r.get("client"),
-                "condition": r.get("condition"),
-                "condition_result": r.get("condition_result"),
-                "condition_error": r.get("condition_error"),
-                "response": r.get("response"),
-                "status": r["status"],
-                "attempts": r["attempts"],
-                "error": r.get("error"),
-                "references": json.dumps(r.get("references")) if r.get("references") else None,
-                "semantic_query": r.get("semantic_query"),
-                "semantic_filter": r.get("semantic_filter"),
-                "query_expansion": r.get("query_expansion"),
-                "rerank": r.get("rerank"),
-                "agent_mode": r.get("agent_mode"),
-                "tool_calls": json.dumps(r.get("tool_calls")) if r.get("tool_calls") else None,
-                "total_rounds": r.get("total_rounds"),
-                "total_llm_calls": r.get("total_llm_calls"),
-                "validation_passed": r.get("validation_passed"),
-                "validation_attempts": r.get("validation_attempts"),
-                "validation_critique": r.get("validation_critique"),
+                header: _serialize_result_value(header, r.get(header))
+                for header in WorkbookParser.RESULTS_HEADERS
             }
             rows.append(row)
 
