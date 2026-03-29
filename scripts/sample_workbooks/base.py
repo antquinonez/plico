@@ -93,6 +93,13 @@ class SectionDefinition:
         description: Human-readable description
         features: List of features tested in this section (optional)
         extra_fields: Additional fields to track per prompt (optional)
+        field_checks: Dict mapping sequence numbers to field validation rules.
+            Each rule is a dict with keys:
+            - column: int - column number in results sheet
+            - expected: Any - expected value (exact match)
+            - expected_one_of: list[Any] - value must be one of these
+            - not_empty: bool - value must not be empty/None
+            - greater_than: int/float - value must be greater than this (numeric)
 
     """
 
@@ -100,6 +107,7 @@ class SectionDefinition:
     description: str
     features: list[str] | None = None
     extra_fields: list[str] = field(default_factory=list)
+    field_checks: dict[int, dict[str, Any]] = field(default_factory=dict)
 
 
 DEFAULT_CONFIG_FIELDS: list[tuple[str, str | None, str]] = [
@@ -233,9 +241,16 @@ DEFAULT_DOCUMENTS_COLUMN_WIDTHS = {
     "E": 30,
 }
 
-STATUS_COLUMN = 12
+STATUS_COLUMN = 13
 SEQUENCE_COLUMN = 3
 PROMPT_NAME_COLUMN = 4
-CONDITION_RESULT_COLUMN = 9
-CONDITION_ERROR_COLUMN = 10
+CONDITION_RESULT_COLUMN = 10
+CONDITION_ERROR_COLUMN = 11
 BATCH_INDEX_COLUMN = 2
+AGENT_MODE_COLUMN = 21
+TOOL_CALLS_COLUMN = 22
+TOTAL_ROUNDS_COLUMN = 23
+TOTAL_LLM_CALLS_COLUMN = 24
+VALIDATION_PASSED_COLUMN = 25
+VALIDATION_ATTEMPTS_COLUMN = 26
+VALIDATION_CRITIQUE_COLUMN = 27

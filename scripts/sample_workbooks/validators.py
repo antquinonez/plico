@@ -138,6 +138,7 @@ class WorkbookValidator:
         skipped = 0
         conditions_true = 0
         conditions_false = 0
+        field_check_failures: list[dict[str, Any]] = []
 
         for seq in range(start, end + 1):
             if seq not in seq_to_row:
@@ -159,6 +160,13 @@ class WorkbookValidator:
                 prompt_info["condition_result"] = cond_result
                 prompt_info["condition_error"] = cond_error
 
+            if seq in section.field_checks:
+                check_results = self._check_fields(
+                    ws, row, seq, prompt_name, section.field_checks[seq]
+                )
+                prompt_info["field_checks"] = check_results
+                field_check_failures.extend(check_results["failures"])
+
             prompts.append(prompt_info)
 
             if status == "success":
@@ -172,7 +180,7 @@ class WorkbookValidator:
             elif status == "failed":
                 failed += 1
 
-        all_passed = failed == 0
+        all_passed = failed == 0 and len(field_check_failures) == 0
         expected_executions = (end - start + 1) * batch_count
 
         result = {
@@ -195,7 +203,92 @@ class WorkbookValidator:
             result["conditions_true"] = conditions_true
             result["conditions_false"] = conditions_false
 
+        if field_check_failures:
+            result["field_check_failures"] = field_check_failures
+
         return result
+
+    @staticmethod
+    def _check_fields(
+        ws, row: int, seq: int, prompt_name: str, checks: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Check field values against validation rules.
+
+        Args:
+            ws: openpyxl worksheet
+            row: Row number
+            seq: Sequence number
+            prompt_name: Prompt name
+            checks: Dict of check rules (column, expected, expected_one_of, etc.)
+
+        Returns:
+            Dict with 'failures' list of failure descriptions.
+
+        """
+        failures: list[dict[str, Any]] = []
+
+        for check_name, rule in checks.items():
+            column = rule.get("column")
+            if column is None:
+                continue
+
+            actual = ws.cell(row=row, column=column).value
+
+            if "expected" in rule:
+                expected = rule["expected"]
+                if actual != expected:
+                    failures.append(
+                        {
+                            "sequence": seq,
+                            "prompt_name": prompt_name,
+                            "check": check_name,
+                            "column": column,
+                            "expected": expected,
+                            "actual": actual,
+                        }
+                    )
+
+            elif "expected_one_of" in rule:
+                allowed = rule["expected_one_of"]
+                if actual not in allowed:
+                    failures.append(
+                        {
+                            "sequence": seq,
+                            "prompt_name": prompt_name,
+                            "check": check_name,
+                            "column": column,
+                            "expected_one_of": allowed,
+                            "actual": actual,
+                        }
+                    )
+
+            if rule.get("not_empty") and (actual is None or actual == ""):
+                failures.append(
+                    {
+                        "sequence": seq,
+                        "prompt_name": prompt_name,
+                        "check": check_name,
+                        "column": column,
+                        "expected": "not empty",
+                        "actual": actual,
+                    }
+                )
+
+            if "greater_than" in rule and isinstance(actual, (int, float)):
+                threshold = rule["greater_than"]
+                if actual <= threshold:
+                    failures.append(
+                        {
+                            "sequence": seq,
+                            "prompt_name": prompt_name,
+                            "check": check_name,
+                            "column": column,
+                            "expected": f"> {threshold}",
+                            "actual": actual,
+                        }
+                    )
+
+        return {"failures": failures}
 
     def validate_workbook(self, path: Path, results_sheet: str | None = None) -> dict[str, Any]:
         """Validate workbook and return comprehensive results."""
@@ -244,7 +337,7 @@ class WorkbookValidator:
                 total_conditions_true += result.get("conditions_true", 0)
                 total_conditions_false += result.get("conditions_false", 0)
 
-        all_passed = total_failed == 0
+        all_passed = total_failed == 0 and all(s["all_passed"] for s in section_results)
 
         summary = {
             "total_prompts": sum(
@@ -353,6 +446,14 @@ class WorkbookValidator:
                     print(f"      ⊘ {prompt['name']}: SKIPPED{cond_str}")
                 elif prompt["status"] == "failed":
                     print(f"      ✗ {prompt['name']}: FAILED")
+
+            if section.get("field_check_failures"):
+                for fc in section["field_check_failures"]:
+                    print(
+                        f"      ✗ {fc['prompt_name']} [{fc['check']}]: "
+                        f"expected {fc.get('expected', fc.get('expected_one_of'))}, "
+                        f"got {fc['actual']!r}"
+                    )
 
         if results.get("skipped_prompts"):
             print()

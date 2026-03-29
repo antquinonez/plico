@@ -156,6 +156,7 @@ class WorkbookManifestExporter:
                 "prompt_name": prompt.get("prompt_name"),
                 "prompt": prompt.get("prompt"),
                 "history": prompt.get("history") or [],
+                "notes": prompt.get("notes"),
                 "client": prompt.get("client"),
                 "condition": prompt.get("condition"),
                 "references": prompt.get("references") or [],

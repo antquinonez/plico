@@ -23,7 +23,12 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from sample_workbooks import SectionDefinition, WorkbookValidator
+from sample_workbooks import (
+    VALIDATION_ATTEMPTS_COLUMN,
+    VALIDATION_PASSED_COLUMN,
+    SectionDefinition,
+    WorkbookValidator,
+)
 
 SECTIONS = {
     "Baseline (non-agent)": SectionDefinition(
@@ -45,6 +50,18 @@ SECTIONS = {
     "Validated agent": SectionDefinition(
         (10, 10),
         "Agent mode with validation prompt and retry support",
+        field_checks={
+            10: {
+                "validation_passed": {
+                    "column": VALIDATION_PASSED_COLUMN,
+                    "expected": True,
+                },
+                "validation_attempts": {
+                    "column": VALIDATION_ATTEMPTS_COLUMN,
+                    "greater_than": 0,
+                },
+            },
+        },
     ),
     "Edge case": SectionDefinition(
         (11, 11),
