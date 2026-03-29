@@ -24,15 +24,15 @@ from .markdown import MarkdownChunker
 from .recursive import RecursiveChunker
 
 __all__ = [
-    "ChunkerBase",
-    "TextChunk",
-    "HierarchicalTextChunk",
     "CharacterChunker",
-    "RecursiveChunker",
-    "MarkdownChunker",
+    "ChunkerBase",
     "CodeChunker",
     "HierarchicalChunker",
+    "HierarchicalTextChunk",
+    "MarkdownChunker",
+    "RecursiveChunker",
+    "TextChunk",
+    "chunk_text",
     "get_chunker",
     "list_chunkers",
-    "chunk_text",
 ]

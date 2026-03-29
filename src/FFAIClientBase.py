@@ -75,7 +75,7 @@ class FFAIClientBase(ABC):
         logger.debug(f"Configured retry: {self.retry_config}")
 
     @abstractmethod
-    def generate_response(self, prompt: str, **kwargs: Any) -> str:  # noqa: ANN401
+    def generate_response(self, prompt: str, **kwargs: Any) -> str:
         """Generate a response from the AI model.
 
         Args:

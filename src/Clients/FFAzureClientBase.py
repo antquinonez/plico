@@ -391,21 +391,17 @@ class FFAzureClientBase(ABC):
                     logger.error(error_msg)
                     raise RuntimeError(error_msg)
 
-            logger.error(f"HTTP error: {str(e)}")
-            raise RuntimeError(
-                f"Error generating response from {self.__class__.__name__}: {str(e)}"
-            )
+            logger.error(f"HTTP error: {e!s}")
+            raise RuntimeError(f"Error generating response from {self.__class__.__name__}: {e!s}")
 
         except Exception as e:
             logger.error("Problem with response generation")
-            logger.error(f"  -- exception: {str(e)}")
+            logger.error(f"  -- exception: {e!s}")
             logger.error(f"  -- model: {self.model}")
             logger.error(f"  -- max_tokens: {self.max_tokens}")
             logger.error(f"  -- temperature: {self.temperature}")
 
-            raise RuntimeError(
-                f"Error generating response from {self.__class__.__name__}: {str(e)}"
-            )
+            raise RuntimeError(f"Error generating response from {self.__class__.__name__}: {e!s}")
 
     def get_model_info(self):
         """Get information about the model."""
@@ -425,8 +421,8 @@ class FFAzureClientBase(ABC):
             else:
                 return self.client.get_model_info(model=self.model)
         except Exception as e:
-            logger.error(f"Failed to get model info: {str(e)}")
-            raise RuntimeError(f"Error getting model info: {str(e)}")
+            logger.error(f"Failed to get model info: {e!s}")
+            raise RuntimeError(f"Error getting model info: {e!s}")
 
     def test_connection(self) -> bool:
         """
@@ -457,5 +453,5 @@ class FFAzureClientBase(ABC):
                 return True
 
         except Exception as e:
-            logger.error(f"Connection test failed: {str(e)}")
+            logger.error(f"Connection test failed: {e!s}")
             return False

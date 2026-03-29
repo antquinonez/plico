@@ -111,8 +111,8 @@ class FFGemini(FFAIClientBase):
                 logger.error("Gcloud command did not return a region")
                 raise ValueError("Gcloud command did not return a region")
         except subprocess.CalledProcessError as e:
-            logger.error(f"Error determining Google Cloud region using gcloud: {str(e)}")
-            raise ValueError(f"Error determining Google Cloud region using gcloud: {str(e)}")
+            logger.error(f"Error determining Google Cloud region using gcloud: {e!s}")
+            raise ValueError(f"Error determining Google Cloud region using gcloud: {e!s}")
 
     def get_conversation_history(self) -> list[dict[str, str]]:
         """Get the conversation history."""
@@ -483,7 +483,7 @@ class FFGemini(FFAIClientBase):
             return True
 
         except Exception as e:
-            logger.error(f"Connection test failed: {str(e)}")
+            logger.error(f"Connection test failed: {e!s}")
             return False
 
     def test_connection(self) -> bool:

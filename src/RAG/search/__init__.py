@@ -18,13 +18,13 @@ from .rerankers import (
 )
 
 __all__ = [
-    "HybridSearch",
-    "reciprocal_rank_fusion",
-    "QueryExpander",
-    "fuse_search_results",
-    "RerankerBase",
     "CrossEncoderReranker",
     "DiversityReranker",
+    "HybridSearch",
     "NoopReranker",
+    "QueryExpander",
+    "RerankerBase",
+    "fuse_search_results",
     "get_reranker",
+    "reciprocal_rank_fusion",
 ]

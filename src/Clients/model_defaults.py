@@ -54,7 +54,7 @@ def get_model_defaults(model_string: str) -> dict[str, Any]:
     if model_string in MODEL_DEFAULTS:
         return MODEL_DEFAULTS[model_string].copy()
 
-    model_name = model_string.split("/")[-1] if "/" in model_string else model_string
+    model_name = model_string.rsplit("/", maxsplit=1)[-1] if "/" in model_string else model_string
     for key, defaults in MODEL_DEFAULTS.items():
         if model_name in key:
             return defaults.copy()

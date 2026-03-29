@@ -168,14 +168,14 @@ class FFAzureMSDeepSeekR1:
 
         except Exception as e:
             logger.error("Problem with response generation")
-            logger.error(f"  -- exception: {str(e)}")
+            logger.error(f"  -- exception: {e!s}")
             logger.error(f"  -- model: {self.model}")
             logger.error(f"  -- system: {self.system_instructions}")
             logger.error(f"  -- conversation history: {self.conversation_history}")
             logger.error(f"  -- max_tokens: {self.max_tokens}")
             logger.error(f"  -- temperature: {self.temperature}")
 
-            raise RuntimeError(f"Error generating response from Azure DeepSeek: {str(e)}")
+            raise RuntimeError(f"Error generating response from Azure DeepSeek: {e!s}")
 
     def stream_response(
         self, prompt: str, model: str | None = None, system_instructions: str | None = None
@@ -230,14 +230,14 @@ class FFAzureMSDeepSeekR1:
 
         except Exception as e:
             logger.error("Problem with stream response generation")
-            logger.error(f"  -- exception: {str(e)}")
+            logger.error(f"  -- exception: {e!s}")
             logger.error(f"  -- model: {self.model}")
             logger.error(f"  -- system: {self.system_instructions}")
             logger.error(f"  -- conversation history: {self.conversation_history}")
             logger.error(f"  -- max_tokens: {self.max_tokens}")
             logger.error(f"  -- temperature: {self.temperature}")
 
-            raise RuntimeError(f"Error streaming response from Azure DeepSeek: {str(e)}")
+            raise RuntimeError(f"Error streaming response from Azure DeepSeek: {e!s}")
 
     def clear_conversation(self):
         logger.info("Clearing conversation history")
