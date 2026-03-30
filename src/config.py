@@ -419,6 +419,7 @@ class SampleWorkbookPathsConfig(BaseSettings):
     batch: str = "./sample_workbook_batch.xlsx"
     max: str = "./sample_workbook_max.xlsx"
     agent: str = "./sample_workbook_agent.xlsx"
+    screening: str = "./sample_workbook_screening.xlsx"
 
 
 class SampleClientConfig(BaseSettings):

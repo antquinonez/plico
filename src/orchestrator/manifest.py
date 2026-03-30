@@ -84,6 +84,8 @@ class WorkbookManifestExporter:
         data = self.builder.load_data()
         clients = self.builder.load_clients()
         documents = self.builder.load_documents()
+        scoring = self.builder.load_scoring()
+        synthesis = self.builder.load_synthesis()
         tools = self.builder.load_tools()
 
         manifest_name_value = config.get("name", workbook_name)
@@ -97,6 +99,8 @@ class WorkbookManifestExporter:
             has_clients=len(clients) > 0,
             has_documents=len(documents) > 0,
             has_tools=len(tools) > 0,
+            has_scoring=len(scoring) > 0,
+            has_synthesis=len(synthesis) > 0,
             prompt_count=len(prompts),
         )
         self._write_config_yaml(manifest_path, config)
@@ -107,6 +111,10 @@ class WorkbookManifestExporter:
             self._write_clients_yaml(manifest_path, clients)
         if documents:
             self._write_documents_yaml(manifest_path, documents)
+        if scoring:
+            self._write_scoring_yaml(manifest_path, scoring)
+        if synthesis:
+            self._write_synthesis_yaml(manifest_path, synthesis)
         if tools:
             self._write_tools_yaml(manifest_path, tools)
 
@@ -122,6 +130,8 @@ class WorkbookManifestExporter:
         has_clients: bool,
         has_documents: bool,
         has_tools: bool = False,
+        has_scoring: bool = False,
+        has_synthesis: bool = False,
         prompt_count: int = 0,
     ) -> None:
         """Write the main manifest metadata file."""
@@ -135,6 +145,8 @@ class WorkbookManifestExporter:
             "has_clients": has_clients,
             "has_documents": has_documents,
             "has_tools": has_tools,
+            "has_scoring": has_scoring,
+            "has_synthesis": has_synthesis,
             "prompt_count": prompt_count,
         }
 
@@ -183,7 +195,9 @@ class WorkbookManifestExporter:
         """Write batch data to YAML file."""
         batches = []
         for row in data:
-            batch_entry = {k: v for k, v in row.items() if not k.startswith("_")}
+            batch_entry = {
+                k: v for k, v in row.items() if not k.startswith("_") or k == "_documents"
+            }
             batches.append(batch_entry)
 
         data_yaml = {"batches": batches}
@@ -207,6 +221,18 @@ class WorkbookManifestExporter:
         tools_yaml = {"tools": tools}
         with open(manifest_path / "tools.yaml", "w", encoding="utf-8") as f:
             yaml.dump(tools_yaml, f, default_flow_style=False, sort_keys=False)
+
+    def _write_scoring_yaml(self, manifest_path: Path, scoring: list[dict[str, Any]]) -> None:
+        """Write scoring criteria to YAML file."""
+        scoring_yaml = {"scoring": scoring}
+        with open(manifest_path / "scoring.yaml", "w", encoding="utf-8") as f:
+            yaml.dump(scoring_yaml, f, default_flow_style=False, sort_keys=False)
+
+    def _write_synthesis_yaml(self, manifest_path: Path, synthesis: list[dict[str, Any]]) -> None:
+        """Write synthesis prompts to YAML file."""
+        synthesis_yaml = {"synthesis": synthesis}
+        with open(manifest_path / "synthesis.yaml", "w", encoding="utf-8") as f:
+            yaml.dump(synthesis_yaml, f, default_flow_style=False, sort_keys=False)
 
 
 class ManifestOrchestrator(OrchestratorBase):

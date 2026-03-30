@@ -57,7 +57,7 @@ def _run_cmd(ctx: Context, cmd: str, capture: bool = False) -> subprocess.Comple
     cmd = cmd.replace("python ", f'"{PYTHON_EXE}" ')
 
     if capture:
-        return subprocess.run(cmd, shell=True, capture_output=True, text=True, env=env)
+        return subprocess.run(cmd, shell=True, capture_output=True, text=True, env=env, check=False)
     ctx.run(cmd, echo=False, pty=PTY, env=env)
     return None
 
@@ -77,6 +77,7 @@ def _get_workbook_configs() -> dict[str, tuple[str, str]]:
         "batch": (config.sample.workbooks.batch, "3"),
         "max": (config.sample.workbooks.max, "3"),
         "agent": (config.sample.workbooks.agent, "1"),
+        "screening": (config.sample.workbooks.screening, "1"),
     }
 
 
@@ -90,6 +91,7 @@ def _get_create_script(name: str) -> str:
         "batch": "scripts/sample_workbook_batch_create_v001.py",
         "max": "scripts/sample_workbook_max_create_v001.py",
         "agent": "scripts/sample_workbook_agent_create_v001.py",
+        "screening": "scripts/sample_workbook_screening_create_v001.py",
     }
     return script_map[name]
 
@@ -104,6 +106,7 @@ def _get_validate_script(name: str) -> str:
         "batch": "scripts/sample_workbook_batch_validate_v001.py",
         "max": "scripts/sample_workbook_max_validate_v001.py",
         "agent": "scripts/sample_workbook_agent_validate_v001.py",
+        "screening": "scripts/sample_workbook_screening_validate_v001.py",
     }
     return script_map[name]
 
@@ -120,7 +123,7 @@ def _create_single_workbook(name: str, client: str | None = None) -> tuple[str, 
 
     env = os.environ.copy()
     env["POLARS_SKIP_CPU_CHECK"] = "1"
-    result = subprocess.run(cmd, shell=True, capture_output=True, text=True, env=env)
+    result = subprocess.run(cmd, shell=True, capture_output=True, text=True, env=env, check=False)
 
     if result.returncode == 0:
         return (name, True, result.stdout)
@@ -142,7 +145,7 @@ def _run_single_workbook(name: str, concurrency: str) -> tuple[str, bool, str]:
 
     env = os.environ.copy()
     env["POLARS_SKIP_CPU_CHECK"] = "1"
-    result = subprocess.run(cmd, shell=True, capture_output=True, text=True, env=env)
+    result = subprocess.run(cmd, shell=True, capture_output=True, text=True, env=env, check=False)
 
     if result.returncode == 0:
         return (name, True, result.stdout[-500:] if len(result.stdout) > 500 else result.stdout)
@@ -164,7 +167,7 @@ def _validate_single_workbook(name: str) -> tuple[str, bool, str]:
 
     env = os.environ.copy()
     env["POLARS_SKIP_CPU_CHECK"] = "1"
-    result = subprocess.run(cmd, shell=True, capture_output=True, text=True, env=env)
+    result = subprocess.run(cmd, shell=True, capture_output=True, text=True, env=env, check=False)
 
     if result.returncode == 0:
         return (name, True, result.stdout[-500:] if len(result.stdout) > 500 else result.stdout)
@@ -206,6 +209,8 @@ INDIVIDUAL WORKBOOKS (create + run + validate):
     inv wb.documents        # Create, run, and validate documents workbook
     inv wb.batch            # Create, run, and validate batch workbook
     inv wb.max              # Create, run, and validate max workbook
+    inv wb.agent            # Create, run, and validate agent workbook
+    inv wb.screening        # Create, run, and validate screening workbook
 
 RAG TASKS (inv rag.<task>):
     inv rag.status          # Show RAG indexing status
@@ -333,10 +338,19 @@ def wb_create(
     if client:
         print(f"  Using client: {client}")
 
-    workbook_names = ["basic", "multiclient", "max", "documents", "conditional", "batch", "agent"]
+    workbook_names = [
+        "basic",
+        "multiclient",
+        "max",
+        "documents",
+        "conditional",
+        "batch",
+        "agent",
+        "screening",
+    ]
 
     if parallel:
-        with ThreadPoolExecutor(max_workers=7) as executor:
+        with ThreadPoolExecutor(max_workers=min(8, len(workbook_names))) as executor:
             futures = {
                 executor.submit(_create_single_workbook, name, client): name
                 for name in workbook_names
@@ -374,6 +388,7 @@ def wb_clean(c: Context):
         config.sample.workbooks.batch,
         config.sample.workbooks.max,
         config.sample.workbooks.agent,
+        config.sample.workbooks.screening,
     ]
 
     print("Removing test workbooks...")
@@ -398,10 +413,19 @@ def wb_run(c: Context, concurrency: str | None = None, parallel: bool = False, q
     print("Running orchestrator on all workbooks...")
 
     configs = _get_workbook_configs()
-    workbook_names = ["basic", "multiclient", "conditional", "documents", "batch", "max", "agent"]
+    workbook_names = [
+        "basic",
+        "multiclient",
+        "conditional",
+        "documents",
+        "batch",
+        "max",
+        "agent",
+        "screening",
+    ]
 
     if parallel:
-        with ThreadPoolExecutor(max_workers=min(6, len(workbook_names))) as executor:
+        with ThreadPoolExecutor(max_workers=min(8, len(workbook_names))) as executor:
             futures = {
                 executor.submit(_run_single_workbook, name, concurrency or configs[name][1]): name
                 for name in workbook_names
@@ -440,10 +464,19 @@ def wb_validate(c: Context, parallel: bool = False, quiet: bool = False):
     """
     print("Validating all workbooks...")
 
-    workbook_names = ["basic", "multiclient", "conditional", "documents", "batch", "max", "agent"]
+    workbook_names = [
+        "basic",
+        "multiclient",
+        "conditional",
+        "documents",
+        "batch",
+        "max",
+        "agent",
+        "screening",
+    ]
 
     if parallel:
-        with ThreadPoolExecutor(max_workers=7) as executor:
+        with ThreadPoolExecutor(max_workers=min(8, len(workbook_names))) as executor:
             futures = {
                 executor.submit(_validate_single_workbook, name): name for name in workbook_names
             }
@@ -656,6 +689,25 @@ def wb_agent(c: Context, client: str | None = None):
     _run_cmd(c, f"python scripts/run_orchestrator.py {config.sample.workbooks.agent} -c 1")
     _run_cmd(c, f"python {_get_validate_script('agent')} {config.sample.workbooks.agent}")
     print("Agent workbook complete!")
+
+
+@task
+def wb_screening(c: Context, client: str | None = None):
+    """Create, run, and validate screening workbook.
+
+    Args:
+        client: Client type from clients.yaml (e.g., 'anthropic', 'gemini')
+
+    """
+    config = get_config()
+    print("Processing screening workbook...")
+    if client:
+        print(f"  Using client: {client}")
+    client_flag = f" --client {client}" if client else ""
+    _run_cmd(c, f"python {_get_create_script('screening')}{client_flag}")
+    _run_cmd(c, f"python scripts/run_orchestrator.py {config.sample.workbooks.screening} -c 1")
+    _run_cmd(c, f"python {_get_validate_script('screening')} {config.sample.workbooks.screening}")
+    print("Screening workbook complete!")
 
 
 # ============================================================================

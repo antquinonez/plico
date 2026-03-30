@@ -39,6 +39,8 @@ from .base import (
     DEFAULT_CONFIG_FIELDS,
     DEFAULT_DOCUMENTS_HEADERS,
     DEFAULT_PROMPT_HEADERS,
+    DEFAULT_SCORING_HEADERS,
+    DEFAULT_SYNTHESIS_HEADERS,
     DEFAULT_TOOLS_HEADERS,
     PromptSpec,
 )
@@ -331,6 +333,64 @@ class WorkbookBuilder:
                 ws.cell(row=row_idx, column=col_idx, value=tool.get(header, ""))
 
         self.formatter.apply_formatting(ws, "tools")
+
+        return self
+
+    def add_scoring_sheet(
+        self,
+        criteria: list[dict] | None = None,
+    ) -> WorkbookBuilder:
+        """Add the scoring sheet to the workbook.
+
+        Args:
+            criteria: List of dicts with scoring criteria (keys from DEFAULT_SCORING_HEADERS).
+                      If None, creates a headers-only sheet.
+
+        Returns:
+            self for method chaining
+
+        """
+        ws = self.wb.create_sheet(title="scoring")
+
+        headers = DEFAULT_SCORING_HEADERS
+        for col_idx, header in enumerate(headers, start=1):
+            ws.cell(row=1, column=col_idx, value=header)
+
+        if criteria:
+            for row_idx, crit in enumerate(criteria, start=2):
+                for col_idx, header in enumerate(headers, start=1):
+                    ws.cell(row=row_idx, column=col_idx, value=crit.get(header, ""))
+
+        self.formatter.apply_formatting(ws, "scoring")
+
+        return self
+
+    def add_synthesis_sheet(
+        self,
+        prompts: list[dict] | None = None,
+    ) -> WorkbookBuilder:
+        """Add the synthesis sheet to the workbook.
+
+        Args:
+            prompts: List of dicts with synthesis prompt data (keys from DEFAULT_SYNTHESIS_HEADERS).
+                     If None, creates a headers-only sheet.
+
+        Returns:
+            self for method chaining
+
+        """
+        ws = self.wb.create_sheet(title="synthesis")
+
+        headers = DEFAULT_SYNTHESIS_HEADERS
+        for col_idx, header in enumerate(headers, start=1):
+            ws.cell(row=1, column=col_idx, value=header)
+
+        if prompts:
+            for row_idx, synth in enumerate(prompts, start=2):
+                for col_idx, header in enumerate(headers, start=1):
+                    ws.cell(row=row_idx, column=col_idx, value=synth.get(header, ""))
+
+        self.formatter.apply_formatting(ws, "synthesis")
 
         return self
 

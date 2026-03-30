@@ -19,6 +19,7 @@ sample_workbooks:
     batch: "./sample_workbook_batch.xlsx"
     max: "./sample_workbook_max.xlsx"
     agent: "./sample_workbook_agent.xlsx"
+    screening: "./sample_workbook_screening.xlsx"
   sample_clients:
     default:
       client_type: "litellm-mistral"

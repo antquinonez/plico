@@ -113,6 +113,9 @@ src/
 │   ├── client_registry.py     # Multi-client configuration registry
 │   ├── document_registry.py   # Document reference management
 │   ├── document_processor.py  # Document loading and caching
+│   ├── discovery.py           # Auto-discovery of documents for evaluation
+│   ├── scoring.py             # Scoring rubric extraction and aggregation
+│   ├── synthesis.py           # Cross-row synthesis for ranking/comparison
 │   ├── tool_registry.py       # Tool registration and execution for agent mode
 │   └── builtin_tools.py       # Built-in tool implementations
 │
@@ -168,6 +171,9 @@ tests/
 ├── test_client_registry.py    # Client registry tests
 ├── test_document_processor.py # Document processor tests
 ├── test_document_registry.py  # Document registry tests
+├── test_scoring.py            # Scoring rubric and aggregation tests
+├── test_synthesis.py          # Cross-row synthesis tests
+├── test_discovery.py          # Auto-discovery utility tests
 ├── test_rag.py                # RAG client tests
 ├── test_rag_chunkers.py       # Chunking strategy tests
 ├── test_rag_search.py         # Search strategy tests
@@ -490,6 +496,71 @@ agent:
   continue_on_tool_error: true
 ```
 
+## Evaluation Module (Scoring and Synthesis)
+
+The evaluation module enables structured document evaluation workflows: score extraction, weighted aggregation, and cross-row comparison/ranking.
+
+### New Workbook Sheets
+
+**Scoring sheet** — defines evaluation criteria extracted from LLM JSON responses:
+
+| Column | Description |
+|--------|-------------|
+| `criteria_name` | Machine-readable key (e.g., `skills_match`) |
+| `description` | Human-readable description |
+| `scale_min` / `scale_max` | Score range (uniform across all criteria, enforced by validation) |
+| `weight` | Base weight for aggregation |
+| `source_prompt` | Which prompt response contains this score |
+
+**Synthesis sheet** — post-batch prompts that compare/rank entries:
+
+| Column | Description |
+|--------|-------------|
+| `sequence` | Execution order |
+| `prompt_name` | Unique name |
+| `prompt` | The prompt text |
+| `source_scope` | `all` or `top:N` — which batch entries to include |
+| `source_prompts` | JSON array of prompt names whose responses to include |
+| `include_scores` | Include scoring breakdown (default: true) |
+| `history` | Synthesis prompt dependencies (other synthesis prompts) |
+| `condition` | Condition for execution |
+
+### Per-Row Document Binding
+
+Data rows can declare per-row documents via the `_documents` column. Values are **additively merged** with each prompt's `references` at execution time:
+
+```
+| id | batch_name | candidate_name | _documents       |
+|----|------------|----------------|------------------|
+| 1  | alice_chen | Alice Chen     | ["resume_alice"] |
+```
+
+### Evaluation Strategies
+
+Strategy-based weight overrides are configured in `config/main.yaml` under `evaluation.strategies` (not in the workbook). The `evaluation_strategy` field in the config sheet selects which strategy to use for the run.
+
+### New Result Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `scores` | JSON | Extracted scores per criteria |
+| `composite_score` | Float | Weighted average |
+| `scoring_status` | String | `ok`, `partial`, `failed`, or `skipped` |
+| `strategy` | String | Strategy name used |
+| `result_type` | String | `batch` or `synthesis` |
+
+### Auto-Discovery Utility
+
+`src/orchestrator/discovery.py` provides `discover_documents()`, `create_data_rows_from_documents()`, and `create_evaluation_workbook()` for auto-generating evaluation workbooks from a folder of documents.
+
+### Execution Order
+
+```
+run() → _load_source() → _validate() → _init_client() → batch execution
+       → _aggregate_scores() (if scoring) → _execute_synthesis() (if synthesis)
+       → _write_results()
+```
+
 ## Manifest Workflow
 
 **For comprehensive manifest documentation, see [MANIFEST_README.md](./MANIFEST_README.md)**
@@ -510,9 +581,11 @@ Creates a folder with:
 - `manifest.yaml` - Metadata
 - `config.yaml` - Configuration
 - `prompts.yaml` - All prompts
-- `data.yaml` - Batch data (if present)
+- `data.yaml` - Batch data (if present, preserves `_documents`)
 - `clients.yaml` - Client configs (if present)
 - `documents.yaml` - Document refs (if present)
+- `scoring.yaml` - Scoring criteria (if present)
+- `synthesis.yaml` - Synthesis prompts (if present)
 
 ### Run from Manifest
 
@@ -621,6 +694,8 @@ Where:
 | Multiclient | `sample_workbook_multiclient_create_v001.py` | `sample_workbook_multiclient_validate_v001.py` |
 | Batch | `sample_workbook_batch_create_v001.py` | `sample_workbook_batch_validate_v001.py` |
 | Max | `sample_workbook_max_create_v001.py` | `sample_workbook_max_validate_v001.py` |
+| Agent | `sample_workbook_agent_create_v001.py` | `sample_workbook_agent_validate_v001.py` |
+| Screening | `sample_workbook_screening_create_v001.py` | `sample_workbook_screening_validate_v001.py` |
 
 ### Versioning Guidelines
 
@@ -646,9 +721,10 @@ When creating a new workbook type:
 | Conditional | Conditional expression testing | 50 prompts testing string methods, JSON functions, math, type checking |
 | Documents | Document reference and RAG testing | Full document injection, semantic search via RAG |
 | Multiclient | Multi-client execution | Named client configurations, client-specific prompts |
-| Batch | Batch execution with variables | 35 prompts × 5 batches, variable templating |
+| Batch | Batch execution with variables | 35 prompts x 5 batches, variable templating |
 | Max | Combined features | Batch + conditional + multi-client in one workbook |
 | Agent | Agentic tool-call loop | Opt-in agent mode with built-in tools, multi-round execution |
+| Screening | Document evaluation pipeline | Per-row documents, scoring rubric, synthesis ranking |
 
 ### Workflow
 

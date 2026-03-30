@@ -225,6 +225,26 @@ DEFAULT_TOOLS_HEADERS = [
     "enabled",
 ]
 
+DEFAULT_SCORING_HEADERS = [
+    "criteria_name",
+    "description",
+    "scale_min",
+    "scale_max",
+    "weight",
+    "source_prompt",
+]
+
+DEFAULT_SYNTHESIS_HEADERS = [
+    "sequence",
+    "prompt_name",
+    "prompt",
+    "source_scope",
+    "source_prompts",
+    "include_scores",
+    "history",
+    "condition",
+]
+
 DEFAULT_TOOLS_COLUMN_WIDTHS = {
     "A": 22,
     "B": 60,
