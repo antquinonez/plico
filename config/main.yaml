@@ -12,6 +12,7 @@ workbook:
     documents: "documents"
     tools: "tools"
     scoring: "scoring"
+    synthesis: "synthesis"
   defaults:
     model: "mistral-small-2503"
     api_key_env: "MISTRALSMALL_KEY"

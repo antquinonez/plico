@@ -113,6 +113,7 @@ class WorkbookParser:
         self._has_documents_sheet: bool | None = None
         self._has_tools_sheet: bool | None = None
         self._has_scoring_sheet: bool | None = None
+        self._has_synthesis_sheet: bool | None = None
         self._config = get_config()
         self.formatter = WorkbookFormatter(self._config)
 
@@ -143,6 +144,10 @@ class WorkbookParser:
     @property
     def SCORING_SHEET(self) -> str:
         return self._config.workbook.sheet_names.scoring
+
+    @property
+    def SYNTHESIS_SHEET(self) -> str:
+        return self._config.workbook.sheet_names.synthesis
 
     @property
     def CONFIG_FIELDS(self) -> list[tuple[str, str, str]]:
@@ -269,6 +274,17 @@ class WorkbookParser:
         "source_prompt",
     ]
 
+    SYNTHESIS_HEADERS = [
+        "sequence",
+        "prompt_name",
+        "prompt",
+        "source_scope",
+        "source_prompts",
+        "include_scores",
+        "history",
+        "condition",
+    ]
+
     def has_data_sheet(self) -> bool:
         """Check if workbook has a data sheet for batch execution."""
         if self._has_data_sheet is not None:
@@ -334,12 +350,27 @@ class WorkbookParser:
         self._has_scoring_sheet = self.SCORING_SHEET in wb.sheetnames
         return self._has_scoring_sheet
 
+    def has_synthesis_sheet(self) -> bool:
+        """Check if workbook has a synthesis sheet for cross-row comparison."""
+        if self._has_synthesis_sheet is not None:
+            return self._has_synthesis_sheet
+
+        if not os.path.exists(self.workbook_path):
+            self._has_synthesis_sheet = False
+            return False
+
+        wb = load_workbook(self.workbook_path)
+        self._has_synthesis_sheet = self.SYNTHESIS_SHEET in wb.sheetnames
+        return self._has_synthesis_sheet
+
     def create_template_workbook(
         self,
         with_data_sheet: bool = False,
         with_clients_sheet: bool = False,
         with_documents_sheet: bool = False,
         with_tools_sheet: bool = False,
+        with_scoring_sheet: bool = False,
+        with_synthesis_sheet: bool = False,
     ) -> str:
         """Create a new workbook with template structure."""
         logger.info(f"Creating template workbook: {self.workbook_path}")
@@ -395,6 +426,18 @@ class WorkbookParser:
             for col_idx, header in enumerate(self.TOOLS_HEADERS, start=1):
                 ws_tools.cell(row=1, column=col_idx, value=header)
             self.formatter.apply_formatting(ws_tools, "tools")
+
+        if with_scoring_sheet:
+            ws_scoring = wb.create_sheet(title=self.SCORING_SHEET)
+            for col_idx, header in enumerate(self.SCORING_HEADERS, start=1):
+                ws_scoring.cell(row=1, column=col_idx, value=header)
+            self.formatter.apply_formatting(ws_scoring, "scoring")
+
+        if with_synthesis_sheet:
+            ws_synthesis = wb.create_sheet(title=self.SYNTHESIS_SHEET)
+            for col_idx, header in enumerate(self.SYNTHESIS_HEADERS, start=1):
+                ws_synthesis.cell(row=1, column=col_idx, value=header)
+            self.formatter.apply_formatting(ws_synthesis, "synthesis")
 
         wb.save(self.workbook_path)
         logger.info(f"Template workbook created: {self.workbook_path}")
@@ -848,6 +891,79 @@ class WorkbookParser:
 
         logger.info(f"Loaded {len(scoring)} scoring criteria")
         return scoring
+
+    def load_synthesis(self) -> list[dict[str, Any]]:
+        """Load synthesis prompts from synthesis sheet.
+
+        Returns:
+            List of synthesis prompt dicts with keys from SYNTHESIS_HEADERS.
+
+        """
+        if not self.has_synthesis_sheet():
+            return []
+
+        wb = load_workbook(self.workbook_path)
+        ws = wb[self.SYNTHESIS_SHEET]
+
+        headers = []
+        for col in range(1, ws.max_column + 1):
+            header = ws.cell(row=1, column=col).value
+            headers.append(str(header).strip().lower() if header else f"col_{col}")
+
+        synthesis = []
+        for row_idx in range(2, ws.max_row + 1):
+            row_data = {}
+            has_content = False
+            for col_idx, header in enumerate(headers, start=1):
+                value = ws.cell(row=row_idx, column=col_idx).value
+                row_data[header] = value
+                if value is not None:
+                    has_content = True
+
+            if not has_content or not row_data.get("sequence") or not row_data.get("prompt"):
+                continue
+
+            sequence = row_data["sequence"]
+            if isinstance(sequence, str):
+                sequence = int(sequence.strip()) if sequence.strip().isdigit() else None
+            if sequence is None:
+                continue
+
+            include_scores = row_data.get("include_scores")
+            if isinstance(include_scores, str):
+                include_scores_val = include_scores.strip().lower() in ("true", "1", "yes")
+            elif isinstance(include_scores, bool):
+                include_scores_val = include_scores
+            else:
+                include_scores_val = True
+
+            synthesis.append(
+                {
+                    "sequence": int(sequence),
+                    "prompt_name": str(row_data.get("prompt_name", "")).strip()
+                    if row_data.get("prompt_name")
+                    else None,
+                    "prompt": str(row_data["prompt"]).strip(),
+                    "source_scope": str(row_data.get("source_scope", "all")).strip(),
+                    "source_prompts": parse_history_string(row_data.get("source_prompts"))
+                    if row_data.get("source_prompts")
+                    else [],
+                    "include_scores": include_scores_val,
+                    "history": parse_history_string(row_data.get("history"))
+                    if row_data.get("history")
+                    else None,
+                    "condition": str(row_data.get("condition", "")).strip()
+                    if row_data.get("condition")
+                    else None,
+                    "client": str(row_data.get("client", "")).strip()
+                    if row_data.get("client")
+                    else None,
+                }
+            )
+
+        synthesis.sort(key=lambda x: x["sequence"])
+        logger.info(f"Loaded {len(synthesis)} synthesis prompts")
+        return synthesis
 
     def _infer_chunking_strategy(self, file_path: str) -> str:
         """Infer chunking strategy from file extension.

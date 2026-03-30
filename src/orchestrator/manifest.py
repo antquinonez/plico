@@ -373,6 +373,40 @@ class ManifestOrchestrator(OrchestratorBase):
             if tools_data:
                 self._init_tools(tools_data)
 
+        if self._manifest_meta.get("has_scoring"):
+            scoring_yaml = self._load_yaml_file("scoring.yaml")
+            scoring_data = scoring_yaml.get("scoring", [])
+            if scoring_data:
+                from .scoring import ScoringCriteria, ScoringRubric
+
+                criteria = [
+                    ScoringCriteria(
+                        criteria_name=c["criteria_name"],
+                        description=c["description"],
+                        scale_min=c["scale_min"],
+                        scale_max=c["scale_max"],
+                        weight=c["weight"],
+                        source_prompt=c["source_prompt"],
+                    )
+                    for c in scoring_data
+                ]
+                self.scoring_rubric = ScoringRubric(criteria)
+                self.has_scoring = True
+                self.evaluation_strategy = self._resolve_evaluation_strategy()
+                logger.info(
+                    f"Scoring enabled with {len(criteria)} criteria, "
+                    f"strategy='{self.evaluation_strategy}'"
+                )
+
+        if self._manifest_meta.get("has_synthesis"):
+            synthesis_yaml = self._load_yaml_file("synthesis.yaml")
+            synthesis_data = synthesis_yaml.get("synthesis", [])
+            if synthesis_data:
+                synthesis_data.sort(key=lambda x: x.get("sequence", 0))
+                self.synthesis_prompts = synthesis_data
+                self.has_synthesis = True
+                logger.info(f"Synthesis enabled with {len(synthesis_data)} prompts")
+
         logger.info(
             f"Manifest loaded: {len(self.prompts)} prompts, batch_mode={self.is_batch_mode}"
         )

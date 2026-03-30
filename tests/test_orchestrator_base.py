@@ -599,6 +599,8 @@ def _make_base(mock_ffmistralsmall):
     orch.has_scoring = False
     orch.scoring_rubric = None
     orch.evaluation_strategy = "balanced"
+    orch.has_synthesis = False
+    orch.synthesis_prompts = []
     orch._rag_client = None
     orch._executor = MagicMock()
     return orch

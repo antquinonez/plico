@@ -37,6 +37,7 @@ from ..executor import Executor
 from ..results import ResultBuilder
 from ..scoring import ScoreAggregator, ScoringRubric
 from ..state import ExecutionState, PromptNode
+from ..synthesis import SynthesisExecutor, build_entry_results_map
 from ..tool_registry import ToolDefinition, ToolRegistry
 from ..validation import OrchestratorValidator
 from ..workbook_parser import parse_history_string
@@ -128,6 +129,8 @@ class OrchestratorBase(ABC):
         self.has_scoring: bool = False
         self.scoring_rubric: ScoringRubric | None = None
         self.evaluation_strategy: str = "balanced"
+        self.has_synthesis: bool = False
+        self.synthesis_prompts: list[dict[str, Any]] = []
         self._rag_client: FFRAGClient | None = None
         self._executor = Executor()
 
@@ -409,6 +412,7 @@ class OrchestratorBase(ABC):
             row_doc_refs=row_docs,
             scoring_criteria=scoring_criteria,
             available_strategies=available_strategies,
+            synthesis_prompts=self.synthesis_prompts if self.has_synthesis else None,
         )
 
         result = validator.validate()
@@ -1257,6 +1261,181 @@ class OrchestratorBase(ABC):
                 r["strategy"] = scoring_result["strategy"]
                 r["result_type"] = "batch"
 
+    def _execute_synthesis(self) -> None:
+        """Execute synthesis prompts with cross-row batch context."""
+        if not self.synthesis_prompts or not self.is_batch_mode:
+            return
+
+        try:
+            eval_config = get_config().evaluation
+            max_context = eval_config.max_synthesis_context_chars if eval_config else 30000
+        except Exception:
+            max_context = 30000
+            logger.debug("Could not load evaluation config for synthesis", exc_info=True)
+
+        executor = SynthesisExecutor(max_context_chars=max_context)
+
+        grouped: dict[int, list[dict[str, Any]]] = {}
+        for r in self.results:
+            batch_id = r.get("batch_id", 0)
+            if batch_id not in grouped:
+                grouped[batch_id] = []
+            grouped[batch_id].append(r)
+
+        sorted_batch_ids = sorted(grouped.keys())
+        batch_results_list = [grouped[bid] for bid in sorted_batch_ids]
+
+        entry_results_map = build_entry_results_map(batch_results_list)
+
+        criteria_list: list[dict[str, Any]] = []
+        if self.scoring_rubric:
+            criteria_list = [
+                {"criteria_name": c.criteria_name} for c in self.scoring_rubric.criteria
+            ]
+
+        sorted_entries = executor.sort_entries(
+            batch_results_list,
+            scoring_criteria=criteria_list,
+            has_scoring=self.has_scoring,
+        )
+
+        for entry in sorted_entries:
+            bid = entry.get("batch_id", 0)
+            entry["_all_results"] = entry_results_map.get(bid, {})
+
+        self.shared_prompt_attr_history = []
+        synthesis_results: list[dict[str, Any]] = []
+        results_by_name: dict[str, dict[str, Any]] = {}
+
+        for synth_prompt in self.synthesis_prompts:
+            try:
+                source_scope = synth_prompt.get("source_scope", "all")
+                source_prompts = synth_prompt.get("source_prompts", [])
+                include_scores = synth_prompt.get("include_scores", True)
+
+                entries = executor.resolve_source_scope(source_scope, sorted_entries)
+
+                scale_max = 10
+                if self.scoring_rubric and self.scoring_rubric.criteria:
+                    scale_max = self.scoring_rubric.criteria[0].scale_max
+
+                context = executor.format_entry_context(
+                    entries,
+                    source_prompts,
+                    include_scores,
+                    strategy=self.evaluation_strategy if self.has_scoring else "",
+                    scale_max=scale_max,
+                )
+
+                resolved_history = ""
+                history_deps = synth_prompt.get("history") or []
+                for dep_name in history_deps:
+                    dep_result = results_by_name.get(dep_name)
+                    if dep_result and dep_result.get("status") == "failed":
+                        logger.warning(
+                            f"Synthesis prompt '{synth_prompt.get('prompt_name')}' "
+                            f"references failed prompt '{dep_name}', "
+                            f"which returned empty response"
+                        )
+                    dep_response = dep_result.get("response", "") if dep_result else ""
+                    resolved_history += f"--- {dep_name} ---\n{dep_response}\n\n"
+                    if dep_result:
+                        self.shared_prompt_attr_history.append(dep_result)
+
+                prompt_parts = [context]
+                if resolved_history.strip():
+                    prompt_parts.append(resolved_history.strip())
+                prompt_parts.append(synth_prompt["prompt"])
+                full_prompt = "\n\n===\n\n".join(prompt_parts)
+
+                ffai = self._get_isolated_ffai(synth_prompt.get("client"))
+                response = ffai.generate_response(
+                    prompt=full_prompt,
+                    prompt_name=synth_prompt.get("prompt_name"),
+                )
+
+                result = {
+                    "sequence": synth_prompt["sequence"],
+                    "prompt_name": synth_prompt.get("prompt_name"),
+                    "prompt": synth_prompt["prompt"],
+                    "resolved_prompt": full_prompt,
+                    "response": response,
+                    "status": "success",
+                    "attempts": 1,
+                    "batch_id": -1,
+                    "batch_name": "",
+                    "history": synth_prompt.get("history"),
+                    "condition": synth_prompt.get("condition"),
+                    "condition_result": None,
+                    "condition_error": None,
+                    "error": None,
+                    "references": None,
+                    "result_type": "synthesis",
+                    "scores": None,
+                    "composite_score": None,
+                    "scoring_status": "",
+                    "strategy": self.evaluation_strategy if self.has_scoring else None,
+                    "client": synth_prompt.get("client"),
+                    "agent_mode": False,
+                    "tool_calls": None,
+                    "total_rounds": None,
+                    "total_llm_calls": None,
+                    "validation_passed": None,
+                    "validation_attempts": None,
+                    "validation_critique": None,
+                    "semantic_query": None,
+                    "semantic_filter": None,
+                    "query_expansion": None,
+                    "rerank": None,
+                }
+
+            except Exception as e:
+                logger.error(
+                    f"Synthesis prompt '{synth_prompt.get('prompt_name')}' failed: {e}",
+                    exc_info=True,
+                )
+                result = {
+                    "sequence": synth_prompt["sequence"],
+                    "prompt_name": synth_prompt.get("prompt_name"),
+                    "prompt": synth_prompt["prompt"],
+                    "resolved_prompt": "",
+                    "response": "",
+                    "status": "failed",
+                    "attempts": 1,
+                    "error": str(e),
+                    "batch_id": -1,
+                    "batch_name": "",
+                    "history": synth_prompt.get("history"),
+                    "condition": synth_prompt.get("condition"),
+                    "condition_result": None,
+                    "condition_error": None,
+                    "references": None,
+                    "result_type": "synthesis",
+                    "scores": None,
+                    "composite_score": None,
+                    "scoring_status": "",
+                    "strategy": self.evaluation_strategy if self.has_scoring else None,
+                    "client": synth_prompt.get("client"),
+                    "agent_mode": False,
+                    "tool_calls": None,
+                    "total_rounds": None,
+                    "total_llm_calls": None,
+                    "validation_passed": None,
+                    "validation_attempts": None,
+                    "validation_critique": None,
+                    "semantic_query": None,
+                    "semantic_filter": None,
+                    "query_expansion": None,
+                    "rerank": None,
+                }
+
+            synthesis_results.append(result)
+            if result.get("prompt_name"):
+                results_by_name[result["prompt_name"]] = result
+
+        self.results.extend(synthesis_results)
+        logger.info(f"Synthesis complete: {len(synthesis_results)} prompts executed")
+
     def run(self) -> str:
         """Initialize, validate, execute prompts, and write results.
 
@@ -1284,6 +1463,9 @@ class OrchestratorBase(ABC):
 
         if self.has_scoring:
             self._aggregate_scores()
+
+        if self.has_synthesis:
+            self._execute_synthesis()
 
         output = self._write_results(self.results)
         logger.info(f"Orchestration complete. Results in: {output}")
@@ -1342,5 +1524,13 @@ class OrchestratorBase(ABC):
                 scoring_block["max_composite"] = max(composites)
                 scoring_block["min_composite"] = min(composites)
             summary["scoring"] = scoring_block
+
+        if self.has_synthesis:
+            synth = [r for r in self.results if r.get("result_type") == "synthesis"]
+            summary["synthesis"] = {
+                "count": len(synth),
+                "successful": sum(1 for r in synth if r["status"] == "success"),
+                "failed": sum(1 for r in synth if r["status"] == "failed"),
+            }
 
         return summary

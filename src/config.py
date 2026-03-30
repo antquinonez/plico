@@ -121,6 +121,7 @@ class WorkbookSheetNamesConfig(BaseSettings):
     documents: str = "documents"
     tools: str = "tools"
     scoring: str = "scoring"
+    synthesis: str = "synthesis"
 
 
 class WorkbookDefaultsConfig(BaseSettings):

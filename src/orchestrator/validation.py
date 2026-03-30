@@ -135,6 +135,7 @@ class OrchestratorValidator:
         row_doc_refs: dict[int, list[str]] | None = None,
         scoring_criteria: list[dict[str, Any]] | None = None,
         available_strategies: list[str] | None = None,
+        synthesis_prompts: list[dict[str, Any]] | None = None,
     ) -> None:
         self.prompts = prompts
         self.config = config
@@ -147,6 +148,7 @@ class OrchestratorValidator:
         self.row_doc_refs = row_doc_refs or {}
         self.scoring_criteria = scoring_criteria or []
         self.available_strategies = available_strategies or []
+        self.synthesis_prompts = synthesis_prompts or []
 
     def validate(self) -> ValidationResult:
         """Run all validation checks and return results."""
@@ -163,6 +165,7 @@ class OrchestratorValidator:
         self._validate_batch_variables(result)
         self._validate_row_documents(result)
         self._validate_scoring(result)
+        self._validate_synthesis(result)
         self._validate_agent_mode(result)
         if self.manifest_meta is not None:
             self._validate_manifest_metadata(result)
@@ -461,6 +464,71 @@ class OrchestratorValidator:
                         )
                 except (TypeError, ValueError):
                     pass
+
+    def _validate_synthesis(self, result: ValidationResult) -> None:
+        if not self.synthesis_prompts:
+            return
+
+        prompt_names = {p["prompt_name"] for p in self.prompts if p.get("prompt_name")}
+        synthesis_names: set[str] = set()
+
+        for synth in self.synthesis_prompts:
+            name = synth.get("prompt_name")
+            seq = synth.get("sequence")
+
+            if name:
+                if name in synthesis_names:
+                    result.add_error(
+                        "DUPLICATE_SYNTHESIS_NAME",
+                        f"Duplicate synthesis prompt name '{name}'",
+                    )
+                synthesis_names.add(name)
+
+            scope = synth.get("source_scope", "")
+            if scope and scope != "all":
+                match = re.match(r"^top:(\d+)$", scope.strip())
+                if not match:
+                    result.add_error(
+                        "INVALID_SOURCE_SCOPE",
+                        f"Synthesis '{name or seq}' has invalid source_scope "
+                        f"'{scope}'. Must be 'all' or 'top:N'.",
+                    )
+                else:
+                    n = int(match.group(1))
+                    if n <= 0:
+                        result.add_error(
+                            "INVALID_SOURCE_SCOPE",
+                            f"Synthesis '{name or seq}' has top:N with N={n}, must be > 0.",
+                        )
+
+            source_prompts = synth.get("source_prompts") or []
+            if isinstance(source_prompts, str):
+                source_prompts = [source_prompts]
+            for sp in source_prompts:
+                if sp and sp not in prompt_names:
+                    result.add_error(
+                        "INVALID_SYNTHESIS_SOURCE_PROMPT",
+                        f"Synthesis '{name or seq}' source_prompts references "
+                        f"unknown prompt '{sp}'",
+                    )
+
+            history = synth.get("history") or []
+            if isinstance(history, str):
+                history = [history]
+            for dep in history:
+                if dep and dep not in synthesis_names:
+                    result.add_error(
+                        "INVALID_SYNTHESIS_HISTORY",
+                        f"Synthesis '{name or seq}' history references "
+                        f"unknown synthesis prompt '{dep}'",
+                    )
+
+        if not self.scoring_criteria:
+            result.add_warning(
+                "SYNTHESIS_WITHOUT_SCORING",
+                "Synthesis prompts defined but no scoring sheet. "
+                "Entries will be sorted alphabetically by batch_name.",
+            )
 
     def _validate_row_documents(self, result: ValidationResult) -> None:
         if not self.row_doc_refs:

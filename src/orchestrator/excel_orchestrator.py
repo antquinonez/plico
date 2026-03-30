@@ -133,6 +133,12 @@ class ExcelOrchestrator(OrchestratorBase):
                 f"strategy='{self.evaluation_strategy}'"
             )
 
+        synthesis_data = self.builder.load_synthesis()
+        if synthesis_data:
+            self.synthesis_prompts = synthesis_data
+            self.has_synthesis = True
+            logger.info(f"Synthesis enabled with {len(synthesis_data)} prompts")
+
         self.batch_data = self.builder.load_data()
         self.is_batch_mode = len(self.batch_data) > 0
 
