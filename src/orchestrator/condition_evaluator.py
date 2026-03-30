@@ -51,7 +51,7 @@ def _parse_llm_json(obj: str | dict) -> dict | list | None:
         return None
 
 
-def _safe_json_get(obj: str | dict, path: str, default: Any = None) -> Any:  # noqa: ANN401
+def _safe_json_get(obj: str | dict, path: str, default: Any = None) -> Any:
     """Safely navigate JSON with dot/array notation.
 
     Args:
@@ -380,7 +380,7 @@ class ConditionEvaluator:
 
         return self.VARIABLE_PATTERN.sub(replacer, text)
 
-    def _compute_property(self, result: dict[str, Any], prop: str, value: Any) -> Any:  # noqa: ANN401
+    def _compute_property(self, result: dict[str, Any], prop: str, value: Any) -> Any:
         """Compute property value, including computed properties."""
         if prop == "has_response":
             if isinstance(value, bool):
@@ -435,7 +435,7 @@ class ConditionEvaluator:
 
         return value
 
-    def _value_to_literal(self, value: Any) -> str:  # noqa: ANN401
+    def _value_to_literal(self, value: Any) -> str:
         """Convert a value to a Python literal string."""
         if value is None:
             return '""'
@@ -451,7 +451,7 @@ class ConditionEvaluator:
             escaped = str(value).replace("\\", "\\\\").replace('"', '\\"')
             return f'"{escaped}"'
 
-    def _eval_node(self, node: ast.AST) -> Any:  # noqa: ANN401
+    def _eval_node(self, node: ast.AST) -> Any:
         """Recursively evaluate an AST node."""
         if isinstance(node, ast.Constant):
             return node.value
@@ -512,7 +512,7 @@ class ConditionEvaluator:
 
         return bool(left)
 
-    def _eval_in_operator(self, left: Any, right: Any) -> bool:  # noqa: ANN401
+    def _eval_in_operator(self, left: Any, right: Any) -> bool:
         """Evaluate 'in' operator for strings, lists, and dict keys."""
         if isinstance(right, str):
             if not isinstance(left, str):
@@ -534,7 +534,7 @@ class ConditionEvaluator:
         else:
             raise ValueError(f"Unsupported boolean operator: {type(node.op).__name__}")
 
-    def _eval_unaryop(self, node: ast.UnaryOp) -> Any:  # noqa: ANN401
+    def _eval_unaryop(self, node: ast.UnaryOp) -> Any:
         """Evaluate unary operations (not)."""
         operand = self._eval_node(node.operand)
 
@@ -545,7 +545,7 @@ class ConditionEvaluator:
         else:
             raise ValueError(f"Unsupported unary operator: {type(node.op).__name__}")
 
-    def _eval_call(self, node: ast.Call) -> Any:  # noqa: ANN401
+    def _eval_call(self, node: ast.Call) -> Any:
         """Evaluate function calls and method calls."""
         if isinstance(node.func, ast.Name):
             func_name = node.func.id
@@ -573,7 +573,7 @@ class ConditionEvaluator:
         else:
             raise ValueError("Only simple function calls and method calls are allowed")
 
-    def _eval_attribute(self, node: ast.Attribute) -> Any:  # noqa: ANN401
+    def _eval_attribute(self, node: ast.Attribute) -> Any:
         """Evaluate attribute access with method whitelisting."""
         value = self._eval_node(node.value)
         attr_name = node.attr
@@ -599,7 +599,7 @@ class ConditionEvaluator:
         else:
             raise ValueError(f"Attribute access not supported on type: {type(value).__name__}")
 
-    def _eval_subscript(self, node: ast.Subscript) -> Any:  # noqa: ANN401
+    def _eval_subscript(self, node: ast.Subscript) -> Any:
         """Evaluate subscript access (list/dict indexing)."""
         value = self._eval_node(node.value)
 
@@ -613,7 +613,7 @@ class ConditionEvaluator:
         except (KeyError, IndexError, TypeError) as e:
             raise ValueError(f"Subscript access failed: {e}")
 
-    def _call_allowed_method(self, obj: Any, method_name: str, args: list) -> Any:  # noqa: ANN401
+    def _call_allowed_method(self, obj: Any, method_name: str, args: list) -> Any:
         """Call a whitelisted method on an object."""
         if method_name.startswith("_"):
             raise ValueError(f"Access to private methods blocked: '{method_name}'")
@@ -639,7 +639,7 @@ class ConditionEvaluator:
         else:
             raise ValueError(f"Method calls not supported on type: {type(obj).__name__}")
 
-    def _eval_binop(self, node: ast.BinOp) -> Any:  # noqa: ANN401
+    def _eval_binop(self, node: ast.BinOp) -> Any:
         """Evaluate binary operations (for 'matches' via % operator)."""
         left = self._eval_node(node.left)
         right = self._eval_node(node.right)
@@ -663,7 +663,7 @@ class ConditionEvaluator:
         else:
             raise ValueError(f"Unsupported binary operator: {type(node.op).__name__}")
 
-    def _eval_ifexp(self, node: ast.IfExp) -> Any:  # noqa: ANN401
+    def _eval_ifexp(self, node: ast.IfExp) -> Any:
         """Evaluate ternary if expression."""
         test = self._eval_node(node.test)
         if test:

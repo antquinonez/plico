@@ -79,7 +79,7 @@ class OrderedPromptHistory:
         self.prompt_dict: OrderedDict[str, list[Interaction]] = OrderedDict()
         self._current_sequence = 0
 
-    def _clean_text(self, text: Any) -> str:  # noqa: ANN401
+    def _clean_text(self, text: Any) -> str:
         """Clean text by removing RAG tags, PROMPT sections, and extra whitespace."""
         if not isinstance(text, str):
             return str(text)
@@ -98,7 +98,7 @@ class OrderedPromptHistory:
 
         return "\n".join(cleaned_lines).strip()
 
-    def get_effective_prompt_name(self, prompt_name: Any) -> str | tuple[str, ...]:  # noqa: ANN401
+    def get_effective_prompt_name(self, prompt_name: Any) -> str | tuple[str, ...]:
         """Get the effective prompt name from various input types.
 
         Args:
@@ -130,12 +130,12 @@ class OrderedPromptHistory:
 
             # if single element tuple, return value as a str
             if len(tuple(values)) == 1:
-                simple_value = tuple(values)[0]
+                simple_value = next(iter(values))
 
                 logger.debug(
                     f"returning effective_prompt: {simple_value} | type: {type(simple_value)}"
                 )
-                return tuple(values)[0]
+                return next(iter(values))
             # return multiple item tuple
             else:
                 logger.debug(f"returning effective_prompt: {tuple(values)} | type: tuple")

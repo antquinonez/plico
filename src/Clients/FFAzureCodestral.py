@@ -190,21 +190,21 @@ class FFAzureCodestral(FFAzureClientBase):
                     logger.error(error_msg)
                     raise RuntimeError(error_msg)
             elif e.status_code == 404:
-                logger.error(f"404 Not Found error: {str(e)}")
+                logger.error(f"404 Not Found error: {e!s}")
                 raise RuntimeError(
                     f"Model not found: {used_model}. Please verify the model name and endpoint configuration."
                 )
 
-            logger.error(f"HTTP error: {str(e)}")
-            raise RuntimeError(f"Error streaming response: {str(e)}")
+            logger.error(f"HTTP error: {e!s}")
+            raise RuntimeError(f"Error streaming response: {e!s}")
 
         except Exception as e:
             logger.error("Problem with stream response generation")
-            logger.error(f"  -- exception: {str(e)}")
+            logger.error(f"  -- exception: {e!s}")
             logger.error(f"  -- model: {used_model}")
             logger.error(f"  -- endpoint: {self.endpoint}")
 
-            raise RuntimeError(f"Error streaming response: {str(e)}")
+            raise RuntimeError(f"Error streaming response: {e!s}")
 
     def generate_code(self, prompt: str, language: str | None = None, **kwargs) -> str:
         """

@@ -749,7 +749,7 @@ class WorkbookParser:
         else:
             return "recursive"
 
-    def parse_history_string(self, history_str: Any) -> list[str] | None:  # noqa: ANN401
+    def parse_history_string(self, history_str: Any) -> list[str] | None:
         """Parse history string like '["a", "b"]' into list.
 
         Handles smart quotes (curly quotes) by normalizing them to ASCII quotes

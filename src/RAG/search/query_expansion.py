@@ -88,7 +88,7 @@ class QueryExpander:
             logger.warning(f"Query expansion failed: {e}, using original only")
             return [query]
 
-        all_queries = [query] + variations if self.include_original else variations
+        all_queries = [query, *variations] if self.include_original else variations
 
         unique_queries = list(dict.fromkeys(all_queries))
 
@@ -108,8 +108,8 @@ class QueryExpander:
         lines = response.strip().split("\n")
         queries = []
 
-        for line in lines:
-            line = line.strip()
+        for raw_line in lines:
+            line = raw_line.strip()
             if not line:
                 continue
 

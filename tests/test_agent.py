@@ -324,6 +324,42 @@ class TestToolRegistry:
         result = registry.execute_tool("json_dumps", {"obj": [1, 2, 3]})
         assert json.loads(result) == {"obj": [1, 2, 3]}
 
+    def test_unknown_implementation_prefix(self):
+        registry = ToolRegistry()
+        registry.register(
+            ToolDefinition(
+                name="custom",
+                description="Custom",
+                implementation="custom:my_tool",
+            )
+        )
+        with pytest.raises(RuntimeError, match="No executor found"):
+            registry.execute_tool("custom", {})
+
+    def test_unknown_builtin_implementation(self):
+        registry = ToolRegistry()
+        registry.register(
+            ToolDefinition(
+                name="x",
+                description="X",
+                implementation="builtin:nonexistent",
+            )
+        )
+        with pytest.raises(RuntimeError, match="No executor found"):
+            registry.execute_tool("x", {})
+
+    def test_load_python_callable_invalid_path(self):
+        assert ToolRegistry.load_python_callable("json") is None
+
+    def test_load_python_callable_not_callable(self):
+        assert ToolRegistry.load_python_callable("math.pi") is None
+
+    def test_load_python_callable_nonexistent_module(self):
+        assert ToolRegistry.load_python_callable("nonexistent_module.func") is None
+
+    def test_load_python_callable_nonexistent_attribute(self):
+        assert ToolRegistry.load_python_callable("json.nonexistent_func") is None
+
 
 class MockClient(FFAIClientBase):
     """Mock client for testing AgentLoop."""

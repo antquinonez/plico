@@ -212,6 +212,165 @@ class TestHierarchicalIndex:
         assert index.count_children() == 2
 
 
+class TestHierarchicalIndexExtended:
+    """Extended tests for hierarchical index edge cases."""
+
+    def test_get_parent_returns_none_for_root(self) -> None:
+        """get_parent returns None for chunks without parents."""
+        index = HierarchicalIndex()
+        index.add_chunk("root", "Root content", hierarchy_level=0)
+        assert index.get_parent("root") is None
+
+    def test_get_parent_returns_none_for_unknown(self) -> None:
+        """get_parent returns None for unknown chunk IDs."""
+        index = HierarchicalIndex()
+        assert index.get_parent("nonexistent") is None
+
+    def test_get_child_embeddings(self) -> None:
+        """get_child_embeddings returns IDs and embeddings for child chunks."""
+        index = HierarchicalIndex()
+        index.add_chunk("parent1", "P1", hierarchy_level=0)
+        index.add_chunk(
+            "child1",
+            "C1",
+            parent_id="parent1",
+            hierarchy_level=1,
+            embedding=[0.1, 0.2],
+        )
+        index.add_chunk(
+            "child2",
+            "C2",
+            parent_id="parent1",
+            hierarchy_level=1,
+            embedding=[0.3, 0.4],
+        )
+
+        ids, embeddings = index.get_child_embeddings()
+        assert len(ids) == 2
+        assert len(embeddings) == 2
+        assert "child1" in ids
+        assert "child2" in ids
+
+    def test_get_child_embeddings_skips_none_embedding(self) -> None:
+        """get_child_embeddings skips children without embeddings."""
+        index = HierarchicalIndex()
+        index.add_chunk("parent1", "P1", hierarchy_level=0)
+        index.add_chunk("child1", "C1", parent_id="parent1", hierarchy_level=1, embedding=None)
+        index.add_chunk("child2", "C2", parent_id="parent1", hierarchy_level=1, embedding=[0.1])
+
+        ids, embeddings = index.get_child_embeddings()
+        assert len(ids) == 1
+        assert ids[0] == "child2"
+
+    def test_enhance_results_with_context_disabled(self) -> None:
+        """enhance_results_with_context skips parent when disabled."""
+        index = HierarchicalIndex(include_parent_context=False)
+        index.add_chunk("parent1", "Parent", hierarchy_level=0)
+        index.add_chunk("child1", "Child", parent_id="parent1", hierarchy_level=1)
+
+        results = [{"id": "child1", "content": "Child"}]
+        enhanced = index.enhance_results_with_context(results)
+        assert "parent_content" not in enhanced[0]
+
+    def test_enhance_results_override_include_parent(self) -> None:
+        """include_parent parameter overrides default."""
+        index = HierarchicalIndex(include_parent_context=False)
+        index.add_chunk("parent1", "Parent", hierarchy_level=0)
+        index.add_chunk("child1", "Child", parent_id="parent1", hierarchy_level=1)
+
+        results = [{"id": "child1", "content": "Child"}]
+        enhanced = index.enhance_results_with_context(results, include_parent=True)
+        assert enhanced[0]["parent_content"] == "Parent"
+
+    def test_enhance_results_no_chunk_id(self) -> None:
+        """enhance_results handles results without id field."""
+        index = HierarchicalIndex(include_parent_context=True)
+        index.add_chunk("parent1", "Parent", hierarchy_level=0)
+
+        results = [{"content": "no id"}]
+        enhanced = index.enhance_results_with_context(results)
+        assert "parent_content" not in enhanced[0]
+
+    def test_delete_nonexistent_chunk(self) -> None:
+        """delete_chunk returns False for nonexistent chunk."""
+        index = HierarchicalIndex()
+        assert index.delete_chunk("nonexistent") is False
+
+    def test_delete_child_updates_parent(self) -> None:
+        """Deleting child updates parent's children list."""
+        index = HierarchicalIndex()
+        index.add_chunk("parent1", "P1", hierarchy_level=0)
+        index.add_chunk("child1", "C1", parent_id="parent1", hierarchy_level=1)
+        index.add_chunk("child2", "C2", parent_id="parent1", hierarchy_level=1)
+
+        assert index.delete_chunk("child1")
+        children = index.get_children("parent1")
+        assert len(children) == 1
+        assert children[0]["id"] == "child2"
+
+    def test_delete_child_removes_mapping(self) -> None:
+        """Deleting child removes child_to_parent mapping."""
+        index = HierarchicalIndex()
+        index.add_chunk("parent1", "P1", hierarchy_level=0)
+        index.add_chunk("child1", "C1", parent_id="parent1", hierarchy_level=1)
+
+        index.delete_chunk("child1")
+        assert index.get_parent("child1") is None
+
+    def test_delete_by_reference(self) -> None:
+        """delete_by_reference removes all chunks for a reference."""
+        index = HierarchicalIndex()
+        index.add_chunk("c1", "Content1", hierarchy_level=0, metadata={"reference_name": "doc1"})
+        index.add_chunk("c2", "Content2", hierarchy_level=0, metadata={"reference_name": "doc1"})
+        index.add_chunk("c3", "Content3", hierarchy_level=0, metadata={"reference_name": "doc2"})
+
+        count = index.delete_by_reference("doc1")
+        assert count == 2
+        assert index.count() == 1
+        assert index.get_chunk("c3") is not None
+
+    def test_delete_by_reference_no_matches(self) -> None:
+        """delete_by_reference returns 0 for unknown reference."""
+        index = HierarchicalIndex()
+        index.add_chunk("c1", "Content", hierarchy_level=0)
+
+        count = index.delete_by_reference("nonexistent")
+        assert count == 0
+
+    def test_clear(self) -> None:
+        """clear removes all chunks."""
+        index = HierarchicalIndex()
+        index.add_chunk("p1", "Parent", hierarchy_level=0)
+        index.add_chunk("c1", "Child", parent_id="p1", hierarchy_level=1)
+
+        index.clear()
+        assert index.count() == 0
+        assert index.count_parents() == 0
+        assert index.count_children() == 0
+
+    def test_get_stats(self) -> None:
+        """get_stats returns index statistics."""
+        index = HierarchicalIndex(include_parent_context=False)
+        index.add_chunk("p1", "P", hierarchy_level=0)
+        index.add_chunk("c1", "C", parent_id="p1", hierarchy_level=1)
+
+        stats = index.get_stats()
+        assert stats["total_chunks"] == 2
+        assert stats["parent_chunks"] == 1
+        assert stats["child_chunks"] == 1
+        assert stats["include_parent_context"] is False
+
+    def test_add_child_to_existing_parent(self) -> None:
+        """Adding child to parent that already exists initializes children list."""
+        index = HierarchicalIndex()
+        index.add_chunk("p1", "P", hierarchy_level=0)
+        index.add_chunk("c1", "C1", parent_id="p1", hierarchy_level=1)
+        index.add_chunk("c2", "C2", parent_id="p1", hierarchy_level=1)
+
+        children = index.get_children("p1")
+        assert len(children) == 2
+
+
 class TestContextualEmbeddings:
     """Tests for contextual embeddings preparation."""
 

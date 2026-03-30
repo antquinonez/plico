@@ -587,7 +587,7 @@ class OrchestratorBase(ABC):
         ffai: FFAI,
         builder: Any,
         seq_label: str,
-    ) -> dict[str, Any]:  # noqa: ANN401
+    ) -> dict[str, Any]:
         """Execute a prompt using the agentic tool-call loop.
 
         Args:
@@ -616,7 +616,7 @@ class OrchestratorBase(ABC):
             return None
 
         injected_prompt = self._inject_references(prompt)
-        resolved_prompt, _ = ffai._build_prompt(  # noqa: SLF001
+        resolved_prompt, _ = ffai._build_prompt(
             injected_prompt,
             prompt.get("history"),
             None,
@@ -1055,7 +1055,7 @@ class OrchestratorBase(ABC):
             Batch name string.
 
         """
-        if "batch_name" in data_row and data_row["batch_name"]:
+        if data_row.get("batch_name"):
             name = self._resolve_variables(str(data_row["batch_name"]), data_row)
             return re.sub(r"[^\w\-]", "_", name)[:50]
         return f"batch_{batch_id}"

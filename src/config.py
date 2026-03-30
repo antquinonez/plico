@@ -451,7 +451,7 @@ class Config(BaseSettings):
 
     @model_validator(mode="before")
     @classmethod
-    def _validate_agent_field(cls, values: Any) -> Any:  # noqa: ANN401
+    def _validate_agent_field(cls, values: Any) -> Any:
         if (
             isinstance(values, dict)
             and "agent" in values

@@ -6,8 +6,12 @@
 
 from __future__ import annotations
 
+import warnings
+
 import pytest
 
+from src.RAG.text_splitter import TextChunk as LegacyTextChunk
+from src.RAG.text_splitter import split_documents, split_text
 from src.RAG.text_splitters import TextChunk, get_chunker
 
 
@@ -296,3 +300,124 @@ class TestChunkDocuments:
 
         assert "content" not in result[0].metadata
         assert result[0].metadata == {"id": 1, "title": "Test"}
+
+
+class TestLegacySplitText:
+    """Tests for the deprecated split_text wrapper function."""
+
+    def test_split_text_emits_deprecation_warning(self):
+        """split_text emits DeprecationWarning."""
+        text = "Hello world"
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            result = split_text(text)
+            assert len(w) == 1
+            assert issubclass(w[0].category, DeprecationWarning)
+            assert "deprecated" in str(w[0].message).lower()
+
+    def test_split_text_basic(self):
+        """split_text returns TextChunks for normal text."""
+        text = "word " * 300
+        result = split_text(text, chunk_size=100, chunk_overlap=20)
+        assert len(result) > 1
+        for chunk in result:
+            assert isinstance(chunk, TextChunk)
+            assert len(chunk.content) <= 100
+
+    def test_split_text_with_metadata(self):
+        """split_text passes metadata through."""
+        text = "Hello world"
+        result = split_text(text, metadata={"source": "test.txt"})
+        assert len(result) == 1
+        assert result[0].metadata == {"source": "test.txt"}
+
+    def test_split_text_empty(self):
+        """split_text with empty text returns empty list."""
+        result = split_text("")
+        assert result == []
+
+    def test_split_text_short_text(self):
+        """split_text with short text returns single chunk."""
+        text = "Short"
+        result = split_text(text, chunk_size=1000)
+        assert len(result) == 1
+        assert result[0].content == "Short"
+
+
+class TestLegacySplitDocuments:
+    """Tests for the deprecated split_documents wrapper function."""
+
+    def test_split_documents_emits_deprecation_warning(self):
+        """split_documents emits DeprecationWarning."""
+        documents = [{"content": "Hello world"}]
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            split_documents(documents)
+            assert len(w) == 1
+            assert issubclass(w[0].category, DeprecationWarning)
+            assert "deprecated" in str(w[0].message).lower()
+
+    def test_split_documents_basic(self):
+        """split_documents splits multiple documents."""
+        documents = [
+            {"content": "doc1 " * 100, "source": "doc1.txt"},
+            {"content": "doc2 " * 100, "source": "doc2.txt"},
+        ]
+        result = split_documents(documents, chunk_size=100, chunk_overlap=20)
+        assert len(result) > 2
+
+    def test_split_documents_empty_list(self):
+        """split_documents with empty list returns empty list."""
+        result = split_documents([])
+        assert result == []
+
+    def test_split_documents_empty_content_skipped(self):
+        """split_documents skips documents with empty content."""
+        documents = [
+            {"content": "", "source": "empty.txt"},
+            {"content": "has content", "source": "has.txt"},
+        ]
+        result = split_documents(documents)
+        assert len(result) == 1
+        assert result[0].metadata == {"source": "has.txt"}
+
+    def test_split_documents_missing_content_key(self):
+        """split_documents handles documents without content key."""
+        documents = [
+            {"source": "no_content.txt"},
+            {"content": "has content", "source": "has.txt"},
+        ]
+        result = split_documents(documents)
+        assert len(result) == 1
+
+    def test_split_documents_custom_text_key(self):
+        """split_documents uses custom text_key."""
+        documents = [
+            {"body": "custom content " * 50, "id": 1},
+        ]
+        result = split_documents(documents, text_key="body")
+        assert len(result) >= 1
+        assert result[0].metadata == {"id": 1}
+
+    def test_split_documents_metadata_excludes_text_key(self):
+        """split_documents excludes text_key from metadata."""
+        documents = [
+            {"content": "text", "id": 1, "title": "Test"},
+        ]
+        result = split_documents(documents)
+        assert "content" not in result[0].metadata
+        assert result[0].metadata == {"id": 1, "title": "Test"}
+
+    def test_split_documents_returns_legacy_text_chunk(self):
+        """split_documents returns TextChunk instances compatible with legacy alias."""
+        documents = [{"content": "Hello world"}]
+        result = split_documents(documents)
+        assert isinstance(result[0], LegacyTextChunk)
+
+
+class TestLegacyTextChunkAlias:
+    """Tests for the legacy TextChunk re-export."""
+
+    def test_text_chunk_is_same_type(self):
+        """Legacy TextChunk is the same as text_splitters.TextChunk."""
+        assert LegacyTextChunk is TextChunk

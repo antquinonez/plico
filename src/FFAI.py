@@ -121,7 +121,7 @@ def auto_persist(method: Callable[..., pl.DataFrame]) -> Callable[..., pl.DataFr
     """Persist DataFrame after method execution if auto_persist is enabled."""
 
     @wraps(method)
-    def wrapper(self: FFAI, *args: Any, **kwargs: Any) -> pl.DataFrame:  # noqa: ANN401
+    def wrapper(self: FFAI, *args: Any, **kwargs: Any) -> pl.DataFrame:
         df = method(self, *args, **kwargs)
         if self.auto_persist and self.persist_name and not df.is_empty():
             file_path = os.path.join(
@@ -131,7 +131,7 @@ def auto_persist(method: Callable[..., pl.DataFrame]) -> Callable[..., pl.DataFr
                 df.write_parquet(file_path)
                 logger.info(f"Auto-persisted DataFrame to {file_path}")
             except Exception as e:
-                logger.error(f"Failed to auto-persist DataFrame: {str(e)}")
+                logger.error(f"Failed to auto-persist DataFrame: {e!s}")
         return df
 
     return wrapper
@@ -211,7 +211,7 @@ class FFAI:
         logger.info(f"Switching client to {client.__class__.__name__}")
         self.client = client
 
-    def _extract_json(self, text: str) -> Any | None:  # noqa: ANN401
+    def _extract_json(self, text: str) -> Any | None:
         """Extract JSON from text, handling markdown code blocks and JSON within first 20 chars."""
         _MARKDOWN_PATTERN = re.compile(r"```(?:json)?\s*(?P<content>[\s\S]*?)\s*```")
 
@@ -249,7 +249,7 @@ class FFAI:
             return self.client.system_instructions
         return None
 
-    def _clean_response(self, response: Any) -> Any:  # noqa: ANN401
+    def _clean_response(self, response: Any) -> Any:
         """Process and validate the evaluation response."""
         logger.debug(f"Cleaning response: {response}")
 
@@ -391,7 +391,7 @@ class FFAI:
         history: list[str] | None = None,
         dependencies: list[str] | None = None,
         system_instructions: str | None = None,
-        **kwargs: Any,  # noqa: ANN401
+        **kwargs: Any,
     ) -> str:
         """Generate response using the configured AI client."""
         logger.debug(
@@ -531,7 +531,7 @@ class FFAI:
             return cleaned_response
 
         except Exception as e:
-            logger.error(f"Problem with response generation: {str(e)}")
+            logger.error(f"Problem with response generation: {e!s}")
             logger.error(f"Prompt: {prompt}")
             logger.error(f"Model: {used_model}")
             logger.error(f"Prompt name: {prompt_name}")
@@ -678,7 +678,7 @@ class FFAI:
                 logger.warning("Client does not support retrieving conversation history")
                 return []
         except Exception as e:
-            logger.error(f"Error retrieving conversation history: {str(e)}")
+            logger.error(f"Error retrieving conversation history: {e!s}")
             return []
 
     def set_client_conversation_history(self, history: list[dict[str, str]]) -> bool:
@@ -704,10 +704,10 @@ class FFAI:
                 logger.warning("Client does not support setting conversation history")
                 return False
         except Exception as e:
-            logger.error(f"Error setting conversation history: {str(e)}")
+            logger.error(f"Error setting conversation history: {e!s}")
             return False
 
-    def add_client_message(self, role: str, content: str, **kwargs: Any) -> bool:  # noqa: ANN401
+    def add_client_message(self, role: str, content: str, **kwargs: Any) -> bool:
         """Add a single message to the client's conversation history.
 
         Args:
@@ -735,7 +735,7 @@ class FFAI:
             # Set updated history
             return self.set_client_conversation_history(history)
         except Exception as e:
-            logger.error(f"Error adding message to conversation history: {str(e)}")
+            logger.error(f"Error adding message to conversation history: {e!s}")
             return False
 
     def _convert_unix_seconds_to_datetime(self, df: pl.DataFrame) -> pl.DataFrame:
@@ -768,7 +768,7 @@ class FFAI:
 
             return df
         except Exception as e:
-            logger.error(f"Error converting timestamp to datetime: {str(e)}")
+            logger.error(f"Error converting timestamp to datetime: {e!s}")
             return df
 
     @auto_persist
@@ -804,7 +804,7 @@ class FFAI:
             return df
 
         except Exception as e:
-            logger.error(f"Error converting history to DataFrame: {str(e)}")
+            logger.error(f"Error converting history to DataFrame: {e!s}")
             return pl.DataFrame()
 
     @auto_persist
@@ -840,7 +840,7 @@ class FFAI:
             return df
 
         except Exception as e:
-            logger.error(f"Error converting clean history to DataFrame: {str(e)}")
+            logger.error(f"Error converting clean history to DataFrame: {e!s}")
             return pl.DataFrame()
 
     @auto_persist
@@ -876,7 +876,7 @@ class FFAI:
             return df
 
         except Exception as e:
-            logger.error(f"Error converting prompt attribute history to DataFrame: {str(e)}")
+            logger.error(f"Error converting prompt attribute history to DataFrame: {e!s}")
             return pl.DataFrame()
 
     @auto_persist
@@ -920,7 +920,7 @@ class FFAI:
             return df
 
         except Exception as e:
-            logger.error(f"Error converting ordered history to DataFrame: {str(e)}")
+            logger.error(f"Error converting ordered history to DataFrame: {e!s}")
             return pl.DataFrame()
 
     def search_history(
@@ -1033,7 +1033,7 @@ class FFAI:
             return result_df
 
         except Exception as e:
-            logger.error(f"Error calculating response length statistics: {str(e)}")
+            logger.error(f"Error calculating response length statistics: {e!s}")
             return pl.DataFrame()
 
     def interaction_counts_by_date(self) -> pl.DataFrame:
@@ -1079,5 +1079,5 @@ class FFAI:
                     logger.info(f"Persisted {key} to {file_path}")
             return True
         except Exception as e:
-            logger.error(f"Error persisting histories: {str(e)}")
+            logger.error(f"Error persisting histories: {e!s}")
             return False

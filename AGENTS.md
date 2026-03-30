@@ -767,8 +767,18 @@ class TestFFAIGenerateResponse:
 ### Ruff Rules Enabled
 
 ```toml
-select = ["E", "W", "F", "I", "B", "C4", "UP", "ARG", "SIM"]
+select = ["E", "W", "F", "I", "B", "C4", "UP", "ARG", "SIM", "PLC", "PLW", "RET", "RUF"]
 ```
+
+### Dead Code Detection (Vulture)
+
+Vulture is used to detect unreachable code and unused definitions.
+
+```bash
+vulture src vulture_whitelist.py --min-confidence 80
+```
+
+Add false positives to `vulture_whitelist.py` with a `# noqa: V103` comment explaining why the item is intentionally unused.
 
 ### Key Patterns
 
@@ -831,6 +841,7 @@ Logging configuration: log directory, file rotation, format.
 - `ruff` - Linting and formatting
 - `pre-commit` - Git hooks
 - `invoke>=2.0.0` - Task runner
+- `vulture>=2.16` - Dead code detection
 
 ## Environment
 

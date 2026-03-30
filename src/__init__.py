@@ -10,8 +10,8 @@ from .PermanentHistory import PermanentHistory
 
 __all__ = [
     "FFAI",
+    "ConversationHistory",
     "FFAIClientBase",
     "OrderedPromptHistory",
     "PermanentHistory",
-    "ConversationHistory",
 ]

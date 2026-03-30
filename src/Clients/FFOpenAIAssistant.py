@@ -176,7 +176,7 @@ class FFOpenAIAssistant:
                 logger.info(f"Retrieved existing assistant with ID: {assistant_id}")
                 return assistant.id
             except Exception as e:
-                logger.error(f"Error retrieving assistant with ID {assistant_id}: {str(e)}")
+                logger.error(f"Error retrieving assistant with ID {assistant_id}: {e!s}")
 
         try:
             assistants = self.client.beta.assistants.list(order="desc")
@@ -185,7 +185,7 @@ class FFOpenAIAssistant:
                     logger.info(f"Found existing assistant with name: {self.assistant_name}")
                     return assistant.id
         except Exception as e:
-            logger.error(f"Error listing assistants: {str(e)}")
+            logger.error(f"Error listing assistants: {e!s}")
 
         logger.info("Creating new assistant")
         return self._create_assistant(self.assistant_name)
@@ -210,8 +210,8 @@ class FFOpenAIAssistant:
             logger.info(f"Created new assistant with ID: {assistant.id}")
             return assistant.id
         except Exception as e:
-            logger.error(f"Error creating OpenAI assistant: {str(e)}")
-            raise RuntimeError(f"Error creating OpenAI assistant: {str(e)}")
+            logger.error(f"Error creating OpenAI assistant: {e!s}")
+            raise RuntimeError(f"Error creating OpenAI assistant: {e!s}")
 
     def _ensure_thread(self) -> None:
         """
@@ -269,8 +269,8 @@ class FFOpenAIAssistant:
             return response
 
         except Exception as e:
-            logger.error(f"Error in OpenAI conversation: {str(e)}")
-            raise RuntimeError(f"Error in OpenAI conversation: {str(e)}")
+            logger.error(f"Error in OpenAI conversation: {e!s}")
+            raise RuntimeError(f"Error in OpenAI conversation: {e!s}")
 
     def generate_response(self, prompt: str) -> str:
         """

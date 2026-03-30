@@ -394,5 +394,5 @@ class FFMistralSmall(FFAIClientBase):
             return True
 
         except Exception as e:
-            logger.error(f"Connection test failed: {str(e)}")
+            logger.error(f"Connection test failed: {e!s}")
             return False

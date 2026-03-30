@@ -1087,3 +1087,458 @@ class TestConditionEvaluator:
         result, error = evaluator.evaluate('json_get({{step1.response}}, "data.items[0]") == 1')
         assert result is True
         assert error is None
+
+    # ========================================
+    # _parse_llm_json edge cases
+    # ========================================
+
+    def test_parse_llm_json_empty_string(self):
+        """_parse_llm_json returns None for empty string."""
+        result = _ce._parse_llm_json("")
+        assert result is None
+
+    def test_parse_llm_json_whitespace(self):
+        """_parse_llm_json returns None for whitespace-only string."""
+        result = _ce._parse_llm_json("   ")
+        assert result is None
+
+    def test_parse_llm_json_invalid_json(self):
+        """_parse_llm_json returns None for unparseable JSON."""
+        result = _ce._parse_llm_json("not json at all!!")
+        assert result is None
+
+    # ========================================
+    # _safe_json_has edge cases
+    # ========================================
+
+    def test_safe_json_has_none_input(self):
+        """_safe_json_has returns False for None."""
+        result = _ce._safe_json_has(None, "key")
+        assert result is False
+
+    def test_safe_json_has_invalid_json(self):
+        """_safe_json_has returns False for invalid JSON."""
+        result = _ce._safe_json_has("not json", "key")
+        assert result is False
+
+    # ========================================
+    # _safe_json_type edge cases
+    # ========================================
+
+    def test_safe_json_type_null_value(self):
+        """_safe_json_type returns 'null' for null value."""
+        result = _ce._safe_json_type('{"key": null}', "key")
+        assert result == "null"
+
+    def test_safe_json_type_none_input(self):
+        """_safe_json_type returns 'null' for None input."""
+        result = _ce._safe_json_type(None, "key")
+        assert result == "null"
+
+    def test_safe_json_type_invalid_json(self):
+        """_safe_json_type returns 'null' for invalid JSON (parsed as None)."""
+        result = _ce._safe_json_type("not json", "key")
+        assert result == "null"
+
+    def test_safe_json_type_missing_path(self):
+        """_safe_json_type returns 'unknown' for missing path."""
+        result = _ce._safe_json_type('{"a": 1}', "b")
+        assert result == "unknown"
+
+    def test_safe_json_type_number(self):
+        """_safe_json_type returns 'number' for numeric value."""
+        result = _ce._safe_json_type('{"val": 42}', "val")
+        assert result == "number"
+
+    def test_safe_json_type_array(self):
+        """_safe_json_type returns 'array' for array value."""
+        result = _ce._safe_json_type('{"val": [1, 2]}', "val")
+        assert result == "array"
+
+    def test_safe_json_type_object(self):
+        """_safe_json_type returns 'object' for object value."""
+        result = _ce._safe_json_type('{"val": {"nested": true}}', "val")
+        assert result == "object"
+
+    # ========================================
+    # Computed properties
+    # ========================================
+
+    def test_has_response_computed_from_response(self):
+        """has_response computed from response field."""
+        results = {"step1": self.create_results(response="hello", has_response=None)}
+        evaluator = ConditionEvaluator(results)
+        result, _ = evaluator.evaluate("{{step1.has_response}} == True")
+        assert result is True
+
+    def test_has_response_false_when_empty_response(self):
+        """has_response is False when response is whitespace."""
+        results = {"step1": self.create_results(response="  ", has_response=None)}
+        evaluator = ConditionEvaluator(results)
+        result, _ = evaluator.evaluate("{{step1.has_response}} == False")
+        assert result is True
+
+    def test_agent_mode_none(self):
+        """agent_mode defaults to False when None."""
+        results = {"step1": self.create_results()}
+        results["step1"]["agent_mode"] = None
+        evaluator = ConditionEvaluator(results)
+        result, _ = evaluator.evaluate("{{step1.agent_mode}} == False")
+        assert result is True
+
+    def test_tool_calls_count_from_list(self):
+        """tool_calls_count computed from tool_calls list."""
+        results = {"step1": self.create_results()}
+        results["step1"]["tool_calls"] = [{"name": "a"}, {"name": "b"}]
+        evaluator = ConditionEvaluator(results)
+        result, _ = evaluator.evaluate("{{step1.tool_calls_count}} == 2")
+        assert result is True
+
+    def test_tool_calls_count_default_zero(self):
+        """tool_calls_count defaults to 0."""
+        results = {"step1": self.create_results()}
+        evaluator = ConditionEvaluator(results)
+        result, _ = evaluator.evaluate("{{step1.tool_calls_count}} == 0")
+        assert result is True
+
+    def test_last_tool_name_from_list(self):
+        """last_tool_name extracted from tool_calls."""
+        results = {"step1": self.create_results()}
+        results["step1"]["tool_calls"] = [{"tool_name": "calc"}, {"tool_name": "search"}]
+        evaluator = ConditionEvaluator(results)
+        result, _ = evaluator.evaluate('{{step1.last_tool_name}} == "search"')
+        assert result is True
+
+    def test_last_tool_name_empty_when_no_tool_calls(self):
+        """last_tool_name is empty when no tool_calls."""
+        results = {"step1": self.create_results()}
+        evaluator = ConditionEvaluator(results)
+        result, _ = evaluator.evaluate('{{step1.last_tool_name}} == ""')
+        assert result is True
+
+    def test_total_rounds_none(self):
+        """total_rounds defaults to 0 when None."""
+        results = {"step1": self.create_results()}
+        results["step1"]["total_rounds"] = None
+        evaluator = ConditionEvaluator(results)
+        result, _ = evaluator.evaluate("{{step1.total_rounds}} == 0")
+        assert result is True
+
+    def test_total_llm_calls_none(self):
+        """total_llm_calls defaults to 0 when None."""
+        results = {"step1": self.create_results()}
+        results["step1"]["total_llm_calls"] = None
+        evaluator = ConditionEvaluator(results)
+        result, _ = evaluator.evaluate("{{step1.total_llm_calls}} == 0")
+        assert result is True
+
+    def test_response_none_becomes_empty_string(self):
+        """response None is converted to empty string."""
+        results = {"step1": self.create_results()}
+        results["step1"]["response"] = None
+        evaluator = ConditionEvaluator(results)
+        result, _ = evaluator.evaluate('{{step1.response}} == ""')
+        assert result is True
+
+    def test_attempts_none_becomes_zero(self):
+        """attempts None is converted to 0."""
+        results = {"step1": self.create_results()}
+        results["step1"]["attempts"] = None
+        evaluator = ConditionEvaluator(results)
+        result, _ = evaluator.evaluate("{{step1.attempts}} == 0")
+        assert result is True
+
+    # ========================================
+    # _value_to_literal edge cases
+    # ========================================
+
+    def test_value_to_literal_none(self):
+        """None becomes empty string literal."""
+        results = {"step1": self.create_results()}
+        evaluator = ConditionEvaluator(results)
+        result, _ = evaluator.evaluate('{{step1.error}} == ""')
+
+    def test_value_to_literal_nonstandard_type(self):
+        """Non-standard type is converted to string."""
+        results = {"step1": self.create_results()}
+        evaluator = ConditionEvaluator(results)
+        result, _ = evaluator.evaluate('{{step1.status}} == "success"')
+        assert result is True
+
+    # ========================================
+    # _eval_node edge cases
+    # ========================================
+
+    def test_eval_name_true_lowercase(self):
+        """'true' identifier is recognized as True."""
+        results = {}
+        evaluator = ConditionEvaluator(results)
+        result, _ = evaluator.evaluate("true == True")
+        assert result is True
+
+    def test_eval_name_false_lowercase(self):
+        """'false' identifier is recognized as False."""
+        results = {}
+        evaluator = ConditionEvaluator(results)
+        result, _ = evaluator.evaluate("false == False")
+        assert result is True
+
+    def test_eval_name_unknown_raises(self):
+        """Unknown identifier raises error."""
+        results = {}
+        evaluator = ConditionEvaluator(results)
+        result, error = evaluator.evaluate("unknown_var == True")
+        assert result is False
+        assert "Unknown identifier" in (error or "")
+
+    def test_eval_unsupported_expression(self):
+        """Unsupported AST node type raises error."""
+        results = {}
+        evaluator = ConditionEvaluator(results)
+        result, error = evaluator.evaluate("[1, 2, 3] == [1, 2, 3]")
+        assert result is False
+
+    # ========================================
+    # Comparison operator errors
+    # ========================================
+
+    def test_unsupported_comparison_operator(self):
+        """Unsupported comparison operator raises error."""
+        results = {}
+        evaluator = ConditionEvaluator(results)
+        result, error = evaluator.evaluate("1 is 1")
+        assert result is False
+
+    # ========================================
+    # 'in' operator edge cases
+    # ========================================
+
+    def test_in_operator_non_string_left(self):
+        """'in' operator with string right requires string left."""
+        results = {"step1": self.create_results(response="hello")}
+        evaluator = ConditionEvaluator(results)
+        result, error = evaluator.evaluate("1 in {{step1.response}}")
+        assert result is False
+
+    def test_in_operator_unsupported_type(self):
+        """'in' operator on unsupported type raises error."""
+        results = {}
+        evaluator = ConditionEvaluator(results)
+        result, error = evaluator.evaluate('"key" in 42')
+        assert result is False
+
+    # ========================================
+    # Boolean operator errors
+    # ========================================
+
+    def test_unsupported_boolean_operator(self):
+        """Unsupported boolean operator raises error (coverage)."""
+        results = {}
+        evaluator = ConditionEvaluator(results)
+        evaluator._eval_boolop = lambda node: (_ for _ in ()).throw(
+            _ce.ValueError("Unsupported boolean operator: Not")
+        )
+        result, error = evaluator.evaluate("not True")
+        assert result is False
+
+    # ========================================
+    # Keyword arguments errors
+    # ========================================
+
+    def test_keyword_args_in_function_call(self):
+        """Keyword arguments not supported in conditions."""
+        results = {}
+        evaluator = ConditionEvaluator(results)
+        result, error = evaluator.evaluate('len(obj="test")')
+        assert result is False
+        assert "Keyword arguments" in (error or "")
+
+    def test_keyword_args_in_method_call(self):
+        """Keyword arguments not supported in method calls."""
+        results = {"step1": self.create_results(response="hello world")}
+        evaluator = ConditionEvaluator(results)
+        result, error = evaluator.evaluate('{{step1.response}}.split(sep=" ")')
+        assert result is False
+        assert "Keyword arguments" in (error or "")
+
+    # ========================================
+    # Method call errors
+    # ========================================
+
+    def test_private_method_call_blocked(self):
+        """Private method calls are blocked."""
+        results = {"step1": self.create_results(response="hello")}
+        evaluator = ConditionEvaluator(results)
+        result, error = evaluator.evaluate("{{step1.response}}._private()")
+        assert result is False
+        assert "private" in (error or "").lower()
+
+    def test_unknown_string_method(self):
+        """Unknown string method raises error."""
+        results = {"step1": self.create_results(response="hello")}
+        evaluator = ConditionEvaluator(results)
+        result, error = evaluator.evaluate("{{step1.response}}.nonexistent()")
+        assert result is False
+
+    def test_attribute_access_on_list(self):
+        """Attribute access on list with unknown method raises error."""
+        results = {}
+        evaluator = ConditionEvaluator(results)
+        result, error = evaluator.evaluate('["a"].nonexistent()')
+        assert result is False
+
+    def test_attribute_access_on_dict(self):
+        """Attribute access on dict with unknown method raises error."""
+        results = {}
+        evaluator = ConditionEvaluator(results)
+        result, error = evaluator.evaluate('{"a": 1}.nonexistent()')
+        assert result is False
+
+    def test_attribute_access_on_unknown_type(self):
+        """Attribute access on unsupported type raises error."""
+        results = {}
+        evaluator = ConditionEvaluator(results)
+        result, error = evaluator.evaluate("42.lower()")
+        assert result is False
+
+    # ========================================
+    # Subscript errors
+    # ========================================
+
+    def test_subscript_non_constant(self):
+        """Non-constant subscript raises error."""
+        results = {}
+        evaluator = ConditionEvaluator(results)
+        result, error = evaluator.evaluate('["a"][1:2]')
+        assert result is False
+
+    def test_subscript_access_failure(self):
+        """Failed subscript access raises error."""
+        results = {"step1": self.create_results(response="hello")}
+        evaluator = ConditionEvaluator(results)
+        result, error = evaluator.evaluate("{{step1.response}}[999]")
+        assert result is False
+
+    # ========================================
+    # Binary operations
+    # ========================================
+
+    def test_binop_mod_matches(self):
+        """Mod operator implements 'matches' regex."""
+        results = {"step1": self.create_results(response="Hello World")}
+        evaluator = ConditionEvaluator(results)
+        result, _ = evaluator.evaluate('{{step1.response}} % "Hello"')
+        assert result is True
+
+    def test_binop_mod_no_match(self):
+        """Mod operator returns False when no match."""
+        results = {"step1": self.create_results(response="Hello World")}
+        evaluator = ConditionEvaluator(results)
+        result, _ = evaluator.evaluate('{{step1.response}} % "xyz"')
+        assert result is False
+
+    def test_binop_mod_invalid_regex(self):
+        """Mod operator with invalid regex raises error."""
+        results = {"step1": self.create_results(response="hello")}
+        evaluator = ConditionEvaluator(results)
+        result, error = evaluator.evaluate('{{step1.response}} % "[invalid"')
+        assert result is False
+
+    def test_binop_mod_non_string(self):
+        """Mod operator with non-strings raises error."""
+        results = {}
+        evaluator = ConditionEvaluator(results)
+        result, error = evaluator.evaluate("42 % 'pattern'")
+        assert result is False
+
+    def test_binop_add(self):
+        """Add binary operation."""
+        results = {}
+        evaluator = ConditionEvaluator(results)
+        result, _ = evaluator.evaluate("1 + 2 == 3")
+        assert result is True
+
+    def test_binop_sub(self):
+        """Sub binary operation."""
+        results = {}
+        evaluator = ConditionEvaluator(results)
+        result, _ = evaluator.evaluate("5 - 3 == 2")
+        assert result is True
+
+    def test_binop_mult(self):
+        """Multiply binary operation."""
+        results = {}
+        evaluator = ConditionEvaluator(results)
+        result, _ = evaluator.evaluate("3 * 4 == 12")
+        assert result is True
+
+    def test_binop_div(self):
+        """Divide binary operation."""
+        results = {}
+        evaluator = ConditionEvaluator(results)
+        result, _ = evaluator.evaluate("10 / 2 == 5")
+        assert result is True
+
+    def test_binop_unsupported(self):
+        """Unsupported binary operator raises error."""
+        results = {}
+        evaluator = ConditionEvaluator(results)
+        result, error = evaluator.evaluate("2 // 1 == 2")
+        assert result is False
+
+    # ========================================
+    # Ternary if-exp
+    # ========================================
+
+    def test_ifexp_else_branch(self):
+        """Ternary expression else branch."""
+        results = {"step1": self.create_results()}
+        evaluator = ConditionEvaluator(results)
+        result, _ = evaluator.evaluate('("yes" if True else "no") == "yes"')
+        assert result is True
+
+    # ========================================
+    # resolve_variables empties result
+    # ========================================
+
+    def test_resolved_empty_returns_true(self):
+        """Empty response resolves to empty string, which is falsy."""
+        results = {"step1": self.create_results(response="")}
+        evaluator = ConditionEvaluator(results)
+        result, _ = evaluator.evaluate('{{step1.response}} == ""')
+        assert result is True
+
+    # ========================================
+    # Syntax error in evaluate
+    # ========================================
+
+    def test_syntax_error_in_evaluate(self):
+        """Unsupported operator in condition returns False with error."""
+        results = {}
+        evaluator = ConditionEvaluator(results)
+        result, error = evaluator.evaluate("1 + + 2")
+        assert result is False
+        assert error is not None
+
+    # ========================================
+    # validate_syntax exception
+    # ========================================
+
+    def test_validate_syntax_syntax_error(self):
+        """validate_syntax returns False for syntax errors after resolution."""
+        result, error = ConditionEvaluator.validate_syntax("{{step1.status}} == 'ok' and")
+        assert result is False
+        assert error is not None
+        assert "Syntax error" in error
+
+    # ========================================
+    # status default
+    # ========================================
+
+    def test_status_defaults_to_pending(self):
+        """Status defaults to 'pending' when empty."""
+        results = {"step1": self.create_results()}
+        results["step1"]["status"] = ""
+        evaluator = ConditionEvaluator(results)
+        result, _ = evaluator.evaluate('{{step1.status}} == "pending"')
+        assert result is True

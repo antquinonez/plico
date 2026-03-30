@@ -123,14 +123,14 @@ class FFAnthropicCached:
 
         except Exception as e:
             logger.error("Problem with response generation")
-            logger.error(f"  -- exception: {str(e)}")
+            logger.error(f"  -- exception: {e!s}")
             logger.error(f"  -- model: {used_model}")
             logger.error(f"  -- system: {self.system_instructions}")
             logger.error(f"  -- conversation history: {self.conversation_history.get_turns()}")
             logger.error(f"  -- max_tokens: {self.max_tokens}")
             logger.error(f"  -- temperature: {self.temperature}")
 
-            raise RuntimeError(f"Error generating response from Claude: {str(e)}")
+            raise RuntimeError(f"Error generating response from Claude: {e!s}")
 
     def get_interaction_history(self) -> list[dict[str, Any]]:
         interactions = self.ordered_history.get_all_interactions()

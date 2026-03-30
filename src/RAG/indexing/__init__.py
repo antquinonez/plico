@@ -14,8 +14,8 @@ from .hierarchical_index import HierarchicalIndex
 
 __all__ = [
     "BM25Index",
-    "HierarchicalIndex",
-    "ContextualEmbeddings",
-    "LateChunkingEmbeddings",
     "ChunkDeduplicator",
+    "ContextualEmbeddings",
+    "HierarchicalIndex",
+    "LateChunkingEmbeddings",
 ]

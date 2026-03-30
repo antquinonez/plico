@@ -43,6 +43,7 @@ dev = [
     "pre-commit",
     "ruff",
     "invoke>=2.0.0",
+    "vulture>=2.16",
 ]
 
 [tool.pytest.ini_options]
@@ -97,6 +98,10 @@ select = [
     "UP",     # pyupgrade
     "ARG",    # flake8-unused-arguments
     "SIM",    # flake8-simplify
+    "PLC",    # pylint convention (unreachable, import placement)
+    "PLW",    # pylint warning (useless patterns)
+    "RET",    # flake8-return (unnecessary return)
+    "RUF",    # ruff-specific (reachable-after-raise, unused noqa)
 ]
 ignore = [
     "E501",   # line too long (handled by formatter)
@@ -105,12 +110,25 @@ ignore = [
     "B904",   # raise from err (common pattern in this codebase)
     "ARG001", # unused function argument (common in callbacks)
     "ARG002", # unused method argument
+    "RUF001", # string with unescaped special chars
+    "RUF002", # docstring with unescaped special chars
+    "RUF003", # comment with unescaped special chars
+    "RET504", # unnecessary-assign-before-return
+    "RET505", # unnecessary-else-after-return
+    "RET506", # unnecessary-else-after-raise
+    "RET507", # unnecessary-else-after-break/continue
+    "RET508", # unnecessary-else-after-raise (variant)
+    "PLC0415", # import not at top-level (lazy imports for optional deps, circular import avoidance)
+    "RUF012", # mutable class attribute (class-level constants/registries)
+    "PLW0108", # unnecessary lambda (wrapping with null guards)
+    "PLW0603", # global statement (singleton config pattern)
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"tests/*" = ["ARG", "SIM", "E712", "F841", "F811", "SIM117", "C401"]
-"src/Clients/*" = ["B904", "F841", "UP038"]
+"tests/*" = ["ARG", "SIM", "E712", "F841", "F811", "SIM117", "C401", "PLW", "RET", "RUF"]
+"src/Clients/*" = ["B904", "F841", "UP038", "PLW"]
 "tasks.py" = ["ARG001", "E501"]
+"vulture_whitelist.py" = ["F821", "B018"]
 
 [tool.ruff.lint.isort]
 known-first-party = ["src"]

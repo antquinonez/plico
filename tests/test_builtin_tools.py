@@ -82,6 +82,31 @@ class TestCalculateTool:
         result = json.loads(_calculate({"expression": "x = 5"}))
         assert "error" in result
 
+    def test_unsupported_unary_operator(self):
+        result = json.loads(_calculate({"expression": "~5"}))
+        assert "error" in result
+        assert "Unsupported" in result["error"]
+
+    def test_unsupported_binary_operator(self):
+        result = json.loads(_calculate({"expression": "1 << 2"}))
+        assert "error" in result
+        assert "Unsupported" in result["error"]
+
+    def test_disallowed_function(self):
+        result = json.loads(_calculate({"expression": "print(1)"}))
+        assert "error" in result
+        assert "not allowed" in result["error"]
+
+    def test_variable_not_allowed(self):
+        result = json.loads(_calculate({"expression": "x"}))
+        assert "error" in result
+        assert "not allowed" in result["error"]
+
+    def test_unsupported_ast_node(self):
+        result = json.loads(_calculate({"expression": "(1, 2)"}))
+        assert "error" in result
+        assert "Unsupported" in result["error"]
+
 
 class TestJsonExtractTool:
     """Tests for the json_extract built-in tool."""
@@ -114,6 +139,16 @@ class TestJsonExtractTool:
         result = json.loads(_json_extract({"data": "", "path": ""}))
         assert "error" in result
 
+    def test_numeric_value_result(self):
+        data = json.dumps({"value": 42})
+        result = json.loads(_json_extract({"data": data, "path": "value"}))
+        assert result["result"] == 42
+
+    def test_boolean_value_result(self):
+        data = json.dumps({"active": True})
+        result = json.loads(_json_extract({"data": data, "path": "active"}))
+        assert result["result"] == "True"
+
 
 class TestGetBuiltinTool:
     """Tests for get_builtin_tool function."""
@@ -142,6 +177,18 @@ class TestGetBuiltinTool:
     def test_get_unknown_raises(self):
         with pytest.raises(KeyError, match="Unknown built-in tool"):
             get_builtin_tool("nonexistent_tool")
+
+    def test_get_read_document_standalone(self):
+        tool = get_builtin_tool("read_document")
+        assert callable(tool)
+        result = json.loads(tool({"name": "test"}))
+        assert "error" in result
+
+    def test_get_list_documents_standalone(self):
+        tool = get_builtin_tool("list_documents")
+        assert callable(tool)
+        result = json.loads(tool({}))
+        assert "error" in result
 
 
 class TestCreateContextTools:
@@ -249,6 +296,17 @@ class TestHttpGetTool:
         result = json.loads(_http_get({}))
         assert "required" in result["error"].lower()
 
+    @patch("src.orchestrator.builtin_tools.urllib.request.urlopen")
+    def test_truncation(self, mock_urlopen):
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = b"a" * 20000
+        mock_resp.__enter__ = MagicMock(return_value=mock_resp)
+        mock_resp.__exit__ = MagicMock(return_value=False)
+        mock_urlopen.return_value = mock_resp
+        result = _http_get({"url": "http://example.com", "max_length": 100})
+        assert "... (truncated)" in result
+        assert len(result) < 20000
+
 
 class TestUnavailableContextTools:
     """Tests for context-bound tools when no context is provided."""
@@ -267,3 +325,74 @@ class TestUnavailableContextTools:
         read_tool = _make_read_document(None)
         result = json.loads(read_tool({"name": "test"}))
         assert "not available" in result["error"]
+
+
+class TestRagSearchEdgeCases:
+    """Tests for rag_search edge cases."""
+
+    def test_empty_query(self):
+        mock_rag = MagicMock()
+        tool = _make_rag_search(mock_rag)
+        result = json.loads(tool({"query": ""}))
+        assert "required" in result["error"]
+
+    def test_non_dict_result_items(self):
+        mock_rag = MagicMock()
+        mock_rag.search.return_value = ["doc1", "doc2"]
+        tool = _make_rag_search(mock_rag)
+        result = json.loads(tool({"query": "test"}))
+        assert len(result["results"]) == 2
+        assert result["results"][0] == {"content": "doc1"}
+
+    def test_non_list_result(self):
+        mock_rag = MagicMock()
+        mock_rag.search.return_value = "single result"
+        tool = _make_rag_search(mock_rag)
+        result = json.loads(tool({"query": "test"}))
+        assert "single result" in result["results"]
+
+
+class TestReadDocumentEdgeCases:
+    """Tests for read_document edge cases."""
+
+    def test_empty_name(self):
+        mock_registry = MagicMock()
+        tool = _make_read_document(mock_registry)
+        result = json.loads(tool({"name": ""}))
+        assert "required" in result["error"]
+
+    def test_none_content(self):
+        mock_registry = MagicMock()
+        mock_registry.get_reference_names.return_value = {"doc_a"}
+        mock_registry.get_content.return_value = None
+        tool = _make_read_document(mock_registry)
+        result = json.loads(tool({"name": "doc_a"}))
+        assert "Could not read" in result["error"]
+
+    def test_truncation(self):
+        mock_registry = MagicMock()
+        mock_registry.get_reference_names.return_value = {"doc_a"}
+        content = "x" * 20000
+        mock_registry.get_content.return_value = content
+        tool = _make_read_document(mock_registry)
+        result = tool({"name": "doc_a", "max_length": 100})
+        assert "... (truncated)" in result
+        assert len(result) < 20000
+
+    def test_exception(self):
+        mock_registry = MagicMock()
+        mock_registry.get_reference_names.side_effect = RuntimeError("registry error")
+        tool = _make_read_document(mock_registry)
+        result = json.loads(tool({"name": "doc_a"}))
+        assert "Read document failed" in result["error"]
+
+
+class TestListDocumentsEdgeCases:
+    """Tests for list_documents edge cases."""
+
+    def test_exception(self):
+        mock_registry = MagicMock()
+        mock_registry.get_reference_names.side_effect = RuntimeError("registry error")
+        tool = _make_list_documents(mock_registry)
+        result = json.loads(tool({}))
+        assert "List documents failed" in result["error"]
