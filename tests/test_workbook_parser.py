@@ -247,7 +247,7 @@ class TestWorkbookParserParseHistoryString:
 
         builder = WorkbookParser(temp_workbook)
 
-        result = builder.parse_history_string('["a", "b", "c"]')
+        result = builder._parse_history_string('["a", "b", "c"]')
 
         assert result == ["a", "b", "c"]
 
@@ -257,7 +257,7 @@ class TestWorkbookParserParseHistoryString:
 
         builder = WorkbookParser(temp_workbook)
 
-        result = builder.parse_history_string('["math", "greeting"]')
+        result = builder._parse_history_string('["math", "greeting"]')
 
         assert result == ["math", "greeting"]
 
@@ -267,7 +267,7 @@ class TestWorkbookParserParseHistoryString:
 
         builder = WorkbookParser(temp_workbook)
 
-        result = builder.parse_history_string(None)
+        result = builder._parse_history_string(None)
 
         assert result is None
 
@@ -277,7 +277,7 @@ class TestWorkbookParserParseHistoryString:
 
         builder = WorkbookParser(temp_workbook)
 
-        result = builder.parse_history_string("")
+        result = builder._parse_history_string("")
 
         assert result is None
 
@@ -287,7 +287,7 @@ class TestWorkbookParserParseHistoryString:
 
         builder = WorkbookParser(temp_workbook)
 
-        result = builder.parse_history_string(["a", "b"])
+        result = builder._parse_history_string(["a", "b"])
 
         assert result == ["a", "b"]
 
@@ -297,7 +297,7 @@ class TestWorkbookParserParseHistoryString:
 
         builder = WorkbookParser(temp_workbook)
 
-        result = builder.parse_history_string("[a, b, c]")
+        result = builder._parse_history_string("[a, b, c]")
 
         assert result == ["a", "b", "c"]
 
@@ -311,7 +311,7 @@ class TestWorkbookParserSmartQuotes:
 
         builder = WorkbookParser(temp_workbook)
 
-        result = builder.parse_history_string('["interesting_story"]')
+        result = builder._parse_history_string('["interesting_story"]')
 
         assert result == ["interesting_story"]
 
@@ -321,7 +321,7 @@ class TestWorkbookParserSmartQuotes:
 
         builder = WorkbookParser(temp_workbook)
 
-        result = builder.parse_history_string("['test', 'value']")
+        result = builder._parse_history_string("['test', 'value']")
 
         assert result == ["test", "value"]
 
@@ -331,7 +331,7 @@ class TestWorkbookParserSmartQuotes:
 
         builder = WorkbookParser(temp_workbook)
 
-        result = builder.parse_history_string('["ascii", "smart"]')
+        result = builder._parse_history_string('["ascii", "smart"]')
 
         assert result == ["ascii", "smart"]
 
@@ -341,7 +341,7 @@ class TestWorkbookParserSmartQuotes:
 
         builder = WorkbookParser(temp_workbook)
 
-        result = builder.parse_history_string('["item1", "item2"]')
+        result = builder._parse_history_string('["item1", "item2"]')
 
         assert result == ["item1", "item2"]
 
@@ -351,7 +351,7 @@ class TestWorkbookParserSmartQuotes:
 
         builder = WorkbookParser(temp_workbook)
 
-        result = builder.parse_history_string('["interesting_story"]')
+        result = builder._parse_history_string('["interesting_story"]')
 
         assert result == ["interesting_story"]
 
@@ -361,7 +361,7 @@ class TestWorkbookParserSmartQuotes:
 
         builder = WorkbookParser(temp_workbook)
 
-        result = builder.parse_history_string('["first", "second", "third"]')
+        result = builder._parse_history_string('["first", "second", "third"]')
 
         assert result == ["first", "second", "third"]
 

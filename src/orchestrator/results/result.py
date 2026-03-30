@@ -41,6 +41,11 @@ class PromptResult:
         validation_passed: Whether the response passed validation (None if no validation).
         validation_attempts: Number of validation attempts.
         validation_critique: Last validation critique if validation failed.
+        scores: Extracted scoring criteria values.
+        composite_score: Weighted composite score.
+        scoring_status: Scoring aggregation status.
+        strategy: Evaluation strategy used.
+        result_type: Result origin type ("batch" or "synthesis").
 
     """
 
@@ -71,6 +76,11 @@ class PromptResult:
     validation_passed: bool | None = None
     validation_attempts: int | None = None
     validation_critique: str | None = None
+    scores: dict[str, Any] | None = None
+    composite_score: float | None = None
+    scoring_status: str | None = None
+    strategy: str | None = None
+    result_type: str = "batch"
 
     VALID_STATUSES = ("pending", "success", "failed", "skipped", "max_rounds_exceeded")
 
@@ -109,4 +119,9 @@ class PromptResult:
             validation_passed=data.get("validation_passed"),
             validation_attempts=data.get("validation_attempts"),
             validation_critique=data.get("validation_critique"),
+            scores=data.get("scores"),
+            composite_score=data.get("composite_score"),
+            scoring_status=data.get("scoring_status"),
+            strategy=data.get("strategy"),
+            result_type=data.get("result_type", "batch"),
         )

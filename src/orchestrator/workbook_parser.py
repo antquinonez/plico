@@ -53,6 +53,50 @@ def _prepare_result_value(header: str, value: Any) -> Any:
     return _serialize_result_value(header, value)
 
 
+def parse_history_string(history_str: Any) -> list[str] | None:
+    """Parse history string like '["a", "b"]' into list.
+
+    Handles smart quotes (curly quotes) by normalizing them to ASCII quotes
+    before parsing. This allows users to copy/paste from Word, Google Docs, etc.
+    """
+    if not history_str:
+        return None
+
+    if isinstance(history_str, list):
+        return history_str
+
+    s = str(history_str).strip()
+
+    quote_map = {
+        0x201C: 0x22,
+        0x201D: 0x22,
+        0x2018: 0x27,
+        0x2019: 0x27,
+        0x201E: 0x22,
+        0x201F: 0x22,
+    }
+    s = s.translate(quote_map)
+
+    if s.startswith("[") and s.endswith("]"):
+        try:
+            parsed = json.loads(s)
+            if isinstance(parsed, list):
+                return [str(item).strip().strip("\"'") for item in parsed]
+        except json.JSONDecodeError:
+            pass
+
+        inner = s[1:-1]
+        items = re.findall(r'["\']([^"\']+)["\']', inner)
+        if items:
+            return items
+
+        items = [x.strip().strip("\"'") for x in inner.split(",") if x.strip()]
+        if items:
+            return items
+
+    return [s.strip().strip("\"'")]
+
+
 class WorkbookParser:
     """Parses and validates Excel workbooks for prompt orchestration."""
 
@@ -68,6 +112,7 @@ class WorkbookParser:
         self._has_clients_sheet: bool | None = None
         self._has_documents_sheet: bool | None = None
         self._has_tools_sheet: bool | None = None
+        self._has_scoring_sheet: bool | None = None
         self._config = get_config()
         self.formatter = WorkbookFormatter(self._config)
 
@@ -96,6 +141,10 @@ class WorkbookParser:
         return self._config.workbook.sheet_names.tools
 
     @property
+    def SCORING_SHEET(self) -> str:
+        return self._config.workbook.sheet_names.scoring
+
+    @property
     def CONFIG_FIELDS(self) -> list[tuple[str, str, str]]:
         defaults = self._config.workbook.defaults
         return [
@@ -109,6 +158,7 @@ class WorkbookParser:
             ("max_tokens", str(defaults.max_tokens), "Maximum response tokens"),
             ("system_instructions", defaults.system_instructions, "System prompt for AI"),
             ("created_at", "", "ISO timestamp when created"),
+            ("evaluation_strategy", "", "Evaluation strategy name from config/main.yaml"),
         ]
 
     @property
@@ -197,6 +247,11 @@ class WorkbookParser:
         "validation_passed",
         "validation_attempts",
         "validation_critique",
+        "scores",
+        "composite_score",
+        "scoring_status",
+        "strategy",
+        "result_type",
     ]
     TOOLS_HEADERS = [
         "name",
@@ -204,6 +259,14 @@ class WorkbookParser:
         "parameters",
         "implementation",
         "enabled",
+    ]
+    SCORING_HEADERS = [
+        "criteria_name",
+        "description",
+        "scale_min",
+        "scale_max",
+        "weight",
+        "source_prompt",
     ]
 
     def has_data_sheet(self) -> bool:
@@ -257,6 +320,19 @@ class WorkbookParser:
         wb = load_workbook(self.workbook_path)
         self._has_tools_sheet = self.TOOLS_SHEET in wb.sheetnames
         return self._has_tools_sheet
+
+    def has_scoring_sheet(self) -> bool:
+        """Check if workbook has a scoring sheet for evaluation."""
+        if self._has_scoring_sheet is not None:
+            return self._has_scoring_sheet
+
+        if not os.path.exists(self.workbook_path):
+            self._has_scoring_sheet = False
+            return False
+
+        wb = load_workbook(self.workbook_path)
+        self._has_scoring_sheet = self.SCORING_SHEET in wb.sheetnames
+        return self._has_scoring_sheet
 
     def create_template_workbook(
         self,
@@ -467,7 +543,7 @@ class WorkbookParser:
                 "prompt": str(row_dict.get("prompt", "")).strip()
                 if row_dict.get("prompt")
                 else None,
-                "history": self.parse_history_string(row_dict.get("history"))
+                "history": self._parse_history_string(row_dict.get("history"))
                 if row_dict.get("history")
                 else None,
                 "notes": str(row_dict.get("notes", "")).strip() if row_dict.get("notes") else None,
@@ -477,7 +553,7 @@ class WorkbookParser:
                 "condition": str(row_dict.get("condition", "")).strip()
                 if row_dict.get("condition")
                 else None,
-                "references": self.parse_history_string(row_dict.get("references"))
+                "references": self._parse_history_string(row_dict.get("references"))
                 if row_dict.get("references")
                 else None,
                 "semantic_query": str(row_dict.get("semantic_query", "")).strip()
@@ -496,7 +572,7 @@ class WorkbookParser:
                 in ("true", "1", "yes")
                 if row_dict.get("agent_mode")
                 else False,
-                "tools": self.parse_history_string(row_dict.get("tools"))
+                "tools": self._parse_history_string(row_dict.get("tools"))
                 if row_dict.get("tools")
                 else None,
                 "max_tool_rounds": int(row_dict["max_tool_rounds"])
@@ -714,6 +790,65 @@ class WorkbookParser:
         logger.info(f"Loaded {len(tools)} tool definitions")
         return tools
 
+    def load_scoring(self) -> list[dict[str, Any]]:
+        """Load scoring criteria from scoring sheet.
+
+        Returns:
+            List of scoring criteria dicts with keys:
+            - criteria_name: machine-readable key
+            - description: human-readable description
+            - scale_min: minimum score value
+            - scale_max: maximum score value
+            - weight: base weight for aggregation
+            - source_prompt: prompt name containing this score
+
+        """
+        if not self.has_scoring_sheet():
+            return []
+
+        wb = load_workbook(self.workbook_path)
+        ws = wb[self.SCORING_SHEET]
+
+        headers = []
+        for col in range(1, ws.max_column + 1):
+            header = ws.cell(row=1, column=col).value
+            headers.append(str(header).strip() if header else f"col_{col}")
+
+        scoring = []
+        for row_idx in range(2, ws.max_row + 1):
+            row_data = {}
+            has_content = False
+            for col_idx, header in enumerate(headers, start=1):
+                value = ws.cell(row=row_idx, column=col_idx).value
+                row_data[header] = value
+                if value is not None:
+                    has_content = True
+
+            if has_content and row_data.get("criteria_name"):
+                scale_min = row_data.get("scale_min", 1)
+                scale_max = row_data.get("scale_max", 10)
+                weight = row_data.get("weight", 1.0)
+                if isinstance(scale_min, str):
+                    scale_min = int(scale_min)
+                if isinstance(scale_max, str):
+                    scale_max = int(scale_max)
+                if isinstance(weight, str):
+                    weight = float(weight)
+
+                scoring.append(
+                    {
+                        "criteria_name": str(row_data["criteria_name"]).strip(),
+                        "description": str(row_data.get("description", "")).strip(),
+                        "scale_min": int(scale_min),
+                        "scale_max": int(scale_max),
+                        "weight": float(weight),
+                        "source_prompt": str(row_data.get("source_prompt", "")).strip(),
+                    }
+                )
+
+        logger.info(f"Loaded {len(scoring)} scoring criteria")
+        return scoring
+
     def _infer_chunking_strategy(self, file_path: str) -> str:
         """Infer chunking strategy from file extension.
 
@@ -749,48 +884,8 @@ class WorkbookParser:
         else:
             return "recursive"
 
-    def parse_history_string(self, history_str: Any) -> list[str] | None:
-        """Parse history string like '["a", "b"]' into list.
-
-        Handles smart quotes (curly quotes) by normalizing them to ASCII quotes
-        before parsing. This allows users to copy/paste from Word, Google Docs, etc.
-        """
-        if not history_str:
-            return None
-
-        if isinstance(history_str, list):
-            return history_str
-
-        s = str(history_str).strip()
-
-        quote_map = {
-            0x201C: 0x22,
-            0x201D: 0x22,
-            0x2018: 0x27,
-            0x2019: 0x27,
-            0x201E: 0x22,
-            0x201F: 0x22,
-        }
-        s = s.translate(quote_map)
-
-        if s.startswith("[") and s.endswith("]"):
-            try:
-                parsed = json.loads(s)
-                if isinstance(parsed, list):
-                    return [str(item).strip().strip("\"'") for item in parsed]
-            except json.JSONDecodeError:
-                pass
-
-            inner = s[1:-1]
-            items = re.findall(r'["\']([^"\']+)["\']', inner)
-            if items:
-                return items
-
-            items = [x.strip().strip("\"'") for x in inner.split(",") if x.strip()]
-            if items:
-                return items
-
-        return [s.strip().strip("\"'")]
+    def _parse_history_string(self, history_str: Any) -> list[str] | None:
+        return parse_history_string(history_str)
 
     def write_results(self, results: list[dict[str, Any]], sheet_name: str) -> str:
         """Write execution results to a new sheet."""

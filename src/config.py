@@ -120,6 +120,7 @@ class WorkbookSheetNamesConfig(BaseSettings):
     clients: str = "clients"
     documents: str = "documents"
     tools: str = "tools"
+    scoring: str = "scoring"
 
 
 class WorkbookDefaultsConfig(BaseSettings):
@@ -368,6 +369,24 @@ class ClientsConfig(BaseSettings):
         return list(self.client_types.keys())
 
 
+class StrategyConfig(BaseSettings):
+    """Configuration for an evaluation strategy."""
+
+    description: str = ""
+    criteria_overrides: dict[str, float] = Field(default_factory=dict)
+
+
+class EvaluationConfig(BaseSettings):
+    """Evaluation (scoring/synthesis) configuration."""
+
+    default_strategy: str = "balanced"
+    scoring_failure_threshold: float = 0.5
+    max_synthesis_context_chars: int = 30000
+    strategies: dict[str, StrategyConfig] = Field(default_factory=dict)
+
+    model_config = SettingsConfigDict(extra="ignore")
+
+
 class ModelDefaultsGenericConfig(BaseSettings):
     """Generic model defaults."""
 
@@ -446,6 +465,7 @@ class Config(BaseSettings):
     rag: RAGConfig = Field(default_factory=RAGConfig)
     agent: AgentConfig = Field(default_factory=AgentConfig)
     clients: ClientsConfig = Field(default_factory=ClientsConfig)
+    evaluation: EvaluationConfig = Field(default_factory=EvaluationConfig)
     model_defaults: ModelDefaultsConfig = Field(default_factory=ModelDefaultsConfig)
     sample: SampleConfig = Field(default_factory=SampleConfig)
 

@@ -35,9 +35,11 @@ from ..document_processor import DocumentProcessor
 from ..document_registry import DocumentRegistry
 from ..executor import Executor
 from ..results import ResultBuilder
+from ..scoring import ScoreAggregator, ScoringRubric
 from ..state import ExecutionState, PromptNode
 from ..tool_registry import ToolDefinition, ToolRegistry
 from ..validation import OrchestratorValidator
+from ..workbook_parser import parse_history_string
 
 if TYPE_CHECKING:
     from ...RAG import FFRAGClient
@@ -123,6 +125,9 @@ class OrchestratorBase(ABC):
         self.has_documents: bool = False
         self.tool_registry: ToolRegistry | None = None
         self.has_tools: bool = False
+        self.has_scoring: bool = False
+        self.scoring_rubric: ScoringRubric | None = None
+        self.evaluation_strategy: str = "balanced"
         self._rag_client: FFRAGClient | None = None
         self._executor = Executor()
 
@@ -356,8 +361,15 @@ class OrchestratorBase(ABC):
         client_names = self.client_registry.get_registered_names() if self.client_registry else []
 
         batch_keys: list[str] = []
+        row_docs: dict[int, list[str]] = {}
         if self.is_batch_mode and self.batch_data:
             batch_keys = OrchestratorValidator.extract_batch_keys(self.batch_data)
+            for idx, row in enumerate(self.batch_data):
+                raw = row.get("_documents")
+                if raw:
+                    parsed = parse_history_string(raw)
+                    if parsed:
+                        row_docs[idx] = parsed
 
         doc_refs: list[str] = []
         if self.document_registry:
@@ -373,6 +385,18 @@ class OrchestratorBase(ABC):
         except Exception:
             logger.debug("Could not load available client types for validation", exc_info=True)
 
+        scoring_criteria: list[dict[str, Any]] = []
+        available_strategies: list[str] = []
+        if self.has_scoring and self.scoring_rubric:
+            from dataclasses import asdict
+
+            scoring_criteria = [asdict(c) for c in self.scoring_rubric.criteria]
+        try:
+            eval_config = get_config().evaluation
+            available_strategies = list(eval_config.strategies.keys()) if eval_config else []
+        except Exception:
+            pass
+
         validator = OrchestratorValidator(
             prompts=self.prompts,
             config=self.config,
@@ -382,6 +406,9 @@ class OrchestratorBase(ABC):
             doc_ref_names=doc_refs,
             available_client_types=available_types,
             tool_names=tool_names,
+            row_doc_refs=row_docs,
+            scoring_criteria=scoring_criteria,
+            available_strategies=available_strategies,
         )
 
         result = validator.validate()
@@ -1042,6 +1069,14 @@ class OrchestratorBase(ABC):
         resolved["prompt"] = self._resolve_variables(prompt.get("prompt", ""), data_row)
         if prompt.get("prompt_name"):
             resolved["prompt_name"] = self._resolve_variables(prompt["prompt_name"], data_row)
+
+        row_docs = data_row.get("_documents")
+        if row_docs:
+            doc_refs = parse_history_string(row_docs)
+            if doc_refs:
+                existing_refs = resolved.get("references") or []
+                resolved["references"] = list(existing_refs) + doc_refs
+
         return resolved
 
     def _resolve_batch_name(self, data_row: dict[str, Any], batch_id: int) -> str:
@@ -1155,6 +1190,73 @@ class OrchestratorBase(ABC):
         """
         return self._executor.execute_batch_parallel(self)
 
+    def _resolve_evaluation_strategy(self) -> str:
+        """Resolve the effective evaluation strategy.
+
+        Resolution order:
+        1. Workbook config sheet evaluation_strategy (if present and valid)
+        2. config/main.yaml evaluation.default_strategy
+        3. Hardcoded fallback: 'balanced'
+
+        """
+        config_strategy = self.config.get("evaluation_strategy", "").strip()
+        try:
+            eval_config = get_config().evaluation
+            available = eval_config.strategies if eval_config else {}
+            if config_strategy and config_strategy in available:
+                return config_strategy
+            if eval_config and eval_config.default_strategy:
+                return eval_config.default_strategy
+        except Exception:
+            logger.debug("Could not load evaluation config", exc_info=True)
+        return "balanced"
+
+    def _aggregate_scores(self) -> None:
+        """Extract scores from batch results and compute composites."""
+        if not self.scoring_rubric or not self.is_batch_mode:
+            return
+
+        try:
+            eval_config = get_config().evaluation
+            failure_threshold = eval_config.scoring_failure_threshold if eval_config else 0.5
+            strategy_overrides = {}
+            if eval_config and self.evaluation_strategy in eval_config.strategies:
+                strategy_overrides = eval_config.strategies[
+                    self.evaluation_strategy
+                ].criteria_overrides
+        except Exception:
+            failure_threshold = 0.5
+            strategy_overrides = {}
+            logger.debug("Could not load evaluation config for scoring", exc_info=True)
+
+        aggregator = ScoreAggregator(
+            rubric=self.scoring_rubric,
+            strategy=self.evaluation_strategy,
+            strategy_overrides=strategy_overrides,
+            failure_threshold=failure_threshold,
+        )
+
+        grouped: dict[int, list[dict[str, Any]]] = {}
+        for r in self.results:
+            batch_id = r.get("batch_id", 0)
+            if batch_id not in grouped:
+                grouped[batch_id] = []
+            grouped[batch_id].append(r)
+
+        for batch_id, batch_results in grouped.items():
+            results_by_name = {r["prompt_name"]: r for r in batch_results}
+            batch_name = (
+                batch_results[0].get("batch_name", f"batch_{batch_id}") if batch_results else ""
+            )
+            scoring_result = aggregator.aggregate_entry(results_by_name, batch_name)
+
+            for r in batch_results:
+                r["scores"] = scoring_result["scores"]
+                r["composite_score"] = scoring_result["composite_score"]
+                r["scoring_status"] = scoring_result["scoring_status"]
+                r["strategy"] = scoring_result["strategy"]
+                r["result_type"] = "batch"
+
     def run(self) -> str:
         """Initialize, validate, execute prompts, and write results.
 
@@ -1179,6 +1281,9 @@ class OrchestratorBase(ABC):
                 self.results = self.execute_parallel()
             else:
                 self.results = self.execute()
+
+        if self.has_scoring:
+            self._aggregate_scores()
 
         output = self._write_results(self.results)
         logger.info(f"Orchestration complete. Results in: {output}")
@@ -1218,5 +1323,24 @@ class OrchestratorBase(ABC):
                     batch_failures[batch_id] = batch_failures.get(batch_id, 0) + 1
             if batch_failures:
                 summary["batches_with_failures"] = batch_failures
+
+        if self.has_scoring:
+            scored = [r for r in self.results if r.get("scoring_status")]
+            scoring_block: dict[str, Any] = {
+                "total_scored": len(scored),
+                "ok": sum(1 for r in scored if r["scoring_status"] == "ok"),
+                "partial": sum(1 for r in scored if r["scoring_status"] == "partial"),
+                "failed": sum(1 for r in scored if r["scoring_status"] == "failed"),
+                "skipped": sum(1 for r in scored if r["scoring_status"] == "skipped"),
+                "strategy": self.evaluation_strategy,
+            }
+            composites = [
+                r["composite_score"] for r in scored if r.get("composite_score") is not None
+            ]
+            if composites:
+                scoring_block["avg_composite"] = round(sum(composites) / len(composites), 2)
+                scoring_block["max_composite"] = max(composites)
+                scoring_block["min_composite"] = min(composites)
+            summary["scoring"] = scoring_block
 
         return summary

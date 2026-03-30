@@ -24,6 +24,7 @@ from typing import Any
 
 from ..FFAIClientBase import FFAIClientBase
 from .base import OrchestratorBase
+from .scoring import ScoringCriteria, ScoringRubric
 from .workbook_parser import WorkbookParser
 
 logger = logging.getLogger(__name__)
@@ -110,6 +111,27 @@ class ExcelOrchestrator(OrchestratorBase):
         tools_data = self.builder.load_tools()
         if tools_data:
             self._init_tools(tools_data)
+
+        scoring_data = self.builder.load_scoring()
+        if scoring_data:
+            criteria = [
+                ScoringCriteria(
+                    criteria_name=c["criteria_name"],
+                    description=c["description"],
+                    scale_min=c["scale_min"],
+                    scale_max=c["scale_max"],
+                    weight=c["weight"],
+                    source_prompt=c["source_prompt"],
+                )
+                for c in scoring_data
+            ]
+            self.scoring_rubric = ScoringRubric(criteria)
+            self.has_scoring = True
+            self.evaluation_strategy = self._resolve_evaluation_strategy()
+            logger.info(
+                f"Scoring enabled with {len(criteria)} criteria, "
+                f"strategy='{self.evaluation_strategy}'"
+            )
 
         self.batch_data = self.builder.load_data()
         self.is_batch_mode = len(self.batch_data) > 0

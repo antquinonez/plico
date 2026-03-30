@@ -317,6 +317,16 @@ class TestExtractBatchKeys:
         keys = OrchestratorValidator.extract_batch_keys(rows)
         assert keys == ["value"]
 
+    def test_skips_documents_column(self):
+        from src.orchestrator.validation import OrchestratorValidator
+
+        rows = [
+            {"id": 1, "batch_name": "x", "_documents": '["resume_a"]', "region": "US"},
+        ]
+        keys = OrchestratorValidator.extract_batch_keys(rows)
+        assert "_documents" not in keys
+        assert "region" in keys
+
 
 class TestValidateManifestMetadata:
     def test_matching_prompt_count(self):
@@ -395,3 +405,61 @@ class TestValidatorIntegration:
         prompts = [_make_prompt(1, "a")]
         result = OrchestratorValidator(prompts, {}).validate()
         assert not result.has_errors
+
+
+class TestRowDocumentValidation:
+    def test_valid_row_documents(self):
+        prompts = [_make_prompt(1, "eval")]
+        result = OrchestratorValidator(
+            prompts,
+            {},
+            doc_ref_names=["jd", "resume_alice", "resume_bob"],
+            row_doc_refs={0: ["resume_alice"], 1: ["resume_bob"]},
+        ).validate()
+        doc_errors = [e for e in result.errors if e.code == "UNKNOWN_ROW_DOCUMENT"]
+        assert len(doc_errors) == 0
+
+    def test_invalid_row_document_reference(self):
+        prompts = [_make_prompt(1, "eval")]
+        result = OrchestratorValidator(
+            prompts,
+            {},
+            doc_ref_names=["jd", "resume_alice"],
+            row_doc_refs={0: ["resume_alice"], 1: ["nonexistent_resume"]},
+        ).validate()
+        doc_errors = [e for e in result.errors if e.code == "UNKNOWN_ROW_DOCUMENT"]
+        assert len(doc_errors) == 1
+        assert "nonexistent_resume" in doc_errors[0].message
+        assert "row 1" in doc_errors[0].message
+
+    def test_row_documents_no_doc_sheet_warning(self):
+        prompts = [_make_prompt(1, "eval")]
+        result = OrchestratorValidator(
+            prompts,
+            {},
+            doc_ref_names=[],
+            row_doc_refs={0: ["resume_alice"]},
+        ).validate()
+        warnings = [e for e in result.errors if e.code == "ROW_DOCS_NO_SHEET"]
+        assert len(warnings) == 1
+
+    def test_row_documents_empty_refs_skipped(self):
+        prompts = [_make_prompt(1, "eval")]
+        result = OrchestratorValidator(
+            prompts,
+            {},
+            doc_ref_names=["jd"],
+            row_doc_refs={},
+        ).validate()
+        assert not result.has_errors
+
+    def test_row_documents_multiple_invalid(self):
+        prompts = [_make_prompt(1, "eval")]
+        result = OrchestratorValidator(
+            prompts,
+            {},
+            doc_ref_names=["jd"],
+            row_doc_refs={0: ["bad_ref_1", "bad_ref_2"], 2: ["bad_ref_3"]},
+        ).validate()
+        doc_errors = [e for e in result.errors if e.code == "UNKNOWN_ROW_DOCUMENT"]
+        assert len(doc_errors) == 3

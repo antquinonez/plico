@@ -115,7 +115,7 @@ class OrchestratorValidator:
     @staticmethod
     def extract_batch_keys(batch_rows: list[dict[str, Any]]) -> list[str]:
         """Extract unique data keys from batch rows, excluding id/batch_name."""
-        skip = {"id", "batch_name"}
+        skip = {"id", "batch_name", "_documents"}
         keys: list[str] = []
         for row in batch_rows:
             keys.extend(k for k in row if k not in skip and k not in keys)
@@ -132,6 +132,9 @@ class OrchestratorValidator:
         doc_ref_names: list[str] | None = None,
         available_client_types: list[str] | None = None,
         tool_names: list[str] | None = None,
+        row_doc_refs: dict[int, list[str]] | None = None,
+        scoring_criteria: list[dict[str, Any]] | None = None,
+        available_strategies: list[str] | None = None,
     ) -> None:
         self.prompts = prompts
         self.config = config
@@ -141,6 +144,9 @@ class OrchestratorValidator:
         self.doc_ref_names = doc_ref_names or []
         self.available_client_types = available_client_types or []
         self.tool_names = tool_names or []
+        self.row_doc_refs = row_doc_refs or {}
+        self.scoring_criteria = scoring_criteria or []
+        self.available_strategies = available_strategies or []
 
     def validate(self) -> ValidationResult:
         """Run all validation checks and return results."""
@@ -155,6 +161,8 @@ class OrchestratorValidator:
         self._validate_config_values(result)
         self._validate_document_references(result)
         self._validate_batch_variables(result)
+        self._validate_row_documents(result)
+        self._validate_scoring(result)
         self._validate_agent_mode(result)
         if self.manifest_meta is not None:
             self._validate_manifest_metadata(result)
@@ -381,6 +389,96 @@ class OrchestratorValidator:
                         f"Template variable '{{{{{var_name}}}}}' not found in batch data keys",
                         prompt_name=prompt.get("prompt_name"),
                         prompt_sequence=prompt.get("sequence"),
+                    )
+
+    def _validate_scoring(self, result: ValidationResult) -> None:
+        strategy = self.config.get("evaluation_strategy", "").strip()
+        if strategy and self.available_strategies and strategy not in self.available_strategies:
+            result.add_error(
+                "UNKNOWN_EVALUATION_STRATEGY",
+                f"evaluation_strategy '{strategy}' not found. "
+                f"Available: {', '.join(sorted(self.available_strategies))}",
+            )
+
+        if not self.scoring_criteria:
+            return
+
+        prompt_names = {p["prompt_name"] for p in self.prompts if p.get("prompt_name")}
+
+        scale_min: int | None = None
+        scale_max: int | None = None
+        seen_names: set[str] = set()
+
+        for criteria in self.scoring_criteria:
+            name = criteria.get("criteria_name", "")
+            if not name:
+                result.add_error("MISSING_CRITERIA_NAME", "Scoring criteria missing criteria_name")
+                continue
+
+            if name in seen_names:
+                result.add_error(
+                    "DUPLICATE_CRITERIA_NAME",
+                    f"Duplicate criteria_name '{name}' in scoring sheet",
+                )
+            seen_names.add(name)
+
+            source = criteria.get("source_prompt", "")
+            if source and source not in prompt_names:
+                result.add_error(
+                    "INVALID_SCORING_SOURCE",
+                    f"Scoring criteria '{name}' references unknown prompt '{source}'",
+                )
+
+            weight = criteria.get("weight")
+            if weight is not None:
+                try:
+                    w = float(weight)
+                    if w <= 0:
+                        result.add_error(
+                            "INVALID_SCORING_WEIGHT",
+                            f"Scoring criteria '{name}' weight must be > 0, got {w}",
+                        )
+                except (TypeError, ValueError):
+                    result.add_error(
+                        "INVALID_SCORING_WEIGHT",
+                        f"Scoring criteria '{name}' weight is not a number: '{weight}'",
+                    )
+
+            c_min = criteria.get("scale_min")
+            c_max = criteria.get("scale_max")
+            if c_min is not None and c_max is not None:
+                try:
+                    c_min_val = int(c_min)
+                    c_max_val = int(c_max)
+                    if scale_min is None:
+                        scale_min = c_min_val
+                        scale_max = c_max_val
+                    elif scale_min != c_min_val or scale_max != c_max_val:
+                        result.add_error(
+                            "INCONSISTENT_SCORING_SCALE",
+                            f"Scoring criteria '{name}' has scale [{c_min_val}, {c_max_val}], "
+                            f"expected [{scale_min}, {scale_max}] (uniform scale required)",
+                        )
+                except (TypeError, ValueError):
+                    pass
+
+    def _validate_row_documents(self, result: ValidationResult) -> None:
+        if not self.row_doc_refs:
+            return
+        if not self.doc_ref_names:
+            result.add_warning(
+                "ROW_DOCS_NO_SHEET",
+                "_documents column exists in data sheet but no documents sheet found",
+            )
+            return
+        doc_set = set(self.doc_ref_names)
+        for row_id, refs in self.row_doc_refs.items():
+            for ref_name in refs:
+                if ref_name not in doc_set:
+                    result.add_error(
+                        "UNKNOWN_ROW_DOCUMENT",
+                        f"_documents reference '{ref_name}' in data row {row_id} "
+                        f"not found in documents",
                     )
 
     def _validate_agent_mode(self, result: ValidationResult) -> None:

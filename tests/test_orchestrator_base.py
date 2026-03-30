@@ -596,6 +596,9 @@ def _make_base(mock_ffmistralsmall):
     orch.has_documents = False
     orch.tool_registry = None
     orch.has_tools = False
+    orch.has_scoring = False
+    orch.scoring_rubric = None
+    orch.evaluation_strategy = "balanced"
     orch._rag_client = None
     orch._executor = MagicMock()
     return orch
@@ -1272,3 +1275,122 @@ class TestExecuteWithRetryAgentMode:
         assert result["response"] == "single shot response"
         warning_calls = [str(c) for c in mock_logger.warning.call_args_list]
         assert any("no tool registry" in msg for msg in warning_calls)
+
+
+class TestRowDocumentBinding:
+    """Tests for per-row document binding via _documents column (Phase 1)."""
+
+    def test_resolve_prompt_variables_with_documents(self, mock_ffmistralsmall):
+        """Test that _documents from data row are merged into references."""
+        orch = _make_base(mock_ffmistralsmall)
+
+        prompt = {
+            "sequence": 1,
+            "prompt_name": "evaluate",
+            "prompt": "Evaluate {{candidate}}",
+            "references": ["job_description"],
+        }
+        data_row = {"candidate": "Alice", "_documents": '["resume_alice"]'}
+
+        resolved = orch._resolve_prompt_variables(prompt, data_row)
+
+        assert resolved["prompt"] == "Evaluate Alice"
+        assert resolved["references"] == ["job_description", "resume_alice"]
+
+    def test_resolve_prompt_variables_additive_merge(self, mock_ffmistralsmall):
+        """Test additive merge: static references are preserved, _documents appended."""
+        orch = _make_base(mock_ffmistralsmall)
+
+        prompt = {
+            "sequence": 1,
+            "prompt_name": "eval",
+            "prompt": "Go",
+            "references": ["shared_doc", "rubric"],
+        }
+        data_row = {"_documents": '["resume_bob"]'}
+
+        resolved = orch._resolve_prompt_variables(prompt, data_row)
+
+        assert resolved["references"] == ["shared_doc", "rubric", "resume_bob"]
+
+    def test_resolve_prompt_variables_empty_static_refs(self, mock_ffmistralsmall):
+        """Test merge when prompt has no static references."""
+        orch = _make_base(mock_ffmistralsmall)
+
+        prompt = {
+            "sequence": 1,
+            "prompt_name": "eval",
+            "prompt": "Go",
+            "references": None,
+        }
+        data_row = {"_documents": '["resume_alice", "cover_letter_alice"]'}
+
+        resolved = orch._resolve_prompt_variables(prompt, data_row)
+
+        assert resolved["references"] == ["resume_alice", "cover_letter_alice"]
+
+    def test_resolve_prompt_variables_no_documents_column(self, mock_ffmistralsmall):
+        """Test that prompts without _documents are unchanged."""
+        orch = _make_base(mock_ffmistralsmall)
+
+        prompt = {
+            "sequence": 1,
+            "prompt_name": "eval",
+            "prompt": "Go",
+            "references": ["job_description"],
+        }
+        data_row = {"candidate": "Bob"}
+
+        resolved = orch._resolve_prompt_variables(prompt, data_row)
+
+        assert resolved["references"] == ["job_description"]
+
+    def test_resolve_prompt_variables_documents_empty_string(self, mock_ffmistralsmall):
+        """Test that empty _documents string is ignored."""
+        orch = _make_base(mock_ffmistralsmall)
+
+        prompt = {
+            "sequence": 1,
+            "prompt_name": "eval",
+            "prompt": "Go",
+            "references": ["jd"],
+        }
+        data_row = {"_documents": ""}
+
+        resolved = orch._resolve_prompt_variables(prompt, data_row)
+
+        assert resolved["references"] == ["jd"]
+
+    def test_resolve_prompt_variables_does_not_mutate_original(self, mock_ffmistralsmall):
+        """Test that _resolve_prompt_variables does not mutate the original prompt dict."""
+        orch = _make_base(mock_ffmistralsmall)
+
+        prompt = {
+            "sequence": 1,
+            "prompt_name": "eval",
+            "prompt": "Go",
+            "references": ["jd"],
+        }
+        original_refs = list(prompt["references"])
+        data_row = {"_documents": '["resume_alice"]'}
+
+        resolved = orch._resolve_prompt_variables(prompt, data_row)
+
+        assert prompt["references"] == original_refs
+        assert resolved["references"] == ["jd", "resume_alice"]
+
+    def test_resolve_prompt_variables_documents_json_list(self, mock_ffmistralsmall):
+        """Test _documents as a pre-parsed list (from data loading)."""
+        orch = _make_base(mock_ffmistralsmall)
+
+        prompt = {
+            "sequence": 1,
+            "prompt_name": "eval",
+            "prompt": "Go",
+            "references": ["jd"],
+        }
+        data_row = {"_documents": ["resume_alice", "cover_letter"]}
+
+        resolved = orch._resolve_prompt_variables(prompt, data_row)
+
+        assert resolved["references"] == ["jd", "resume_alice", "cover_letter"]
