@@ -301,6 +301,16 @@ class RAGConfig(BaseSettings):
     hierarchical: RAGHierarchicalConfig = Field(default_factory=RAGHierarchicalConfig)
 
 
+class PlanningConfig(BaseSettings):
+    """Planning phase configuration."""
+
+    enabled: bool = True
+    save_artifacts: bool = False
+    generated_sequence_base: str = "auto"
+    generated_sequence_step: int = 10
+    continue_on_parse_error: bool = True
+
+
 class AgentValidationConfig(BaseSettings):
     """Agent response validation configuration."""
 
@@ -466,6 +476,7 @@ class Config(BaseSettings):
     document_processor: DocumentProcessorConfig = Field(default_factory=DocumentProcessorConfig)
     rag: RAGConfig = Field(default_factory=RAGConfig)
     agent: AgentConfig = Field(default_factory=AgentConfig)
+    planning: PlanningConfig = Field(default_factory=PlanningConfig)
     clients: ClientsConfig = Field(default_factory=ClientsConfig)
     evaluation: EvaluationConfig = Field(default_factory=EvaluationConfig)
     model_defaults: ModelDefaultsConfig = Field(default_factory=ModelDefaultsConfig)

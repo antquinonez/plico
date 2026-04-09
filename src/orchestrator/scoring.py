@@ -30,6 +30,7 @@ class ScoringCriteria:
     scale_max: int = 10
     weight: float = 1.0
     source_prompt: str = ""
+    score_type: str = ""
 
 
 def extract_score(response: str, criteria_name: str) -> float | None:

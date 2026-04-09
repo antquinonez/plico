@@ -34,6 +34,7 @@ from ..condition_evaluator import ConditionEvaluator
 from ..document_processor import DocumentProcessor
 from ..document_registry import DocumentRegistry
 from ..executor import Executor
+from ..planning import PlanningArtifactParser
 from ..results import ResultBuilder
 from ..scoring import ScoreAggregator, ScoringRubric
 from ..state import ExecutionState, PromptNode
@@ -133,6 +134,11 @@ class OrchestratorBase(ABC):
         self.synthesis_prompts: list[dict[str, Any]] = []
         self._rag_client: FFRAGClient | None = None
         self._executor = Executor()
+
+        # Planning phase state
+        self.planning_results: list[dict[str, Any]] = []
+        self.has_planning: bool = False
+        self.planning_prompts: list[dict[str, Any]] = []
 
     @property
     @abstractmethod
@@ -354,12 +360,12 @@ class OrchestratorBase(ABC):
         else:
             self.shared_prompt_attr_history.append(interaction)
 
-    def _validate(self) -> None:
-        """Run comprehensive validation on prompts, config, and dependencies.
+    def _build_validator_params(self) -> dict[str, Any]:
+        """Build common parameters for OrchestratorValidator.
 
-        Uses OrchestratorValidator to check prompt structure, dependency DAGs,
-        template references, condition syntax, client assignments, config values,
-        and more. Raises ValueError if any errors are found.
+        Returns:
+            Dict of keyword arguments for OrchestratorValidator.__init__().
+
         """
         client_names = self.client_registry.get_registered_names() if self.client_registry else []
 
@@ -400,21 +406,40 @@ class OrchestratorBase(ABC):
         except Exception:
             pass
 
-        validator = OrchestratorValidator(
-            prompts=self.prompts,
-            config=self.config,
-            manifest_meta=getattr(self, "_manifest_meta", None),
-            client_names=client_names,
-            batch_data_keys=batch_keys,
-            doc_ref_names=doc_refs,
-            available_client_types=available_types,
-            tool_names=tool_names,
-            row_doc_refs=row_docs,
-            scoring_criteria=scoring_criteria,
-            available_strategies=available_strategies,
-            synthesis_prompts=self.synthesis_prompts if self.has_synthesis else None,
-        )
+        return {
+            "prompts": self.prompts,
+            "config": self.config,
+            "manifest_meta": getattr(self, "_manifest_meta", None),
+            "client_names": client_names,
+            "batch_data_keys": batch_keys,
+            "doc_ref_names": doc_refs,
+            "available_client_types": available_types,
+            "tool_names": tool_names,
+            "row_doc_refs": row_docs,
+            "scoring_criteria": scoring_criteria,
+            "available_strategies": available_strategies,
+            "synthesis_prompts": self.synthesis_prompts if self.has_synthesis else None,
+        }
 
+    def _run_validator(
+        self,
+        label: str,
+        **overrides: Any,
+    ) -> None:
+        """Build validator, run checks, and handle results.
+
+        Args:
+            label: Human-readable label for log messages (e.g., "Validation").
+            **overrides: Extra keyword arguments passed to OrchestratorValidator,
+                         overriding values from _build_validator_params().
+
+        Raises:
+            ValueError: If validation finds errors.
+
+        """
+        params = self._build_validator_params()
+        params.update(overrides)
+        validator = OrchestratorValidator(**params)
         result = validator.validate()
 
         for warning in result.errors:
@@ -427,9 +452,18 @@ class OrchestratorBase(ABC):
                     logger.error(str(error))
             result.raise_on_error()
         elif result.warning_count > 0:
-            logger.info(f"Validation passed with {result.warning_count} warning(s)")
+            logger.info(f"{label} passed with {result.warning_count} warning(s)")
         else:
-            logger.info("Validation passed")
+            logger.info(f"{label} passed")
+
+    def _validate(self) -> None:
+        """Run comprehensive validation on prompts, config, and dependencies.
+
+        Uses OrchestratorValidator to check prompt structure, dependency DAGs,
+        template references, condition syntax, client assignments, config values,
+        and more. Raises ValueError if any errors are found.
+        """
+        self._run_validator("Validation")
 
     def _inject_references(self, prompt: dict[str, Any]) -> str:
         """Inject document references or semantic search results into a prompt.
@@ -1242,7 +1276,9 @@ class OrchestratorBase(ABC):
 
         grouped: dict[int, list[dict[str, Any]]] = {}
         for r in self.results:
-            batch_id = r.get("batch_id", 0)
+            batch_id = r.get("batch_id")
+            if batch_id is None:
+                continue  # Skip planning results (batch_id=None)
             if batch_id not in grouped:
                 grouped[batch_id] = []
             grouped[batch_id].append(r)
@@ -1436,6 +1472,250 @@ class OrchestratorBase(ABC):
         self.results.extend(synthesis_results)
         logger.info(f"Synthesis complete: {len(synthesis_results)} prompts executed")
 
+    def _detect_planning_prompts(self) -> None:
+        """Detect and separate planning-phase prompts from execution prompts.
+
+        Called during _load_source() in subclasses after prompts are loaded.
+        Splits self.prompts into self.planning_prompts (phase=planning) and
+        self.prompts (phase=execution only).
+        """
+        planning = [p for p in self.prompts if p.get("phase") == "planning"]
+        if planning:
+            self.has_planning = True
+            self.planning_prompts = sorted(planning, key=lambda x: x.get("sequence", 0))
+            self.prompts = [p for p in self.prompts if p.get("phase") != "planning"]
+            logger.info(
+                f"Planning phase enabled: {len(self.planning_prompts)} planning prompts, "
+                f"{len(self.prompts)} execution prompts"
+            )
+            if not self.is_batch_mode:
+                logger.warning(
+                    "Planning prompts detected but no batch data sheet. "
+                    "Scoring and synthesis will be skipped."
+                )
+
+    def _execute_planning_phase(self) -> None:
+        """Execute planning-phase prompts sequentially before batch execution.
+
+        For generator prompts, parses structured JSON artifacts and injects
+        scoring criteria and/or execution prompts into the pipeline.
+        """
+        logger.info(f"Executing planning phase with {len(self.planning_prompts)} prompts")
+        results_by_name: dict[str, dict[str, Any]] = {}
+        planning_config = get_config().planning
+
+        generator_artifacts: list = []
+        parser = PlanningArtifactParser()
+
+        for prompt in self.planning_prompts:
+            prompt_name = prompt.get("prompt_name", "(unnamed)")
+
+            if self.progress_callback:
+                self.progress_callback(
+                    completed=len(self.planning_results),
+                    total=len(self.planning_prompts),
+                    success=len([r for r in self.planning_results if r.get("status") == "success"]),
+                    failed=len([r for r in self.planning_results if r.get("status") == "failed"]),
+                    current_name=f"[planning] {prompt_name}",
+                )
+
+            result = self._execute_prompt(prompt, results_by_name=results_by_name)
+
+            # Tag as planning result
+            result["result_type"] = "planning"
+            result["batch_id"] = None
+            result["batch_name"] = None
+            self.planning_results.append(result)
+
+            if result.get("prompt_name"):
+                results_by_name[result["prompt_name"]] = result
+
+            # For generator prompts: manually record in shared history with original
+            # prompt_name (FFAI flattens dict responses by key, losing the original name)
+            if prompt.get("generator") and result.get("status") == "success":
+                response = result.get("response", "")
+                with self.history_lock:
+                    self.shared_prompt_attr_history.append(
+                        {
+                            "prompt": prompt.get("prompt", ""),
+                            "response": response,
+                            "prompt_name": prompt.get("prompt_name"),
+                            "timestamp": time.time(),
+                            "model": self.config.get("model"),
+                            "history": prompt.get("history"),
+                        }
+                    )
+
+                # Parse generator artifacts
+                try:
+                    artifact = parser.parse(response, prompt_name)
+                    generator_artifacts.append(artifact)
+                except ValueError as e:
+                    logger.error(f"Planning generator '{prompt_name}' artifact parse failed: {e}")
+                    if not planning_config.continue_on_parse_error:
+                        raise
+
+            logger.info(f"Planning prompt '{prompt_name}' completed: {result.get('status')}")
+
+        # Parse and inject generated artifacts
+        if generator_artifacts:
+            self._parse_generated_artifacts(generator_artifacts, parser, planning_config)
+
+        logger.info(f"Planning phase complete: {len(self.planning_results)} prompts executed")
+
+    def _parse_generated_artifacts(
+        self,
+        artifacts: list,
+        parser: PlanningArtifactParser,
+        planning_config: Any,
+    ) -> None:
+        """Parse, validate, and inject generated artifacts from planning phase.
+
+        Handles:
+        - Merging artifacts from multiple generators
+        - Validating and injecting generated prompts into self.prompts
+        - Auto-deriving scoring rubric if no manual scoring sheet exists
+
+        Args:
+            artifacts: List of GeneratedArtifact instances.
+            parser: PlanningArtifactParser instance.
+            planning_config: PlanningConfig instance.
+
+        """
+        merged_criteria, merged_prompts = parser.merge_artifacts(artifacts)
+
+        # Validate and inject generated prompts
+        if merged_prompts:
+            existing_names = {p["prompt_name"] for p in self.prompts if p.get("prompt_name")}
+            doc_refs: set[str] = set()
+            if self.document_registry:
+                doc_refs = set(self.document_registry.get_reference_names())
+            batch_keys: set[str] = set()
+            if self.is_batch_mode and self.batch_data:
+                batch_keys = set(OrchestratorValidator.extract_batch_keys(self.batch_data))
+
+            prompt_errors = parser.validate_prompts(
+                merged_prompts, existing_names, doc_refs, batch_keys
+            )
+            if prompt_errors:
+                for err in prompt_errors:
+                    logger.error(f"Generated prompt validation error: {err}")
+                if not planning_config.continue_on_parse_error:
+                    raise ValueError(
+                        f"Generated prompt validation failed with {len(prompt_errors)} errors"
+                    )
+                # Filter out prompts with missing required fields
+                merged_prompts = [
+                    p for p in merged_prompts if p.get("prompt_name") and p.get("prompt")
+                ]
+
+            # Assign sequence numbers
+            existing_seqs = {p["sequence"] for p in self.prompts if p.get("sequence")}
+            parser.assign_sequences(
+                merged_prompts,
+                existing_seqs,
+                base=planning_config.generated_sequence_base,
+                step=planning_config.generated_sequence_step,
+            )
+
+            # Tag and inject generated prompts
+            for p in merged_prompts:
+                p["_generated"] = True
+                # Use reversed() so the last generator wins (refinement pattern)
+                p["_generated_by"] = next(
+                    (
+                        a.source
+                        for a in reversed(artifacts)
+                        if any(
+                            gp.get("prompt_name") == p.get("prompt_name")
+                            for gp in a.generated_prompts
+                        )
+                    ),
+                    "",
+                )
+                p.setdefault("phase", "execution")
+                p.setdefault("generator", False)
+                p.setdefault("history", None)
+                p.setdefault("notes", None)
+                p.setdefault("client", None)
+                p.setdefault("condition", None)
+                p.setdefault("agent_mode", False)
+                p.setdefault("tools", None)
+                p.setdefault("max_tool_rounds", None)
+                p.setdefault("validation_prompt", None)
+                p.setdefault("max_validation_retries", None)
+                p.setdefault("semantic_query", None)
+                p.setdefault("semantic_filter", None)
+                p.setdefault("query_expansion", None)
+                p.setdefault("rerank", None)
+
+            self.prompts.extend(merged_prompts)
+            self.prompts.sort(key=lambda x: x.get("sequence", 0))
+            logger.info(f"Injected {len(merged_prompts)} generated prompts into execution pipeline")
+
+        # Auto-derive scoring rubric
+        if merged_criteria:
+            if self.has_scoring:
+                logger.warning(
+                    "Both scoring sheet and generated criteria present. Using scoring sheet."
+                )
+            else:
+                # Validate source_prompt mapping against final prompt list
+                all_prompt_names = {p["prompt_name"] for p in self.prompts if p.get("prompt_name")}
+                criteria_errors = parser.validate_criteria(merged_criteria, all_prompt_names)
+                if criteria_errors:
+                    for err in criteria_errors:
+                        logger.error(f"Generated criteria validation error: {err}")
+
+                # Filter to valid criteria only
+                valid_criteria = [
+                    c
+                    for c in merged_criteria
+                    if c.get("criteria_name")
+                    and (not c.get("source_prompt") or c["source_prompt"] in all_prompt_names)
+                ]
+
+                if valid_criteria:
+                    scoring_criteria_objs = parser.build_scoring_criteria(valid_criteria)
+                    self.scoring_rubric = ScoringRubric(scoring_criteria_objs)
+                    self.has_scoring = True
+                    self.evaluation_strategy = self._resolve_evaluation_strategy()
+                    logger.info(
+                        f"Scoring rubric auto-derived from planning phase with "
+                        f"{len(valid_criteria)} criteria, "
+                        f"strategy='{self.evaluation_strategy}'"
+                    )
+                else:
+                    logger.warning(
+                        "All generated scoring criteria failed validation. "
+                        "Proceeding without scoring."
+                    )
+
+    def _validate_pre_planning(self) -> None:
+        """Run validation checks that can be performed before planning phase.
+
+        Skips scoring source_prompt checks and synthesis source_prompts checks
+        since generated prompts don't exist yet.
+        """
+        self._run_validator(
+            "Pre-planning validation",
+            skip_scoring_source_check=True,
+            skip_synthesis_source_check=True,
+            planning_prompts=self.planning_prompts,
+        )
+
+    def _validate_post_planning(self) -> None:
+        """Run validation checks after planning phase, including generated artifacts.
+
+        Validates scoring source_prompt mappings and synthesis source_prompts
+        now that generated prompts are available.
+        """
+        self._run_validator(
+            "Post-planning validation",
+            skip_scoring_source_check=False,
+            skip_synthesis_source_check=False,
+        )
+
     def run(self) -> str:
         """Initialize, validate, execute prompts, and write results.
 
@@ -1444,8 +1724,15 @@ class OrchestratorBase(ABC):
 
         """
         self._load_source()
-        self._validate()
-        self._init_client()
+
+        if self.has_planning:
+            self._validate_pre_planning()
+            self._init_client()
+            self._execute_planning_phase()
+            self._validate_post_planning()
+        else:
+            self._validate()
+            self._init_client()
 
         if self.is_batch_mode:
             logger.info(f"Running in batch mode with {len(self.batch_data)} batches")

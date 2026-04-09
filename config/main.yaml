@@ -201,6 +201,13 @@ agent:
     enabled: true
     max_retries: 2
 
+planning:
+  enabled: true
+  save_artifacts: false
+  generated_sequence_base: "auto"
+  generated_sequence_step: 10
+  continue_on_parse_error: true
+
 evaluation:
   default_strategy: "balanced"
   scoring_failure_threshold: 0.5

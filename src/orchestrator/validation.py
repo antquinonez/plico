@@ -136,6 +136,9 @@ class OrchestratorValidator:
         scoring_criteria: list[dict[str, Any]] | None = None,
         available_strategies: list[str] | None = None,
         synthesis_prompts: list[dict[str, Any]] | None = None,
+        skip_scoring_source_check: bool = False,
+        skip_synthesis_source_check: bool = False,
+        planning_prompts: list[dict[str, Any]] | None = None,
     ) -> None:
         self.prompts = prompts
         self.config = config
@@ -149,6 +152,9 @@ class OrchestratorValidator:
         self.scoring_criteria = scoring_criteria or []
         self.available_strategies = available_strategies or []
         self.synthesis_prompts = synthesis_prompts or []
+        self.skip_scoring_source_check = skip_scoring_source_check
+        self.skip_synthesis_source_check = skip_synthesis_source_check
+        self.planning_prompts = planning_prompts or []
 
     def validate(self) -> ValidationResult:
         """Run all validation checks and return results."""
@@ -167,6 +173,7 @@ class OrchestratorValidator:
         self._validate_scoring(result)
         self._validate_synthesis(result)
         self._validate_agent_mode(result)
+        self._validate_planning_prompts(result)
         if self.manifest_meta is not None:
             self._validate_manifest_metadata(result)
         return result
@@ -426,7 +433,7 @@ class OrchestratorValidator:
             seen_names.add(name)
 
             source = criteria.get("source_prompt", "")
-            if source and source not in prompt_names:
+            if source and source not in prompt_names and not self.skip_scoring_source_check:
                 result.add_error(
                     "INVALID_SCORING_SOURCE",
                     f"Scoring criteria '{name}' references unknown prompt '{source}'",
@@ -505,7 +512,7 @@ class OrchestratorValidator:
             if isinstance(source_prompts, str):
                 source_prompts = [source_prompts]
             for sp in source_prompts:
-                if sp and sp not in prompt_names:
+                if sp and sp not in prompt_names and not self.skip_synthesis_source_check:
                     result.add_error(
                         "INVALID_SYNTHESIS_SOURCE_PROMPT",
                         f"Synthesis '{name or seq}' source_prompts references "
@@ -523,7 +530,7 @@ class OrchestratorValidator:
                         f"unknown synthesis prompt '{dep}'",
                     )
 
-        if not self.scoring_criteria:
+        if not self.scoring_criteria and not self.skip_scoring_source_check:
             result.add_warning(
                 "SYNTHESIS_WITHOUT_SCORING",
                 "Synthesis prompts defined but no scoring sheet. "
@@ -692,3 +699,53 @@ class OrchestratorValidator:
                 "HAS_DOCS_NO_REGISTRY",
                 "manifest.yaml has has_documents=true but no document references provided for validation",
             )
+
+    def _validate_planning_prompts(self, result: ValidationResult) -> None:
+        """Validate planning-specific prompt constraints.
+
+        Checks:
+        - Planning prompts must not contain {{variable}} that match actual batch data keys
+        - generator=true must only appear on phase=planning prompts
+
+        Note: Planning prompts may legitimately mention {{variable}} syntax as
+        instructions to the LLM (e.g., "use {{candidate_name}} in the prompt").
+        Only flag variables that match actual batch data keys, since those would
+        be unresolvable during the planning phase.
+        """
+        batch_key_set = set(self.batch_data_keys) if self.batch_data_keys else set()
+
+        for prompt in self.planning_prompts:
+            name = prompt.get("prompt_name", "(unnamed)")
+            seq = prompt.get("sequence")
+
+            # Planning prompts cannot use actual batch variables
+            if batch_key_set:
+                prompt_text = prompt.get("prompt", "")
+                if prompt_text:
+                    for match in BATCH_VAR_PATTERN.finditer(prompt_text):
+                        var_name = match.group(1)
+                        if var_name in batch_key_set:
+                            result.add_error(
+                                "PLANNING_HAS_VARIABLES",
+                                f"Planning prompt contains batch variable "
+                                f"'{{{{{var_name}}}}}' (matches data column). "
+                                f"Planning prompts run before batch data is available.",
+                                prompt_name=name,
+                                prompt_sequence=seq,
+                            )
+
+        # Check all prompts (including execution) for generator on wrong phase
+        all_prompts = list(self.prompts) + list(self.planning_prompts)
+        for prompt in all_prompts:
+            name = prompt.get("prompt_name", "(unnamed)")
+            seq = prompt.get("sequence")
+            phase = prompt.get("phase", "execution")
+            generator = prompt.get("generator", False)
+
+            if generator and phase != "planning":
+                result.add_error(
+                    "GENERATOR_ON_EXECUTION_PHASE",
+                    "generator=true is only valid on phase=planning prompts",
+                    prompt_name=name,
+                    prompt_sequence=seq,
+                )

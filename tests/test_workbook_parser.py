@@ -1129,3 +1129,230 @@ class TestWriteResultsRoundTrip:
                 f"Column {col_idx} ({builder.RESULTS_HEADERS[col_idx - 1]}): "
                 f"write_results={main_val!r}, write_batch_results={batch_val!r}"
             )
+
+
+class TestWorkbookParserWriteScoresPivot:
+    """Tests for write_scores_pivot method."""
+
+    def test_pivot_created_with_normalized_score_criteria(self, temp_workbook_with_data):
+        from src.orchestrator.workbook_parser import WorkbookParser
+
+        builder = WorkbookParser(temp_workbook_with_data)
+
+        results = [
+            {
+                "batch_id": 1,
+                "batch_name": "alice_chen",
+                "sequence": 1,
+                "prompt_name": "eval",
+                "prompt": "Evaluate",
+                "response": '{"skills_match": 8}',
+                "status": "success",
+                "attempts": 1,
+                "scores": {"skills_match": 8.0, "education": 7.0},
+                "composite_score": 7.5,
+                "scoring_status": "ok",
+            },
+            {
+                "batch_id": 2,
+                "batch_name": "bob_martinez",
+                "sequence": 1,
+                "prompt_name": "eval",
+                "prompt": "Evaluate",
+                "response": '{"skills_match": 5}',
+                "status": "success",
+                "attempts": 1,
+                "scores": {"skills_match": 5.0, "education": 6.0},
+                "composite_score": 5.5,
+                "scoring_status": "ok",
+            },
+        ]
+
+        scoring_criteria = [
+            {
+                "criteria_name": "skills_match",
+                "description": "Skills alignment",
+                "scale_min": 1,
+                "scale_max": 10,
+                "weight": 1.0,
+                "source_prompt": "eval",
+                "score_type": "normalized_score",
+            },
+            {
+                "criteria_name": "education",
+                "description": "Education quality",
+                "scale_min": 1,
+                "scale_max": 10,
+                "weight": 0.8,
+                "source_prompt": "eval",
+                "score_type": "normalized_score",
+            },
+        ]
+
+        sheet_name = builder.write_scores_pivot(results, scoring_criteria)
+
+        assert sheet_name is not None
+        wb = load_workbook(temp_workbook_with_data)
+        assert sheet_name in wb.sheetnames
+
+        ws = wb[sheet_name]
+        headers = [cell.value for cell in ws[1]]
+        assert headers == [
+            "batch_name",
+            "criteria_name",
+            "normalized_score",
+            "scale_min",
+            "scale_max",
+            "description",
+        ]
+
+        assert ws.max_row == 5
+
+        rows_data = []
+        for row in range(2, ws.max_row + 1):
+            rows_data.append(
+                {
+                    "batch_name": ws.cell(row=row, column=1).value,
+                    "criteria_name": ws.cell(row=row, column=2).value,
+                    "normalized_score": ws.cell(row=row, column=3).value,
+                }
+            )
+
+        assert rows_data[0]["batch_name"] == "alice_chen"
+        assert rows_data[0]["criteria_name"] == "skills_match"
+        assert rows_data[0]["normalized_score"] == 8.0
+        assert rows_data[1]["batch_name"] == "alice_chen"
+        assert rows_data[1]["criteria_name"] == "education"
+        assert rows_data[1]["normalized_score"] == 7.0
+        assert rows_data[2]["batch_name"] == "bob_martinez"
+        assert rows_data[2]["normalized_score"] == 5.0
+
+    def test_pivot_returns_none_when_no_normalized_criteria(self, temp_workbook_with_data):
+        from src.orchestrator.workbook_parser import WorkbookParser
+
+        builder = WorkbookParser(temp_workbook_with_data)
+
+        results = [
+            {
+                "batch_name": "alice",
+                "scores": {"skills_match": 8.0},
+            }
+        ]
+
+        scoring_criteria = [
+            {
+                "criteria_name": "skills_match",
+                "description": "Skills",
+                "scale_min": 1,
+                "scale_max": 10,
+                "weight": 1.0,
+                "source_prompt": "eval",
+                "score_type": "",
+            },
+        ]
+
+        result = builder.write_scores_pivot(results, scoring_criteria)
+        assert result is None
+
+    def test_pivot_returns_none_when_no_eligible_scores(self, temp_workbook_with_data):
+        from src.orchestrator.workbook_parser import WorkbookParser
+
+        builder = WorkbookParser(temp_workbook_with_data)
+
+        results = [
+            {
+                "batch_name": "alice",
+                "scores": {},
+            }
+        ]
+
+        scoring_criteria = [
+            {
+                "criteria_name": "skills_match",
+                "description": "Skills",
+                "scale_min": 1,
+                "scale_max": 10,
+                "weight": 1.0,
+                "source_prompt": "eval",
+                "score_type": "normalized_score",
+            },
+        ]
+
+        result = builder.write_scores_pivot(results, scoring_criteria)
+        assert result is None
+
+    def test_pivot_excludes_non_normalized_criteria(self, temp_workbook_with_data):
+        from src.orchestrator.workbook_parser import WorkbookParser
+
+        builder = WorkbookParser(temp_workbook_with_data)
+
+        results = [
+            {
+                "batch_name": "alice",
+                "scores": {"skills_match": 8.0, "raw_years": 12.0},
+            }
+        ]
+
+        scoring_criteria = [
+            {
+                "criteria_name": "skills_match",
+                "description": "Skills",
+                "scale_min": 1,
+                "scale_max": 10,
+                "weight": 1.0,
+                "source_prompt": "eval",
+                "score_type": "normalized_score",
+            },
+            {
+                "criteria_name": "raw_years",
+                "description": "Years of experience",
+                "scale_min": 0,
+                "scale_max": 30,
+                "weight": 0.5,
+                "source_prompt": "eval",
+                "score_type": "",
+            },
+        ]
+
+        sheet_name = builder.write_scores_pivot(results, scoring_criteria)
+        assert sheet_name is not None
+
+        wb = load_workbook(temp_workbook_with_data)
+        ws = wb[sheet_name]
+        assert ws.max_row == 2
+        assert ws.cell(row=2, column=2).value == "skills_match"
+
+    def test_pivot_deduplicates_per_batch(self, temp_workbook_with_data):
+        from src.orchestrator.workbook_parser import WorkbookParser
+
+        builder = WorkbookParser(temp_workbook_with_data)
+
+        results = [
+            {
+                "batch_name": "alice",
+                "scores": {"skills_match": 8.0},
+            },
+            {
+                "batch_name": "alice",
+                "scores": {"skills_match": 8.0},
+            },
+        ]
+
+        scoring_criteria = [
+            {
+                "criteria_name": "skills_match",
+                "description": "Skills",
+                "scale_min": 1,
+                "scale_max": 10,
+                "weight": 1.0,
+                "source_prompt": "eval",
+                "score_type": "normalized_score",
+            },
+        ]
+
+        sheet_name = builder.write_scores_pivot(results, scoring_criteria)
+        assert sheet_name is not None
+
+        wb = load_workbook(temp_workbook_with_data)
+        ws = wb[sheet_name]
+        assert ws.max_row == 2

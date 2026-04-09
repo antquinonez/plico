@@ -257,6 +257,18 @@ class ResultBuilder:
         self._result.strategy = strategy
         return self
 
+    def as_planning(self) -> ResultBuilder:
+        """Mark this result as a planning phase result.
+
+        Returns:
+            Self for chaining.
+
+        """
+        self._result.result_type = "planning"
+        self._result.batch_id = None
+        self._result.batch_name = None
+        return self
+
     def as_synthesis(self) -> ResultBuilder:
         """Mark this result as a synthesis result.
 

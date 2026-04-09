@@ -205,6 +205,8 @@ class WorkbookParser:
         "max_tool_rounds",
         "validation_prompt",
         "max_validation_retries",
+        "phase",
+        "generator",
     ]
     REQUIRED_PROMPTS_HEADERS = ["sequence", "prompt_name", "prompt", "history"]
     DOCUMENTS_HEADERS = [
@@ -272,6 +274,7 @@ class WorkbookParser:
         "scale_max",
         "weight",
         "source_prompt",
+        "score_type",
     ]
 
     SYNTHESIS_HEADERS = [
@@ -627,6 +630,13 @@ class WorkbookParser:
                 "max_validation_retries": int(row_dict["max_validation_retries"])
                 if row_dict.get("max_validation_retries")
                 else None,
+                "phase": str(row_dict.get("phase", "")).strip().lower()
+                if row_dict.get("phase")
+                else "execution",
+                "generator": str(row_dict.get("generator", "")).strip().lower()
+                in ("true", "1", "yes")
+                if row_dict.get("generator")
+                else False,
             }
 
             if prompt_data["sequence"] and prompt_data["prompt"]:
@@ -886,6 +896,7 @@ class WorkbookParser:
                         "scale_max": int(scale_max),
                         "weight": float(weight),
                         "source_prompt": str(row_data.get("source_prompt", "")).strip(),
+                        "score_type": str(row_data.get("score_type", "")).strip(),
                     }
                 )
 
@@ -1067,4 +1078,90 @@ class WorkbookParser:
 
         wb.save(self.workbook_path)
         logger.info(f"Batch results written to sheet: {sheet_name}")
+        return sheet_name
+
+    PIVOT_HEADERS = [
+        "batch_name",
+        "criteria_name",
+        "normalized_score",
+        "scale_min",
+        "scale_max",
+        "description",
+    ]
+
+    def write_scores_pivot(
+        self,
+        results: list[dict[str, Any]],
+        scoring_criteria: list[dict[str, Any]],
+        sheet_name: str = "scores_pivot",
+    ) -> str | None:
+        """Write a flattened pivot sheet for heatmap-eligible scores.
+
+        Only criteria with score_type='normalized_score' are included.
+        Each row contains one (batch_name, criteria_name) pair with the
+        extracted numeric score, scale bounds, and human description.
+
+        Args:
+            results: List of result dictionaries (must include batch_name, scores).
+            scoring_criteria: List of scoring criteria dicts (from load_scoring).
+            sheet_name: Name for the pivot worksheet.
+
+        Returns:
+            Name of the pivot sheet created, or None if no pivot-eligible criteria exist.
+
+        """
+        pivot_criteria = [c for c in scoring_criteria if c.get("score_type") == "normalized_score"]
+        if not pivot_criteria:
+            return None
+
+        criteria_map = {c["criteria_name"]: c for c in pivot_criteria}
+
+        rows: list[dict[str, Any]] = []
+        seen = set()
+        for r in results:
+            batch_name = r.get("batch_name")
+            scores = r.get("scores")
+            if not batch_name or not isinstance(scores, dict):
+                continue
+            for criteria_name, value in scores.items():
+                if criteria_name not in criteria_map:
+                    continue
+                key = (batch_name, criteria_name)
+                if key in seen:
+                    continue
+                seen.add(key)
+                crit = criteria_map[criteria_name]
+                rows.append(
+                    {
+                        "batch_name": batch_name,
+                        "criteria_name": criteria_name,
+                        "normalized_score": value if isinstance(value, int | float) else "",
+                        "scale_min": crit.get("scale_min", 1),
+                        "scale_max": crit.get("scale_max", 10),
+                        "description": crit.get("description", ""),
+                    }
+                )
+
+        if not rows:
+            return None
+
+        wb = load_workbook(self.workbook_path)
+
+        if sheet_name in wb.sheetnames:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S_%f")
+            sheet_name = f"scores_pivot_{timestamp}"
+
+        ws = wb.create_sheet(title=sheet_name)
+
+        for col_idx, header in enumerate(self.PIVOT_HEADERS, start=1):
+            ws.cell(row=1, column=col_idx, value=header)
+
+        for row_idx, row_data in enumerate(rows, start=2):
+            for col_idx, header in enumerate(self.PIVOT_HEADERS, start=1):
+                ws.cell(row=row_idx, column=col_idx, value=row_data.get(header, ""))
+
+        self.formatter.apply_formatting(ws, "scoring")
+
+        wb.save(self.workbook_path)
+        logger.info(f"Scores pivot written to sheet: {sheet_name} ({len(rows)} rows)")
         return sheet_name

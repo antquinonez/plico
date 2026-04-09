@@ -91,6 +91,8 @@ class WorkbookManifestExporter:
         manifest_name_value = config.get("name", workbook_name)
         manifest_description = config.get("description", "")
 
+        has_planning = any(p.get("phase", "execution") == "planning" for p in prompts)
+
         self._write_manifest_yaml(
             manifest_path,
             name=manifest_name_value,
@@ -101,6 +103,7 @@ class WorkbookManifestExporter:
             has_tools=len(tools) > 0,
             has_scoring=len(scoring) > 0,
             has_synthesis=len(synthesis) > 0,
+            has_planning=has_planning,
             prompt_count=len(prompts),
         )
         self._write_config_yaml(manifest_path, config)
@@ -132,6 +135,7 @@ class WorkbookManifestExporter:
         has_tools: bool = False,
         has_scoring: bool = False,
         has_synthesis: bool = False,
+        has_planning: bool = False,
         prompt_count: int = 0,
     ) -> None:
         """Write the main manifest metadata file."""
@@ -147,6 +151,7 @@ class WorkbookManifestExporter:
             "has_tools": has_tools,
             "has_scoring": has_scoring,
             "has_synthesis": has_synthesis,
+            "has_planning": has_planning,
             "prompt_count": prompt_count,
         }
 
@@ -186,6 +191,12 @@ class WorkbookManifestExporter:
                     prompt_entry["validation_prompt"] = prompt.get("validation_prompt")
                 if prompt.get("max_validation_retries"):
                     prompt_entry["max_validation_retries"] = prompt.get("max_validation_retries")
+
+            # Planning phase fields — always include phase to preserve round-trip
+            prompt_entry["phase"] = prompt.get("phase", "execution")
+            if prompt.get("generator"):
+                prompt_entry["generator"] = True
+
             prompts_data["prompts"].append(prompt_entry)
 
         with open(manifest_path / "prompts.yaml", "w", encoding="utf-8") as f:
@@ -432,6 +443,9 @@ class ManifestOrchestrator(OrchestratorBase):
                 self.synthesis_prompts = synthesis_data
                 self.has_synthesis = True
                 logger.info(f"Synthesis enabled with {len(synthesis_data)} prompts")
+
+        # Detect and separate planning-phase prompts
+        self._detect_planning_prompts()
 
         logger.info(
             f"Manifest loaded: {len(self.prompts)} prompts, batch_mode={self.is_batch_mode}"
