@@ -227,6 +227,27 @@ class TestScoreAggregator:
         assert result["scoring_status"] == "failed"
         assert result["composite_score"] is None
 
+    def test_aggregate_entry_partial_with_majority_succeeded(self):
+        criteria = [
+            _make_criteria(criteria_name="a", source_prompt="p1"),
+            _make_criteria(criteria_name="b", source_prompt="p2"),
+            _make_criteria(criteria_name="c", source_prompt="p3"),
+            _make_criteria(criteria_name="d", source_prompt="p4"),
+            _make_criteria(criteria_name="e", source_prompt="p5"),
+        ]
+        rubric = ScoringRubric(criteria)
+        agg = ScoreAggregator(rubric, "balanced", failure_threshold=0.5)
+        results = {
+            "p1": {"response": '{"a": 8}', "status": "success"},
+            "p2": {"response": "no json", "status": "success"},
+            "p3": {"response": '{"c": 6}', "status": "success"},
+            "p4": {"response": "no json", "status": "success"},
+            "p5": {"response": '{"e": 4}', "status": "success"},
+        }
+        result = agg.aggregate_entry(results)
+        assert result["scoring_status"] == "partial"
+        assert result["composite_score"] == pytest.approx(6.0)
+
     def test_aggregate_entry_skipped(self):
         criteria = [
             _make_criteria(criteria_name="a", source_prompt="p1"),

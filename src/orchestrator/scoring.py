@@ -212,14 +212,15 @@ class ScoreAggregator:
                 "strategy": self.strategy,
             }
 
-        ratio = len(failed) / len(extracted) if extracted else 0.0
+        total_attempted = len(extracted) + len(failed)
+        ratio = len(failed) / total_attempted if total_attempted else 0.0
 
         if ratio == 0:
             scoring_status = "ok"
         elif ratio > self.failure_threshold:
             logger.error(
                 f"Scoring failed for batch '{batch_name}': "
-                f"{len(failed)}/{len(extracted)} criteria missing"
+                f"{len(failed)}/{total_attempted} criteria missing"
             )
             return {
                 "scores": extracted,
