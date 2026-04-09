@@ -424,6 +424,7 @@ class ManifestOrchestrator(OrchestratorBase):
                         scale_max=c["scale_max"],
                         weight=c["weight"],
                         source_prompt=c["source_prompt"],
+                        score_type=c.get("score_type", ""),
                     )
                     for c in scoring_data
                 ]
