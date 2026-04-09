@@ -24,7 +24,7 @@ from .workbook_formatter import WorkbookFormatter
 
 logger = logging.getLogger(__name__)
 
-JSON_SERIALIZE_COLUMNS = frozenset({"history", "references", "tool_calls"})
+JSON_SERIALIZE_COLUMNS = frozenset({"history", "references", "tool_calls", "scores"})
 
 
 def _serialize_result_value(header: str, value: Any) -> Any:
