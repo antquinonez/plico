@@ -34,6 +34,8 @@ class PromptSpec:
         semantic_filter: JSON metadata filter for RAG (optional)
         query_expansion: Enable query expansion (optional)
         rerank: Enable result reranking (optional)
+        phase: "planning" or "execution" (default: execution)
+        generator: "true" if this planning prompt returns structured artifacts
 
     """
 
@@ -54,6 +56,8 @@ class PromptSpec:
     max_tool_rounds: int | None = None
     validation_prompt: str | None = None
     max_validation_retries: int | None = None
+    phase: str | None = None
+    generator: str | None = None
 
     def to_row(
         self,
@@ -78,6 +82,8 @@ class PromptSpec:
             "max_tool_rounds": self.max_tool_rounds or "",
             "validation_prompt": self.validation_prompt or "",
             "max_validation_retries": self.max_validation_retries or "",
+            "phase": self.phase or "",
+            "generator": self.generator or "",
         }
         if extra_columns:
             row.update(extra_columns)
@@ -155,6 +161,8 @@ DEFAULT_PROMPT_HEADERS = [
     "max_tool_rounds",
     "validation_prompt",
     "max_validation_retries",
+    "phase",
+    "generator",
 ]
 
 DEFAULT_PROMPT_COLUMN_WIDTHS = {
@@ -175,6 +183,8 @@ DEFAULT_PROMPT_COLUMN_WIDTHS = {
     "O": 18,
     "P": 18,
     "Q": 20,
+    "R": 12,
+    "S": 12,
 }
 
 DEFAULT_CONFIG_COLUMN_WIDTHS = {
@@ -232,6 +242,7 @@ DEFAULT_SCORING_HEADERS = [
     "scale_max",
     "weight",
     "source_prompt",
+    "score_type",
 ]
 
 DEFAULT_SYNTHESIS_HEADERS = [

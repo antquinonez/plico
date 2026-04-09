@@ -219,6 +219,7 @@ def get_scoring_criteria() -> list[dict]:
             "scale_max": 10,
             "weight": 1.0,
             "source_prompt": "evaluate_skills",
+            "score_type": "normalized_score",
         },
         {
             "criteria_name": "education",
@@ -227,6 +228,7 @@ def get_scoring_criteria() -> list[dict]:
             "scale_max": 10,
             "weight": 0.8,
             "source_prompt": "evaluate_education",
+            "score_type": "normalized_score",
         },
         {
             "criteria_name": "experience_depth",
@@ -235,6 +237,7 @@ def get_scoring_criteria() -> list[dict]:
             "scale_max": 10,
             "weight": 1.0,
             "source_prompt": "evaluate_experience",
+            "score_type": "normalized_score",
         },
         {
             "criteria_name": "employer_prestige",
@@ -243,6 +246,7 @@ def get_scoring_criteria() -> list[dict]:
             "scale_max": 10,
             "weight": 0.7,
             "source_prompt": "evaluate_employers",
+            "score_type": "normalized_score",
         },
         {
             "criteria_name": "growth_trajectory",
@@ -251,6 +255,7 @@ def get_scoring_criteria() -> list[dict]:
             "scale_max": 10,
             "weight": 0.5,
             "source_prompt": "evaluate_growth",
+            "score_type": "normalized_score",
         },
     ]
 
