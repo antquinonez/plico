@@ -124,6 +124,39 @@ class TestParse:
         artifact = parser.parse(response, "gen")
         assert artifact.generated_prompts == []
 
+    def test_parse_string_entries_in_prompts_filtered(self, parser, caplog):
+        """Test that non-dict entries in prompts array are dropped."""
+        response = json.dumps(
+            {
+                "scoring_criteria": [],
+                "prompts": [
+                    "just a string",
+                    {"prompt_name": "valid", "prompt": "test"},
+                    42,
+                ],
+            }
+        )
+        artifact = parser.parse(response, "gen")
+        assert len(artifact.generated_prompts) == 1
+        assert artifact.generated_prompts[0]["prompt_name"] == "valid"
+        assert "non-dict prompts" in caplog.text
+
+    def test_parse_string_entries_in_criteria_filtered(self, parser, caplog):
+        """Test that non-dict entries in scoring_criteria array are dropped."""
+        response = json.dumps(
+            {
+                "scoring_criteria": [
+                    "bad",
+                    {"criteria_name": "good", "description": "valid"},
+                ],
+                "prompts": [],
+            }
+        )
+        artifact = parser.parse(response, "gen")
+        assert len(artifact.scoring_criteria) == 1
+        assert artifact.scoring_criteria[0]["criteria_name"] == "good"
+        assert "non-dict scoring_criteria" in caplog.text
+
 
 class TestMergeArtifacts:
     """Tests for PlanningArtifactParser.merge_artifacts()."""

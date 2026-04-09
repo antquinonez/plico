@@ -99,11 +99,27 @@ class PlanningArtifactParser:
         if not isinstance(scoring_criteria, list):
             logger.warning(f"Generator '{source_name}' scoring_criteria is not a list, ignoring")
             scoring_criteria = []
+        else:
+            before = len(scoring_criteria)
+            scoring_criteria = [c for c in scoring_criteria if isinstance(c, dict)]
+            if len(scoring_criteria) < before:
+                logger.warning(
+                    f"Generator '{source_name}' dropped {before - len(scoring_criteria)} "
+                    f"non-dict scoring_criteria entries"
+                )
 
         generated_prompts = data.get("prompts", [])
         if not isinstance(generated_prompts, list):
             logger.warning(f"Generator '{source_name}' prompts is not a list, ignoring")
             generated_prompts = []
+        else:
+            before = len(generated_prompts)
+            generated_prompts = [p for p in generated_prompts if isinstance(p, dict)]
+            if len(generated_prompts) < before:
+                logger.warning(
+                    f"Generator '{source_name}' dropped {before - len(generated_prompts)} "
+                    f"non-dict prompts entries"
+                )
 
         logger.info(
             f"Generator '{source_name}' produced "
@@ -137,6 +153,8 @@ class PlanningArtifactParser:
 
         for artifact in artifacts:
             for criteria in artifact.scoring_criteria:
+                if not isinstance(criteria, dict):
+                    continue
                 name = criteria.get("criteria_name", "")
                 if name in criteria_by_name:
                     logger.warning(
@@ -146,6 +164,8 @@ class PlanningArtifactParser:
                 criteria_by_name[name] = criteria
 
             for prompt in artifact.generated_prompts:
+                if not isinstance(prompt, dict):
+                    continue
                 name = prompt.get("prompt_name", "")
                 if name in prompts_by_name:
                     logger.warning(
