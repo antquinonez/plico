@@ -114,6 +114,7 @@ src/
 │   ├── document_registry.py   # Document reference management
 │   ├── document_processor.py  # Document loading and caching
 │   ├── discovery.py           # Auto-discovery of documents for evaluation
+│   ├── planning.py            # Planning phase artifact parsing and validation
 │   ├── scoring.py             # Scoring rubric extraction and aggregation
 │   ├── synthesis.py           # Cross-row synthesis for ranking/comparison
 │   ├── tool_registry.py       # Tool registration and execution for agent mode
@@ -172,6 +173,8 @@ tests/
 ├── test_document_processor.py # Document processor tests
 ├── test_document_registry.py  # Document registry tests
 ├── test_scoring.py            # Scoring rubric and aggregation tests
+├── test_planning.py           # Planning phase orchestrator tests
+├── test_planning_artifact_parser.py  # Planning artifact parser unit tests
 ├── test_synthesis.py          # Cross-row synthesis tests
 ├── test_discovery.py          # Auto-discovery utility tests
 ├── test_rag.py                # RAG client tests
@@ -496,6 +499,56 @@ agent:
   continue_on_tool_error: true
 ```
 
+## Planning Phase (Dynamic Prompt Generation)
+
+The planning phase enables the orchestrator to derive scoring criteria and evaluation prompts from documents (e.g., a job description) via LLM calls, eliminating the need for a manual scoring worksheet. Planning prompts run in a dedicated phase before batch execution.
+
+### Prompts Sheet: Planning Columns
+
+| Column | Values | Description |
+|--------|--------|-------------|
+| `phase` | `planning` or `execution` (default) | Controls when the prompt runs |
+| `generator` | `true` or `false` (default) | Whether the prompt returns structured JSON artifacts |
+
+### Generator Response Schema
+
+Generator prompts (`generator=true`) return JSON with optional `scoring_criteria` and `prompts` arrays:
+
+```json
+{
+  "scoring_criteria": [
+    {"criteria_name": "skills_match", "description": "...", "scale_min": 1, "scale_max": 10, "weight": 1.0, "source_prompt": "evaluate_skills"}
+  ],
+  "prompts": [
+    {"prompt_name": "evaluate_skills", "prompt": "Evaluate {{candidate_name}}'s skills.", "references": ["job_desc"]}
+  ]
+}
+```
+
+### Phase Rules
+
+- Planning prompts execute **sequentially** (never parallel), regardless of concurrency.
+- Planning prompts **cannot** use `{{variable}}` batch references (validated as error).
+- Planning prompts **can** use `references` for document injection and `history` for chaining.
+- Execution prompts **can** use `{{planning_prompt.response}}` to interpolate planning results.
+- If a manual scoring sheet exists, it takes priority over auto-derived criteria (logged as warning).
+- Generated prompts are tagged with `_generated: true` and assigned sequence numbers automatically.
+
+### History Compatibility Note
+
+Generator prompts return JSON which FFAI flattens by key into `shared_prompt_attr_history`. The orchestrator manually appends a history entry with the original `prompt_name` for each generator prompt, enabling `{{generator_name.response}}` interpolation in downstream prompts.
+
+### Configuration (config/main.yaml)
+
+```yaml
+planning:
+  enabled: true
+  save_artifacts: false
+  generated_sequence_base: "auto"
+  generated_sequence_step: 10
+  continue_on_parse_error: true
+```
+
 ## Evaluation Module (Scoring and Synthesis)
 
 The evaluation module enables structured document evaluation workflows: score extraction, weighted aggregation, and cross-row comparison/ranking.
@@ -547,7 +600,7 @@ Strategy-based weight overrides are configured in `config/main.yaml` under `eval
 | `composite_score` | Float | Weighted average |
 | `scoring_status` | String | `ok`, `partial`, `failed`, or `skipped` |
 | `strategy` | String | Strategy name used |
-| `result_type` | String | `batch` or `synthesis` |
+| `result_type` | String | `batch`, `synthesis`, or `planning` |
 
 ### Auto-Discovery Utility
 
@@ -556,10 +609,26 @@ Strategy-based weight overrides are configured in `config/main.yaml` under `eval
 ### Execution Order
 
 ```
-run() → _load_source() → _validate() → _init_client() → batch execution
-       → _aggregate_scores() (if scoring) → _execute_synthesis() (if synthesis)
-       → _write_results()
+run() → _load_source() → _validate_pre_planning() → _init_client()
+
+─── Planning Phase (if has_planning) ──────────────
+_execute_planning_phase()
+  ├── Execute planning prompts sequentially
+  ├── Parse generator artifacts (scoring_criteria, prompts)
+  ├── Inject generated prompts into self.prompts
+  ├── Auto-derive ScoringRubric (if no manual scoring sheet)
+  └── _validate_post_planning()
+
+─── Execution Phase ───────────────────────────────
+batch execution (or sequential/parallel)
+  → All execution-phase prompts (static + generated)
+
+─── Post-Execution ────────────────────────────────
+_aggregate_scores() → _execute_synthesis() → _write_results()
 ```
+
+When no planning prompts exist, the flow is the same as before:
+`run() → _load_source() → _validate() → _init_client() → execution → results`
 
 ## Manifest Workflow
 
@@ -725,6 +794,7 @@ When creating a new workbook type:
 | Max | Combined features | Batch + conditional + multi-client in one workbook |
 | Agent | Agentic tool-call loop | Opt-in agent mode with built-in tools, multi-round execution |
 | Screening | Document evaluation pipeline | Per-row documents, scoring rubric, synthesis ranking |
+| Screening v002 | Planning phase screening | Auto-derived scoring from LLM, generator prompts, refinement pattern |
 
 ### Workflow
 
