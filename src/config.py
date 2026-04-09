@@ -120,6 +120,8 @@ class WorkbookSheetNamesConfig(BaseSettings):
     clients: str = "clients"
     documents: str = "documents"
     tools: str = "tools"
+    scoring: str = "scoring"
+    synthesis: str = "synthesis"
 
 
 class WorkbookDefaultsConfig(BaseSettings):
@@ -299,6 +301,16 @@ class RAGConfig(BaseSettings):
     hierarchical: RAGHierarchicalConfig = Field(default_factory=RAGHierarchicalConfig)
 
 
+class PlanningConfig(BaseSettings):
+    """Planning phase configuration."""
+
+    enabled: bool = True
+    save_artifacts: bool = False
+    generated_sequence_base: str = "auto"
+    generated_sequence_step: int = 10
+    continue_on_parse_error: bool = True
+
+
 class AgentValidationConfig(BaseSettings):
     """Agent response validation configuration."""
 
@@ -368,6 +380,24 @@ class ClientsConfig(BaseSettings):
         return list(self.client_types.keys())
 
 
+class StrategyConfig(BaseSettings):
+    """Configuration for an evaluation strategy."""
+
+    description: str = ""
+    criteria_overrides: dict[str, float] = Field(default_factory=dict)
+
+
+class EvaluationConfig(BaseSettings):
+    """Evaluation (scoring/synthesis) configuration."""
+
+    default_strategy: str = "balanced"
+    scoring_failure_threshold: float = 0.5
+    max_synthesis_context_chars: int = 30000
+    strategies: dict[str, StrategyConfig] = Field(default_factory=dict)
+
+    model_config = SettingsConfigDict(extra="ignore")
+
+
 class ModelDefaultsGenericConfig(BaseSettings):
     """Generic model defaults."""
 
@@ -399,6 +429,7 @@ class SampleWorkbookPathsConfig(BaseSettings):
     batch: str = "./sample_workbook_batch.xlsx"
     max: str = "./sample_workbook_max.xlsx"
     agent: str = "./sample_workbook_agent.xlsx"
+    screening: str = "./sample_workbook_screening.xlsx"
 
 
 class SampleClientConfig(BaseSettings):
@@ -445,7 +476,9 @@ class Config(BaseSettings):
     document_processor: DocumentProcessorConfig = Field(default_factory=DocumentProcessorConfig)
     rag: RAGConfig = Field(default_factory=RAGConfig)
     agent: AgentConfig = Field(default_factory=AgentConfig)
+    planning: PlanningConfig = Field(default_factory=PlanningConfig)
     clients: ClientsConfig = Field(default_factory=ClientsConfig)
+    evaluation: EvaluationConfig = Field(default_factory=EvaluationConfig)
     model_defaults: ModelDefaultsConfig = Field(default_factory=ModelDefaultsConfig)
     sample: SampleConfig = Field(default_factory=SampleConfig)
 

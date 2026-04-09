@@ -11,6 +11,8 @@ workbook:
     clients: "clients"
     documents: "documents"
     tools: "tools"
+    scoring: "scoring"
+    synthesis: "synthesis"
   defaults:
     model: "mistral-small-2503"
     api_key_env: "MISTRALSMALL_KEY"
@@ -198,6 +200,33 @@ agent:
   validation:
     enabled: true
     max_retries: 2
+
+planning:
+  enabled: true
+  save_artifacts: false
+  generated_sequence_base: "auto"
+  generated_sequence_step: 10
+  continue_on_parse_error: true
+
+evaluation:
+  default_strategy: "balanced"
+  scoring_failure_threshold: 0.5
+  max_synthesis_context_chars: 30000
+  strategies:
+    potential:
+      description: "Hire for promise and growth trajectory"
+      criteria_overrides:
+        education: 2.0
+        growth_trajectory: 3.0
+        experience_depth: 0.5
+    experience:
+      description: "Hire for proven track record"
+      criteria_overrides:
+        experience_depth: 2.5
+        employer_prestige: 2.0
+        education: 0.5
+    balanced:
+      description: "Equal weighting across all criteria"
 
 retry:
   max_attempts: 3

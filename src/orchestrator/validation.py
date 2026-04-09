@@ -115,7 +115,7 @@ class OrchestratorValidator:
     @staticmethod
     def extract_batch_keys(batch_rows: list[dict[str, Any]]) -> list[str]:
         """Extract unique data keys from batch rows, excluding id/batch_name."""
-        skip = {"id", "batch_name"}
+        skip = {"id", "batch_name", "_documents"}
         keys: list[str] = []
         for row in batch_rows:
             keys.extend(k for k in row if k not in skip and k not in keys)
@@ -132,6 +132,13 @@ class OrchestratorValidator:
         doc_ref_names: list[str] | None = None,
         available_client_types: list[str] | None = None,
         tool_names: list[str] | None = None,
+        row_doc_refs: dict[int, list[str]] | None = None,
+        scoring_criteria: list[dict[str, Any]] | None = None,
+        available_strategies: list[str] | None = None,
+        synthesis_prompts: list[dict[str, Any]] | None = None,
+        skip_scoring_source_check: bool = False,
+        skip_synthesis_source_check: bool = False,
+        planning_prompts: list[dict[str, Any]] | None = None,
     ) -> None:
         self.prompts = prompts
         self.config = config
@@ -141,6 +148,13 @@ class OrchestratorValidator:
         self.doc_ref_names = doc_ref_names or []
         self.available_client_types = available_client_types or []
         self.tool_names = tool_names or []
+        self.row_doc_refs = row_doc_refs or {}
+        self.scoring_criteria = scoring_criteria or []
+        self.available_strategies = available_strategies or []
+        self.synthesis_prompts = synthesis_prompts or []
+        self.skip_scoring_source_check = skip_scoring_source_check
+        self.skip_synthesis_source_check = skip_synthesis_source_check
+        self.planning_prompts = planning_prompts or []
 
     def validate(self) -> ValidationResult:
         """Run all validation checks and return results."""
@@ -155,7 +169,11 @@ class OrchestratorValidator:
         self._validate_config_values(result)
         self._validate_document_references(result)
         self._validate_batch_variables(result)
+        self._validate_row_documents(result)
+        self._validate_scoring(result)
+        self._validate_synthesis(result)
         self._validate_agent_mode(result)
+        self._validate_planning_prompts(result)
         if self.manifest_meta is not None:
             self._validate_manifest_metadata(result)
         return result
@@ -383,6 +401,161 @@ class OrchestratorValidator:
                         prompt_sequence=prompt.get("sequence"),
                     )
 
+    def _validate_scoring(self, result: ValidationResult) -> None:
+        strategy = self.config.get("evaluation_strategy", "").strip()
+        if strategy and self.available_strategies and strategy not in self.available_strategies:
+            result.add_error(
+                "UNKNOWN_EVALUATION_STRATEGY",
+                f"evaluation_strategy '{strategy}' not found. "
+                f"Available: {', '.join(sorted(self.available_strategies))}",
+            )
+
+        if not self.scoring_criteria:
+            return
+
+        prompt_names = {p["prompt_name"] for p in self.prompts if p.get("prompt_name")}
+
+        scale_min: int | None = None
+        scale_max: int | None = None
+        seen_names: set[str] = set()
+
+        for criteria in self.scoring_criteria:
+            name = criteria.get("criteria_name", "")
+            if not name:
+                result.add_error("MISSING_CRITERIA_NAME", "Scoring criteria missing criteria_name")
+                continue
+
+            if name in seen_names:
+                result.add_error(
+                    "DUPLICATE_CRITERIA_NAME",
+                    f"Duplicate criteria_name '{name}' in scoring sheet",
+                )
+            seen_names.add(name)
+
+            source = criteria.get("source_prompt", "")
+            if source and source not in prompt_names and not self.skip_scoring_source_check:
+                result.add_error(
+                    "INVALID_SCORING_SOURCE",
+                    f"Scoring criteria '{name}' references unknown prompt '{source}'",
+                )
+
+            weight = criteria.get("weight")
+            if weight is not None:
+                try:
+                    w = float(weight)
+                    if w <= 0:
+                        result.add_error(
+                            "INVALID_SCORING_WEIGHT",
+                            f"Scoring criteria '{name}' weight must be > 0, got {w}",
+                        )
+                except (TypeError, ValueError):
+                    result.add_error(
+                        "INVALID_SCORING_WEIGHT",
+                        f"Scoring criteria '{name}' weight is not a number: '{weight}'",
+                    )
+
+            c_min = criteria.get("scale_min")
+            c_max = criteria.get("scale_max")
+            if c_min is not None and c_max is not None:
+                try:
+                    c_min_val = int(c_min)
+                    c_max_val = int(c_max)
+                    if scale_min is None:
+                        scale_min = c_min_val
+                        scale_max = c_max_val
+                    elif scale_min != c_min_val or scale_max != c_max_val:
+                        result.add_error(
+                            "INCONSISTENT_SCORING_SCALE",
+                            f"Scoring criteria '{name}' has scale [{c_min_val}, {c_max_val}], "
+                            f"expected [{scale_min}, {scale_max}] (uniform scale required)",
+                        )
+                except (TypeError, ValueError):
+                    pass
+
+    def _validate_synthesis(self, result: ValidationResult) -> None:
+        if not self.synthesis_prompts:
+            return
+
+        prompt_names = {p["prompt_name"] for p in self.prompts if p.get("prompt_name")}
+        synthesis_names: set[str] = set()
+
+        for synth in self.synthesis_prompts:
+            name = synth.get("prompt_name")
+            seq = synth.get("sequence")
+
+            if name:
+                if name in synthesis_names:
+                    result.add_error(
+                        "DUPLICATE_SYNTHESIS_NAME",
+                        f"Duplicate synthesis prompt name '{name}'",
+                    )
+                synthesis_names.add(name)
+
+            scope = synth.get("source_scope", "")
+            if scope and scope != "all":
+                match = re.match(r"^top:(\d+)$", scope.strip())
+                if not match:
+                    result.add_error(
+                        "INVALID_SOURCE_SCOPE",
+                        f"Synthesis '{name or seq}' has invalid source_scope "
+                        f"'{scope}'. Must be 'all' or 'top:N'.",
+                    )
+                else:
+                    n = int(match.group(1))
+                    if n <= 0:
+                        result.add_error(
+                            "INVALID_SOURCE_SCOPE",
+                            f"Synthesis '{name or seq}' has top:N with N={n}, must be > 0.",
+                        )
+
+            source_prompts = synth.get("source_prompts") or []
+            if isinstance(source_prompts, str):
+                source_prompts = [source_prompts]
+            for sp in source_prompts:
+                if sp and sp not in prompt_names and not self.skip_synthesis_source_check:
+                    result.add_error(
+                        "INVALID_SYNTHESIS_SOURCE_PROMPT",
+                        f"Synthesis '{name or seq}' source_prompts references "
+                        f"unknown prompt '{sp}'",
+                    )
+
+            history = synth.get("history") or []
+            if isinstance(history, str):
+                history = [history]
+            for dep in history:
+                if dep and dep not in synthesis_names:
+                    result.add_error(
+                        "INVALID_SYNTHESIS_HISTORY",
+                        f"Synthesis '{name or seq}' history references "
+                        f"unknown synthesis prompt '{dep}'",
+                    )
+
+        if not self.scoring_criteria and not self.skip_scoring_source_check:
+            result.add_warning(
+                "SYNTHESIS_WITHOUT_SCORING",
+                "Synthesis prompts defined but no scoring sheet. "
+                "Entries will be sorted alphabetically by batch_name.",
+            )
+
+    def _validate_row_documents(self, result: ValidationResult) -> None:
+        if not self.row_doc_refs:
+            return
+        if not self.doc_ref_names:
+            result.add_warning(
+                "ROW_DOCS_NO_SHEET",
+                "_documents column exists in data sheet but no documents sheet found",
+            )
+            return
+        doc_set = set(self.doc_ref_names)
+        for row_id, refs in self.row_doc_refs.items():
+            for ref_name in refs:
+                if ref_name not in doc_set:
+                    result.add_error(
+                        "UNKNOWN_ROW_DOCUMENT",
+                        f"_documents reference '{ref_name}' in data row {row_id} "
+                        f"not found in documents",
+                    )
+
     def _validate_agent_mode(self, result: ValidationResult) -> None:
         for prompt in self.prompts:
             name = prompt.get("prompt_name", "(unnamed)")
@@ -526,3 +699,53 @@ class OrchestratorValidator:
                 "HAS_DOCS_NO_REGISTRY",
                 "manifest.yaml has has_documents=true but no document references provided for validation",
             )
+
+    def _validate_planning_prompts(self, result: ValidationResult) -> None:
+        """Validate planning-specific prompt constraints.
+
+        Checks:
+        - Planning prompts must not contain {{variable}} that match actual batch data keys
+        - generator=true must only appear on phase=planning prompts
+
+        Note: Planning prompts may legitimately mention {{variable}} syntax as
+        instructions to the LLM (e.g., "use {{candidate_name}} in the prompt").
+        Only flag variables that match actual batch data keys, since those would
+        be unresolvable during the planning phase.
+        """
+        batch_key_set = set(self.batch_data_keys) if self.batch_data_keys else set()
+
+        for prompt in self.planning_prompts:
+            name = prompt.get("prompt_name", "(unnamed)")
+            seq = prompt.get("sequence")
+
+            # Planning prompts cannot use actual batch variables
+            if batch_key_set:
+                prompt_text = prompt.get("prompt", "")
+                if prompt_text:
+                    for match in BATCH_VAR_PATTERN.finditer(prompt_text):
+                        var_name = match.group(1)
+                        if var_name in batch_key_set:
+                            result.add_error(
+                                "PLANNING_HAS_VARIABLES",
+                                f"Planning prompt contains batch variable "
+                                f"'{{{{{var_name}}}}}' (matches data column). "
+                                f"Planning prompts run before batch data is available.",
+                                prompt_name=name,
+                                prompt_sequence=seq,
+                            )
+
+        # Check all prompts (including execution) for generator on wrong phase
+        all_prompts = list(self.prompts) + list(self.planning_prompts)
+        for prompt in all_prompts:
+            name = prompt.get("prompt_name", "(unnamed)")
+            seq = prompt.get("sequence")
+            phase = prompt.get("phase", "execution")
+            generator = prompt.get("generator", False)
+
+            if generator and phase != "planning":
+                result.add_error(
+                    "GENERATOR_ON_EXECUTION_PHASE",
+                    "generator=true is only valid on phase=planning prompts",
+                    prompt_name=name,
+                    prompt_sequence=seq,
+                )

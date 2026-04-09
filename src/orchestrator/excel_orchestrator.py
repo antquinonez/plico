@@ -24,6 +24,7 @@ from typing import Any
 
 from ..FFAIClientBase import FFAIClientBase
 from .base import OrchestratorBase
+from .scoring import ScoringCriteria, ScoringRubric
 from .workbook_parser import WorkbookParser
 
 logger = logging.getLogger(__name__)
@@ -111,8 +112,39 @@ class ExcelOrchestrator(OrchestratorBase):
         if tools_data:
             self._init_tools(tools_data)
 
+        scoring_data = self.builder.load_scoring()
+        if scoring_data:
+            criteria = [
+                ScoringCriteria(
+                    criteria_name=c["criteria_name"],
+                    description=c["description"],
+                    scale_min=c["scale_min"],
+                    scale_max=c["scale_max"],
+                    weight=c["weight"],
+                    source_prompt=c["source_prompt"],
+                    score_type=c.get("score_type", ""),
+                )
+                for c in scoring_data
+            ]
+            self.scoring_rubric = ScoringRubric(criteria)
+            self.has_scoring = True
+            self.evaluation_strategy = self._resolve_evaluation_strategy()
+            logger.info(
+                f"Scoring enabled with {len(criteria)} criteria, "
+                f"strategy='{self.evaluation_strategy}'"
+            )
+
+        synthesis_data = self.builder.load_synthesis()
+        if synthesis_data:
+            self.synthesis_prompts = synthesis_data
+            self.has_synthesis = True
+            logger.info(f"Synthesis enabled with {len(synthesis_data)} prompts")
+
         self.batch_data = self.builder.load_data()
         self.is_batch_mode = len(self.batch_data) > 0
+
+        # Detect and separate planning-phase prompts
+        self._detect_planning_prompts()
 
     def _load_config(self) -> None:
         """Load config from workbook builder (backward compatibility)."""
@@ -173,37 +205,75 @@ class ExcelOrchestrator(OrchestratorBase):
         """
         batch_output = self.config.get("batch_output", "combined")
 
+        # Include planning results in the combined results list
+        all_results = list(self.planning_results) + list(results)
+
         if self.is_batch_mode and batch_output == "separate_sheets":
-            return self._write_separate_batch_results()
+            main_sheet = self._write_separate_batch_results()
         else:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             results_sheet = f"results_{timestamp}"
-            self.builder.write_results(results, results_sheet)
+            self.builder.write_results(all_results, results_sheet)
+            main_sheet = results_sheet
             logger.info(f"Orchestration complete. Results in sheet: {results_sheet}")
-            return results_sheet
+
+        if self.has_scoring and self.scoring_rubric:
+            scoring_criteria = [
+                {
+                    "criteria_name": c.criteria_name,
+                    "description": c.description,
+                    "scale_min": c.scale_min,
+                    "scale_max": c.scale_max,
+                    "weight": c.weight,
+                    "source_prompt": c.source_prompt,
+                    "score_type": c.score_type,
+                }
+                for c in self.scoring_rubric.criteria
+            ]
+            pivot_sheet = self.builder.write_scores_pivot(results, scoring_criteria)
+            if pivot_sheet:
+                logger.info(f"Scores pivot sheet created: {pivot_sheet}")
+
+        return main_sheet
 
     def _write_separate_batch_results(self) -> str:
         """Write results to separate sheets per batch.
+
+        Planning results (batch_id=None) are written to a dedicated sheet
+        to avoid creating a spurious None-keyed batch group.
 
         Returns:
             Comma-separated list of sheet names.
 
         """
+        sheet_names: list[str] = []
+
+        # Write planning results to a separate sheet if present
+        if self.planning_results:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            planning_sheet = f"planning_{timestamp}"
+            self.builder.write_results(self.planning_results, planning_sheet)
+            sheet_names.append(planning_sheet)
+
+        # Filter out planning results from batch grouping
         batches: dict[int, list[dict[str, Any]]] = {}
         for result in self.results:
+            if result.get("result_type") == "planning":
+                continue
             batch_id = result.get("batch_id", 0)
+            if batch_id is None:
+                continue
             if batch_id not in batches:
                 batches[batch_id] = []
             batches[batch_id].append(result)
 
-        sheet_names: list[str] = []
         for batch_id in sorted(batches.keys()):
             batch_results = batches[batch_id]
             batch_name = batch_results[0].get("batch_name", f"batch_{batch_id}")
             sheet_name = self.builder.write_batch_results(batch_results, batch_name)
             sheet_names.append(sheet_name)
 
-        logger.info(f"Wrote {len(sheet_names)} batch result sheets")
+        logger.info(f"Wrote {len(sheet_names)} result sheets")
         return ", ".join(sheet_names)
 
     def run(self) -> str:

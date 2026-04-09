@@ -17,3 +17,4 @@ dont_track/*
 outputs/*
 .opencode/plans/*
 working_docs/*
+.coverage

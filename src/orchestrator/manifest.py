@@ -84,10 +84,14 @@ class WorkbookManifestExporter:
         data = self.builder.load_data()
         clients = self.builder.load_clients()
         documents = self.builder.load_documents()
+        scoring = self.builder.load_scoring()
+        synthesis = self.builder.load_synthesis()
         tools = self.builder.load_tools()
 
         manifest_name_value = config.get("name", workbook_name)
         manifest_description = config.get("description", "")
+
+        has_planning = any(p.get("phase", "execution") == "planning" for p in prompts)
 
         self._write_manifest_yaml(
             manifest_path,
@@ -97,6 +101,9 @@ class WorkbookManifestExporter:
             has_clients=len(clients) > 0,
             has_documents=len(documents) > 0,
             has_tools=len(tools) > 0,
+            has_scoring=len(scoring) > 0,
+            has_synthesis=len(synthesis) > 0,
+            has_planning=has_planning,
             prompt_count=len(prompts),
         )
         self._write_config_yaml(manifest_path, config)
@@ -107,6 +114,10 @@ class WorkbookManifestExporter:
             self._write_clients_yaml(manifest_path, clients)
         if documents:
             self._write_documents_yaml(manifest_path, documents)
+        if scoring:
+            self._write_scoring_yaml(manifest_path, scoring)
+        if synthesis:
+            self._write_synthesis_yaml(manifest_path, synthesis)
         if tools:
             self._write_tools_yaml(manifest_path, tools)
 
@@ -122,6 +133,9 @@ class WorkbookManifestExporter:
         has_clients: bool,
         has_documents: bool,
         has_tools: bool = False,
+        has_scoring: bool = False,
+        has_synthesis: bool = False,
+        has_planning: bool = False,
         prompt_count: int = 0,
     ) -> None:
         """Write the main manifest metadata file."""
@@ -135,6 +149,9 @@ class WorkbookManifestExporter:
             "has_clients": has_clients,
             "has_documents": has_documents,
             "has_tools": has_tools,
+            "has_scoring": has_scoring,
+            "has_synthesis": has_synthesis,
+            "has_planning": has_planning,
             "prompt_count": prompt_count,
         }
 
@@ -174,6 +191,12 @@ class WorkbookManifestExporter:
                     prompt_entry["validation_prompt"] = prompt.get("validation_prompt")
                 if prompt.get("max_validation_retries"):
                     prompt_entry["max_validation_retries"] = prompt.get("max_validation_retries")
+
+            # Planning phase fields — always include phase to preserve round-trip
+            prompt_entry["phase"] = prompt.get("phase", "execution")
+            if prompt.get("generator"):
+                prompt_entry["generator"] = True
+
             prompts_data["prompts"].append(prompt_entry)
 
         with open(manifest_path / "prompts.yaml", "w", encoding="utf-8") as f:
@@ -183,7 +206,9 @@ class WorkbookManifestExporter:
         """Write batch data to YAML file."""
         batches = []
         for row in data:
-            batch_entry = {k: v for k, v in row.items() if not k.startswith("_")}
+            batch_entry = {
+                k: v for k, v in row.items() if not k.startswith("_") or k == "_documents"
+            }
             batches.append(batch_entry)
 
         data_yaml = {"batches": batches}
@@ -207,6 +232,18 @@ class WorkbookManifestExporter:
         tools_yaml = {"tools": tools}
         with open(manifest_path / "tools.yaml", "w", encoding="utf-8") as f:
             yaml.dump(tools_yaml, f, default_flow_style=False, sort_keys=False)
+
+    def _write_scoring_yaml(self, manifest_path: Path, scoring: list[dict[str, Any]]) -> None:
+        """Write scoring criteria to YAML file."""
+        scoring_yaml = {"scoring": scoring}
+        with open(manifest_path / "scoring.yaml", "w", encoding="utf-8") as f:
+            yaml.dump(scoring_yaml, f, default_flow_style=False, sort_keys=False)
+
+    def _write_synthesis_yaml(self, manifest_path: Path, synthesis: list[dict[str, Any]]) -> None:
+        """Write synthesis prompts to YAML file."""
+        synthesis_yaml = {"synthesis": synthesis}
+        with open(manifest_path / "synthesis.yaml", "w", encoding="utf-8") as f:
+            yaml.dump(synthesis_yaml, f, default_flow_style=False, sort_keys=False)
 
 
 class ManifestOrchestrator(OrchestratorBase):
@@ -372,6 +409,44 @@ class ManifestOrchestrator(OrchestratorBase):
             tools_data = tools_yaml.get("tools", [])
             if tools_data:
                 self._init_tools(tools_data)
+
+        if self._manifest_meta.get("has_scoring"):
+            scoring_yaml = self._load_yaml_file("scoring.yaml")
+            scoring_data = scoring_yaml.get("scoring", [])
+            if scoring_data:
+                from .scoring import ScoringCriteria, ScoringRubric
+
+                criteria = [
+                    ScoringCriteria(
+                        criteria_name=c["criteria_name"],
+                        description=c["description"],
+                        scale_min=c["scale_min"],
+                        scale_max=c["scale_max"],
+                        weight=c["weight"],
+                        source_prompt=c["source_prompt"],
+                        score_type=c.get("score_type", ""),
+                    )
+                    for c in scoring_data
+                ]
+                self.scoring_rubric = ScoringRubric(criteria)
+                self.has_scoring = True
+                self.evaluation_strategy = self._resolve_evaluation_strategy()
+                logger.info(
+                    f"Scoring enabled with {len(criteria)} criteria, "
+                    f"strategy='{self.evaluation_strategy}'"
+                )
+
+        if self._manifest_meta.get("has_synthesis"):
+            synthesis_yaml = self._load_yaml_file("synthesis.yaml")
+            synthesis_data = synthesis_yaml.get("synthesis", [])
+            if synthesis_data:
+                synthesis_data.sort(key=lambda x: x.get("sequence", 0))
+                self.synthesis_prompts = synthesis_data
+                self.has_synthesis = True
+                logger.info(f"Synthesis enabled with {len(synthesis_data)} prompts")
+
+        # Detect and separate planning-phase prompts
+        self._detect_planning_prompts()
 
         logger.info(
             f"Manifest loaded: {len(self.prompts)} prompts, batch_mode={self.is_batch_mode}"

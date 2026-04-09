@@ -232,6 +232,55 @@ class ResultBuilder:
         self._result.validation_critique = critique
         return self
 
+    def with_scoring(
+        self,
+        scores: dict[str, Any],
+        composite_score: float,
+        scoring_status: str,
+        strategy: str,
+    ) -> ResultBuilder:
+        """Set scoring results.
+
+        Args:
+            scores: Dictionary of criteria_name to score values.
+            composite_score: Weighted composite score.
+            scoring_status: Aggregation status (ok, partial, failed, skipped).
+            strategy: Evaluation strategy used.
+
+        Returns:
+            Self for chaining.
+
+        """
+        self._result.scores = scores
+        self._result.composite_score = composite_score
+        self._result.scoring_status = scoring_status
+        self._result.strategy = strategy
+        return self
+
+    def as_planning(self) -> ResultBuilder:
+        """Mark this result as a planning phase result.
+
+        Returns:
+            Self for chaining.
+
+        """
+        self._result.result_type = "planning"
+        self._result.batch_id = None
+        self._result.batch_name = None
+        return self
+
+    def as_synthesis(self) -> ResultBuilder:
+        """Mark this result as a synthesis result.
+
+        Returns:
+            Self for chaining.
+
+        """
+        self._result.result_type = "synthesis"
+        self._result.batch_id = -1
+        self._result.batch_name = ""
+        return self
+
     def build(self) -> PromptResult:
         """Build and return the PromptResult.
 

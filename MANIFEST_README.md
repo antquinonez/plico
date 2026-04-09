@@ -28,10 +28,12 @@ manifest_my_workflow/
 ├── data.yaml          # Optional — batch data
 ├── clients.yaml       # Optional — named client configurations
 ├── documents.yaml     # Optional — document references
+├── scoring.yaml       # Optional — scoring criteria and weights
+├── synthesis.yaml     # Optional — cross-row synthesis prompts
 └── tools.yaml         # Optional — tool definitions for agent mode
 ```
 
-The optional files are only needed when the workflow requires them. The `has_data`, `has_clients`, `has_documents`, and `has_tools` flags in `manifest.yaml` control which optional files are loaded.
+The optional files are only needed when the workflow requires them. The `has_data`, `has_clients`, `has_documents`, `has_scoring`, `has_synthesis`, and `has_tools` flags in `manifest.yaml` control which optional files are loaded.
 
 ---
 
@@ -171,6 +173,11 @@ Results are written to a timestamped Parquet file:
 | `semantic_query` | RAG query used |
 | `rerank` / `query_expansion` | RAG settings |
 | `sequence` / `prompt_name` / `history` | Execution metadata |
+| `scores` | JSON object of extracted scores (batch rows, when scoring enabled) |
+| `composite_score` | Weighted average score (batch rows, when scoring enabled) |
+| `scoring_status` | `"ok"`, `"partial"`, `"failed"`, or `"skipped"` |
+| `strategy` | Evaluation strategy name used (batch + synthesis rows) |
+| `result_type` | `"batch"`, `"synthesis"`, or `"planning"` |
 
 > **`prompt` vs `resolved_prompt`:** The `prompt` column preserves your original template text (useful for auditing what you asked). The `resolved_prompt` column shows what was actually sent to the AI, including any `{{prompt_name.response}}` substitutions and the assembled `<conversation_history>` block. When a referenced prompt was **skipped** (condition evaluated to false), its `{{}}` pattern is replaced with an empty string in `resolved_prompt`.
 
@@ -201,7 +208,10 @@ python scripts/parquet_to_excel.py ./outputs/20250115100000_my_workflow.parquet
 | `has_data` | `bool` | Yes | Whether `data.yaml` exists |
 | `has_clients` | `bool` | Yes | Whether `clients.yaml` exists |
 | `has_documents` | `bool` | Yes | Whether `documents.yaml` exists |
+| `has_scoring` | `bool` | No | Whether `scoring.yaml` exists |
+| `has_synthesis` | `bool` | No | Whether `synthesis.yaml` exists |
 | `has_tools` | `bool` | No | Whether `tools.yaml` exists |
+| `has_planning` | `bool` | No | Whether prompts contain planning-phase generators |
 | `prompt_count` | `int` | Yes | Total number of prompts |
 
 **Output Directory Structure:**
@@ -257,6 +267,8 @@ Each prompt entry is a node in the execution DAG.
 | `agent_mode` | `bool` | No | Enable agentic tool-call loop. Default: `false`. |
 | `tools` | `list[str]` | No | Tool names available to this prompt (from `tools.yaml`). |
 | `max_tool_rounds` | `int` | No | Maximum tool-call rounds. Default: from `config/main.yaml` (5). |
+| `phase` | `str` | No | `"planning"` or `"execution"` (default). Planning prompts run before batch execution. |
+| `generator` | `bool` | No | Whether this planning prompt returns structured JSON artifacts. Default: `false`. |
 
 **Full example:**
 
@@ -297,6 +309,7 @@ Top-level key is `batches`. Each entry is a dict where any key becomes a `{{vari
 |-------|------|-------------|
 | `id` | `int` | Row identifier (conventional) |
 | `batch_name` | `str` | Human-readable batch name |
+| `_documents` | `list[str]` | Document reference names to bind per row (additive merge with prompt references) |
 | (any key) | `any` | Becomes `{{variable}}` in prompts |
 
 ```yaml
@@ -440,6 +453,172 @@ tools:
       required: ["url"]
     implementation: "python:my_tools.fetch_url"
     enabled: true
+```
+
+---
+
+### scoring.yaml — Scoring Criteria
+
+Define evaluation criteria for extracting structured scores from LLM responses. Used with batch mode to compute weighted composite scores.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `criteria_name` | `str` | Yes | Machine-readable key (e.g., `skills_match`) |
+| `description` | `str` | Yes | Human-readable description |
+| `scale_min` | `int` | Yes | Minimum score value |
+| `scale_max` | `int` | Yes | Maximum score value |
+| `weight` | `float` | Yes | Base weight for aggregation |
+| `source_prompt` | `str` | Yes | Prompt name whose response contains this score |
+| `score_type` | `str` | No | Type hint for downstream use (e.g., `"normalized_score"` for pivot sheets) |
+
+**Important:** All criteria must share the same `scale_min` and `scale_max` (uniform scale, enforced by validation). Strategy-based weight overrides are configured in `config/main.yaml` under `evaluation.strategies`, not in the scoring sheet.
+
+```yaml
+scoring:
+  - criteria_name: "skills_match"
+    description: "Technical skills alignment"
+    scale_min: 1
+    scale_max: 10
+    weight: 1.0
+    source_prompt: "evaluate_skills"
+    score_type: "normalized_score"
+
+  - criteria_name: "education"
+    description: "Quality and relevance of education"
+    scale_min: 1
+    scale_max: 10
+    weight: 0.8
+    source_prompt: "evaluate_education"
+    score_type: "normalized_score"
+```
+
+**Config override:** Set `evaluation_strategy` in `config.yaml` to select a weight strategy (e.g., `"potential"`, `"experience"`, `"balanced"`). Strategies are defined in `config/main.yaml` under `evaluation.strategies`.
+
+---
+
+### synthesis.yaml — Cross-Row Synthesis Prompts
+
+Define prompts that execute after all batch rows complete, with access to batch-entry data sorted by composite score.
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `sequence` | `int` | Yes | Execution order |
+| `prompt_name` | `str` | Yes | Unique name |
+| `prompt` | `str` | Yes | The prompt text |
+| `source_scope` | `str` | Yes | `"all"` or `"top:N"` — which entries to include |
+| `source_prompts` | `list[str]` | Yes | Prompt names whose responses to include in context |
+| `include_scores` | `bool` | No | Include scoring breakdown (default: true) |
+| `history` | `list[str]` | No | Other synthesis prompt dependencies |
+| `condition` | `str` | No | Condition for execution |
+
+```yaml
+synthesis:
+  - sequence: 100
+    prompt_name: "rank_summary"
+    prompt: "Rank these entries from strongest to weakest."
+    source_scope: "top:5"
+    source_prompts: ["extract_profile", "overall_assessment"]
+    include_scores: true
+
+  - sequence: 110
+    prompt_name: "recommendation"
+    prompt: "Write a final recommendation for the top candidate."
+    source_scope: "top:1"
+    source_prompts: ["extract_profile", "rank_summary"]
+    history: ["rank_summary"]
+```
+
+---
+
+## Planning Phase (Dynamic Prompt Generation)
+
+Planning prompts run **sequentially** before batch execution, enabling LLM-driven derivation of scoring criteria and evaluation prompts from documents.
+
+### How It Works
+
+1. Prompts with `phase: "planning"` are separated from execution prompts
+2. Planning prompts execute one at a time (never parallel), in sequence order
+3. Prompts with `generator: true` are expected to return JSON:
+
+```json
+{
+  "scoring_criteria": [
+    {"criteria_name": "skills_match", "description": "...", "scale_min": 1, "scale_max": 10, "weight": 1.0, "source_prompt": "evaluate_skills"}
+  ],
+  "prompts": [
+    {"prompt_name": "evaluate_skills", "prompt": "Evaluate {{candidate_name}}'s skills.", "references": ["job_desc"]}
+  ]
+}
+```
+
+4. Generated prompts are validated, assigned sequence numbers, and injected into the execution pipeline
+5. If no manual `scoring.yaml` exists, generated criteria auto-derive the scoring rubric
+
+### Phase Rules
+
+- Planning prompts **cannot** use `{{variable}}` batch references (validated as error)
+- Planning prompts **can** use `references` for document injection and `history` for chaining
+- Execution prompts **can** use `{{planning_prompt.response}}` to interpolate planning results
+- If a `scoring.yaml` exists, it takes priority over auto-derived criteria
+- Multiple generators can refine each other (later overwrites earlier on name collisions)
+
+### Example Manifest
+
+**prompts.yaml:**
+```yaml
+prompts:
+  # Planning phase — reads job description, generates evaluation criteria
+  - sequence: 1
+    prompt_name: "derive_criteria"
+    prompt: "Read the job description and return JSON with scoring_criteria and prompts arrays."
+    phase: "planning"
+    generator: true
+    history: []
+    references: ["job_description"]
+    client: null
+    condition: null
+    semantic_query: null
+    semantic_filter: null
+    query_expansion: null
+    rerank: null
+
+  # Planning phase — refines the criteria from the first generator
+  - sequence: 2
+    prompt_name: "refine_criteria"
+    prompt: "Review and improve the scoring criteria and prompts."
+    phase: "planning"
+    generator: true
+    history: ["derive_criteria"]
+    references: ["job_description"]
+    client: null
+    condition: null
+    semantic_query: null
+    semantic_filter: null
+    query_expansion: null
+    rerank: null
+
+  # Execution phase — runs against each batch row (candidate)
+  - sequence: 10
+    prompt_name: "evaluate_candidate"
+    prompt: "Evaluate {{candidate_name}}'s resume."
+    history: []
+    references: ["resume"]
+    client: null
+    condition: null
+    semantic_query: null
+    semantic_filter: null
+    query_expansion: null
+    rerank: null
+```
+
+**Configuration** (`config/main.yaml`):
+```yaml
+planning:
+  enabled: true
+  save_artifacts: false
+  generated_sequence_base: "auto"
+  generated_sequence_step: 10
+  continue_on_parse_error: true
 ```
 
 ---
@@ -1092,9 +1271,11 @@ python scripts/manifest_export.py ./workbook.xlsx --output ./custom_manifest/
 This creates a manifest folder from the Excel workbook's sheets:
 - `config` sheet → `config.yaml`
 - `prompts` sheet → `prompts.yaml`
-- `data` sheet → `data.yaml` (if present)
+- `data` sheet → `data.yaml` (if present, preserves `_documents` column)
 - `clients` sheet → `clients.yaml` (if present)
 - `documents` sheet → `documents.yaml` (if present)
+- `scoring` sheet → `scoring.yaml` (if present)
+- `synthesis` sheet → `synthesis.yaml` (if present)
 
 ---
 
