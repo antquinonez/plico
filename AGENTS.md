@@ -65,6 +65,16 @@ inv rag.rebuild               # Rebuild indexes from documents workbook
 inv rag.stats                 # Show detailed RAG statistics
 ```
 
+### Screening Tasks (screening namespace)
+
+```bash
+inv screening.create -r ./resumes/ -j ./jd.md                     # Create workbook only
+inv screening.create -r ./resumes/ -j ./jd.md --planning          # Create with planning mode
+inv screening.run -r ./resumes/ -j ./jd.md                        # Create and run
+inv screening.run -r ./resumes/ -j ./jd.md --planning -c 2        # Planning mode, concurrency 2
+inv screening.inspect ./screening.xlsx                             # Inspect results
+```
+
 ### Pre-commit
 
 ```bash
@@ -206,6 +216,7 @@ config/
 
 scripts/
 ├── run_orchestrator.py        # Run Excel orchestrator
+├── create_screening_workbook.py  # Create screening workbook from folder
 ├── export_manifest.py         # Export workbook to YAML manifest
 ├── run_manifest.py            # Run from manifest folder
 ├── inspect_parquet.py         # Inspect parquet results
@@ -217,6 +228,9 @@ scripts/
     ├── __init__.py
     ├── validate_all.py        # Run all validations
     └── spot_check.py          # Spot check responses
+
+USE_CASES/
+└── resume_screening.md        # Resume screening guide (see below)
 ```
 
 ## Clients Reference
@@ -629,6 +643,62 @@ _aggregate_scores() → _execute_synthesis() → _write_results()
 
 When no planning prompts exist, the flow is the same as before:
 `run() → _load_source() → _validate() → _init_client() → execution → results`
+
+## Resume Screening Use Case
+
+**For comprehensive screening documentation, see [USE_CASES/resume_screening.md](./USE_CASES/resume_screening.md)**
+
+Auto-discover resumes from a folder and evaluate against a job description.
+
+### Auto-Discovery
+
+`src/orchestrator/discovery.py` provides three functions:
+
+| Function | Purpose |
+|----------|---------|
+| `discover_documents(folder)` | Scan folder for supported files |
+| `create_data_rows_from_documents(docs)` | Generate batch data rows |
+| `create_evaluation_workbook(path, folder)` | Create full `.xlsx` from folder |
+
+### CLI Integration
+
+**Create a workbook from a folder:**
+
+```bash
+python scripts/create_screening_workbook.py ./screening.xlsx \
+    --resumes-path ./resumes/ --jd ./job_description.md
+
+# With planning phase (auto-derive scoring from JD)
+python scripts/create_screening_workbook.py ./screening.xlsx \
+    --resumes-path ./resumes/ --jd ./jd.md --planning
+```
+
+**Runtime injection (no workbook modification):**
+
+```bash
+python scripts/run_orchestrator.py ./prompts.xlsx \
+    --resumes-path ./resumes/ --jd ./jd.md -c 1
+```
+
+**Invoke tasks:**
+
+```bash
+inv screening.run -r ./resumes/ -j ./jd.md
+inv screening.create -r ./resumes/ -j ./jd.md --planning
+inv screening.inspect ./screening.xlsx
+```
+
+### ExcelOrchestrator Discovery Parameters
+
+```python
+orchestrator = ExcelOrchestrator(
+    workbook_path="screening.xlsx",
+    client=client,
+    resumes_path="./resumes/",      # Auto-discover documents
+    jd_path="./job_description.md", # Shared JD as "job_description"
+)
+orchestrator.run()
+```
 
 ## Manifest Workflow
 

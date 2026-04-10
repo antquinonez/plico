@@ -12,6 +12,7 @@ workflows defined in Excel workbooks with support for:
 - Document reference injection
 - Semantic search via RAG (semantic_query)
 - Conditional execution
+- Auto-discovery of documents from a folder (resumes_path)
 """
 
 from __future__ import annotations
@@ -20,10 +21,12 @@ import logging
 import os
 from collections.abc import Callable
 from datetime import datetime
+from pathlib import Path
 from typing import Any
 
 from ..FFAIClientBase import FFAIClientBase
 from .base import OrchestratorBase
+from .discovery import create_data_rows_from_documents, discover_documents
 from .scoring import ScoringCriteria, ScoringRubric
 from .workbook_parser import WorkbookParser
 
@@ -49,6 +52,8 @@ class ExcelOrchestrator(OrchestratorBase):
         config_overrides: dict[str, Any] | None = None,
         concurrency: int | None = None,
         progress_callback: Callable[..., None] | None = None,
+        resumes_path: str | None = None,
+        jd_path: str | None = None,
     ) -> None:
         """Initialize the ExcelOrchestrator.
 
@@ -58,6 +63,12 @@ class ExcelOrchestrator(OrchestratorBase):
             config_overrides: Optional config overrides from workbook.
             concurrency: Maximum concurrent API calls (1-max). Uses config default if None.
             progress_callback: Optional callback for progress updates.
+            resumes_path: Optional folder path to auto-discover documents (e.g., resumes).
+                Discovered documents populate the documents registry and batch data
+                at runtime without modifying the workbook.
+            jd_path: Optional path to a job description file. Added as a shared
+                document with ``reference_name="job_description"`` available to all
+                prompts via ``references: '["job_description"]'``.
 
         """
         super().__init__(
@@ -68,6 +79,8 @@ class ExcelOrchestrator(OrchestratorBase):
         )
         self._workbook_path = workbook_path
         self.builder = WorkbookParser(workbook_path)
+        self._resumes_path = resumes_path
+        self._jd_path = jd_path
 
     @property
     def source_path(self) -> str:
@@ -143,8 +156,83 @@ class ExcelOrchestrator(OrchestratorBase):
         self.batch_data = self.builder.load_data()
         self.is_batch_mode = len(self.batch_data) > 0
 
-        # Detect and separate planning-phase prompts
+        self._inject_discovery_overrides()
+
         self._detect_planning_prompts()
+
+    def _inject_discovery_overrides(self) -> None:
+        """Inject documents and batch data from resumes_path and jd_path."""
+        discovered_docs: list[dict[str, Any]] = []
+
+        if self._jd_path:
+            jd_doc = self._resolve_jd_document(self._jd_path)
+            discovered_docs.append(jd_doc)
+            logger.info(f"Injected JD as shared document: {jd_doc['file_path']}")
+
+        if self._resumes_path:
+            resume_docs = discover_documents(
+                self._resumes_path,
+                absolute_paths=True,
+                tags=["resume"],
+            )
+            if not resume_docs:
+                logger.warning(f"No documents discovered in resumes_path: {self._resumes_path}")
+            else:
+                discovered_docs.extend(resume_docs)
+                logger.info(
+                    f"Discovered {len(resume_docs)} documents from resumes_path: "
+                    f"{self._resumes_path}"
+                )
+
+                resume_data = create_data_rows_from_documents(resume_docs)
+                if self.batch_data:
+                    self.batch_data.extend(resume_data)
+                    logger.info(
+                        f"Appended {len(resume_data)} batch rows to existing "
+                        f"{len(self.batch_data) - len(resume_data)} workbook rows"
+                    )
+                else:
+                    self.batch_data = resume_data
+                    logger.info(f"Created {len(resume_data)} batch rows from discovered documents")
+
+                self.is_batch_mode = len(self.batch_data) > 0
+
+        if discovered_docs:
+            all_docs = discovered_docs
+            if self.has_documents and self.document_registry:
+                existing = list(self.document_registry.documents.values())
+                all_docs = existing + discovered_docs
+                logger.info(
+                    f"Merged {len(discovered_docs)} discovered docs with "
+                    f"{len(existing)} workbook docs"
+                )
+
+            workbook_dir = os.path.dirname(self._workbook_path)
+            self._init_documents(all_docs, workbook_dir)
+
+    @staticmethod
+    def _resolve_jd_document(jd_path: str) -> dict[str, Any]:
+        """Create a document definition for a job description file.
+
+        Args:
+            jd_path: Path to the job description file.
+
+        Returns:
+            Document definition dict with reference_name="job_description".
+
+        """
+        path = Path(jd_path).resolve()
+        if not path.is_file():
+            raise FileNotFoundError(f"Job description file not found: {jd_path}")
+
+        return {
+            "reference_name": "job_description",
+            "common_name": "Job Description",
+            "file_path": str(path),
+            "tags": "jd",
+            "chunking_strategy": "",
+            "notes": f"Shared job description: {path.name}",
+        }
 
     def _load_config(self) -> None:
         """Load config from workbook builder (backward compatibility)."""

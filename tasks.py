@@ -212,6 +212,10 @@ INDIVIDUAL WORKBOOKS (create + run + validate):
     inv wb.agent            # Create, run, and validate agent workbook
     inv wb.screening        # Create, run, and validate screening workbook
 
+SCREENING TASKS (inv screening.<task>):
+    inv screening.create    # Create screening workbook from a folder of resumes
+    inv screening.run       # Create and run screening workbook
+
 RAG TASKS (inv rag.<task>):
     inv rag.status          # Show RAG indexing status
     inv rag.clear           # Clear all RAG indexes
@@ -242,6 +246,11 @@ EXAMPLES:
     inv wb.run --parallel                     # Run all workbooks in parallel
     inv wb.all --parallel --client gemini      # Full pipeline with gemini client
     inv wb.basic -c 2 --client anthropic     # Run basic workbook with anthropic
+
+SCREENING EXAMPLES:
+    inv screening.run -r ./resumes/ -j ./jd.md                    # Create and run
+    inv screening.run -r ./resumes/ -j ./jd.md --planning         # Planning mode
+    inv screening.create -r ./resumes/ -j ./jd.md -o ./out.xlsx   # Create only
 
 CONFIGURATION:
     Workbook paths and client configurations are loaded from config/test.yaml
@@ -705,9 +714,125 @@ def wb_screening(c: Context, client: str | None = None):
         print(f"  Using client: {client}")
     client_flag = f" --client {client}" if client else ""
     _run_cmd(c, f"python {_get_create_script('screening')}{client_flag}")
-    _run_cmd(c, f"python scripts/run_orchestrator.py {config.sample.workbooks.screening} -c 1")
+    _run_cmd(
+        c,
+        f"python scripts/run_orchestrator.py {config.sample.workbooks.screening} -c 1{client_flag}",
+    )
     _run_cmd(c, f"python {_get_validate_script('screening')} {config.sample.workbooks.screening}")
     print("Screening workbook complete!")
+
+
+# ============================================================================
+# SCREENING TASKS (screening namespace)
+# ============================================================================
+
+
+@task
+def screening_create(
+    c: Context,
+    resumes_path: str = "",
+    jd: str = "",
+    output: str = "",
+    planning: bool = False,
+    extensions: str = "",
+    client: str | None = None,
+):
+    """Create a screening workbook from a folder of resumes.
+
+    Args:
+        resumes_path: Folder containing resume documents
+        jd: Path to job description file
+        output: Output workbook path (default: ./screening.xlsx)
+        planning: Use planning phase mode (auto-derive scoring from JD)
+        extensions: Space-separated file extensions (default: .pdf .docx .doc .txt .md)
+        client: Client type from clients.yaml
+
+    Examples:
+        inv screening.create --resumes-path ./resumes/ --jd ./jd.md
+        inv screening.create -r ./resumes/ -j ./jd.md -o ./screen.xlsx --planning
+        inv screening.create -r ./resumes/ -j ./jd.md -e ".pdf .docx"
+
+    """
+    if not resumes_path:
+        print("Error: --resumes-path / -r is required")
+        return
+    if not jd:
+        print("Error: --jd / -j is required")
+        return
+
+    config = get_config()
+    workbook_path = output or config.sample.workbooks.screening
+
+    planning_flag = " --planning" if planning else ""
+    client_flag = f" --client {client}" if client else ""
+    ext_flag = f" --extensions {extensions}" if extensions else ""
+
+    _run_cmd(
+        c,
+        f"python scripts/create_screening_workbook.py {workbook_path} "
+        f"--resumes-path {resumes_path} --jd {jd}{planning_flag}{client_flag}{ext_flag}",
+    )
+
+
+@task
+def screening_run(
+    c: Context,
+    resumes_path: str = "",
+    jd: str = "",
+    output: str = "",
+    planning: bool = False,
+    extensions: str = "",
+    client: str | None = None,
+    concurrency: str = "1",
+):
+    """Create a screening workbook from a folder of resumes and run it.
+
+    Combines screening.create and orchestrator execution in one command.
+
+    Args:
+        resumes_path: Folder containing resume documents
+        jd: Path to job description file
+        output: Output workbook path (default: ./screening.xlsx)
+        planning: Use planning phase mode (auto-derive scoring from JD)
+        extensions: Space-separated file extensions (default: .pdf .docx .doc .txt .md)
+        client: Client type from clients.yaml
+        concurrency: Parallel execution concurrency
+
+    Examples:
+        inv screening.run --resumes-path ./resumes/ --jd ./jd.md
+        inv screening.run -r ./resumes/ -j ./jd.md --planning
+        inv screening.run -r ./resumes/ -j ./jd.md -o ./screen.xlsx -c 2
+
+    """
+    if not resumes_path:
+        print("Error: --resumes-path / -r is required")
+        return
+    if not jd:
+        print("Error: --jd / -j is required")
+        return
+
+    config = get_config()
+    workbook_path = output or config.sample.workbooks.screening
+
+    planning_flag = " --planning" if planning else ""
+    client_flag = f" --client {client}" if client else ""
+    ext_flag = f" --extensions {extensions}" if extensions else ""
+
+    print("Creating screening workbook from folder...")
+    _run_cmd(
+        c,
+        f"python scripts/create_screening_workbook.py {workbook_path} "
+        f"--resumes-path {resumes_path} --jd {jd}{planning_flag}{client_flag}{ext_flag}",
+    )
+
+    print("\nRunning orchestrator...")
+    orchestrator_client = f" --client {client}" if client else ""
+    _run_cmd(
+        c,
+        f"python scripts/run_orchestrator.py {workbook_path} -c {concurrency}{orchestrator_client}",
+    )
+
+    print("\nScreening complete!")
 
 
 # ============================================================================
@@ -973,6 +1098,7 @@ wb.add_task(wb_documents, name="documents")
 wb.add_task(wb_batch, name="batch")
 wb.add_task(wb_max, name="max")
 wb.add_task(wb_agent, name="agent")
+wb.add_task(wb_screening, name="screening")
 
 # RAG namespace
 rag = Collection()
@@ -981,6 +1107,11 @@ rag.add_task(rag_clear, name="clear")
 rag.add_task(rag_clear_strategy, name="clear-strategy")
 rag.add_task(rag_rebuild, name="rebuild")
 rag.add_task(rag_stats, name="stats")
+
+# Screening namespace
+screening = Collection()
+screening.add_task(screening_create, name="create")
+screening.add_task(screening_run, name="run")
 
 # Root namespace
 ns = Collection()
@@ -992,3 +1123,4 @@ ns.add_task(test)
 ns.add_task(test_all, name="test-all")
 ns.add_collection(wb, name="wb")
 ns.add_collection(rag, name="rag")
+ns.add_collection(screening, name="screening")
