@@ -82,6 +82,8 @@ class OrchestratorBase(ABC):
         config_overrides: dict[str, Any] | None = None,
         concurrency: int | None = None,
         progress_callback: Callable[..., None] | None = None,
+        resumes_path: str | None = None,
+        jd_path: str | None = None,
     ) -> None:
         """Initialize the orchestrator base.
 
@@ -90,9 +92,13 @@ class OrchestratorBase(ABC):
             config_overrides: Optional config overrides.
             concurrency: Maximum concurrent API calls (1-max). Uses config default if None.
             progress_callback: Optional callback for progress updates.
+            resumes_path: Optional folder path to auto-discover documents (e.g., resumes).
+            jd_path: Optional path to a job description file.
 
         """
         self.client = client
+        self._resumes_path = resumes_path
+        self._jd_path = jd_path
         self.config_overrides = config_overrides or {}
 
         config = get_config()
@@ -1493,6 +1499,93 @@ class OrchestratorBase(ABC):
                     "Planning prompts detected but no batch data sheet. "
                     "Scoring and synthesis will be skipped."
                 )
+
+    @staticmethod
+    def _resolve_jd_document(jd_path: str) -> dict[str, Any]:
+        """Create a document definition for a job description file.
+
+        Args:
+            jd_path: Path to the job description file.
+
+        Returns:
+            Document definition dict with reference_name="job_description".
+
+        """
+        from pathlib import Path
+
+        path = Path(jd_path).resolve()
+        if not path.is_file():
+            raise FileNotFoundError(f"Job description file not found: {jd_path}")
+
+        return {
+            "reference_name": "job_description",
+            "common_name": "Job Description",
+            "file_path": str(path),
+            "tags": "jd",
+            "chunking_strategy": "",
+            "notes": f"Shared job description: {path.name}",
+        }
+
+    def _inject_discovery_overrides(self, source_dir: str) -> None:
+        """Inject documents and batch data from resumes_path and jd_path.
+
+        Called by subclasses during _load_source() after loading their own
+        documents and batch data. Discovered documents merge with any
+        existing documents; discovered batch rows append to existing data.
+
+        Args:
+            source_dir: Base directory for resolving document paths
+                (workbook dir for Excel, manifest dir for Manifest).
+
+        """
+        from ..discovery import create_data_rows_from_documents, discover_documents
+
+        discovered_docs: list[dict[str, Any]] = []
+
+        if self._jd_path:
+            jd_doc = self._resolve_jd_document(self._jd_path)
+            discovered_docs.append(jd_doc)
+            logger.info(f"Injected JD as shared document: {jd_doc['file_path']}")
+
+        if self._resumes_path:
+            resume_docs = discover_documents(
+                self._resumes_path,
+                absolute_paths=True,
+                tags=["resume"],
+            )
+            if not resume_docs:
+                logger.warning(f"No documents discovered in resumes_path: {self._resumes_path}")
+            else:
+                discovered_docs.extend(resume_docs)
+                logger.info(
+                    f"Discovered {len(resume_docs)} documents from resumes_path: "
+                    f"{self._resumes_path}"
+                )
+
+                resume_data = create_data_rows_from_documents(resume_docs)
+                if self.batch_data:
+                    self.batch_data.extend(resume_data)
+                    logger.info(
+                        f"Appended {len(resume_data)} batch rows to existing "
+                        f"{len(self.batch_data) - len(resume_data)} source rows"
+                    )
+                else:
+                    self.batch_data = resume_data
+                    logger.info(f"Created {len(resume_data)} batch rows from discovered documents")
+
+                self.is_batch_mode = len(self.batch_data) > 0
+
+        if discovered_docs:
+            all_docs = discovered_docs
+            if self.has_documents and self.document_registry:
+                existing = list(self.document_registry.documents.values())
+                all_docs = existing + discovered_docs
+                logger.info(
+                    f"Merged {len(discovered_docs)} discovered docs with "
+                    f"{len(existing)} source docs"
+                )
+
+            self._init_documents(all_docs, source_dir)
 
     def _execute_planning_phase(self) -> None:
         """Execute planning-phase prompts sequentially before batch execution.

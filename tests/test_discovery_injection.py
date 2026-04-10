@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: MIT
 # Contact: antquinonez@farfiner.com
 
-"""Tests for auto-discovery runtime injection in ExcelOrchestrator."""
+"""Tests for auto-discovery runtime injection in ExcelOrchestrator and ManifestOrchestrator."""
 
 from __future__ import annotations
 
@@ -10,9 +10,12 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 import pytest
+import yaml
 
+from src.orchestrator.base import OrchestratorBase
 from src.orchestrator.discovery import discover_documents
 from src.orchestrator.excel_orchestrator import ExcelOrchestrator
+from src.orchestrator.manifest import ManifestOrchestrator
 
 
 class TestDiscoverDocumentsAbsolutePaths:
@@ -49,13 +52,13 @@ class TestDiscoverDocumentsAbsolutePaths:
 
 
 class TestResolveJdDocument:
-    """Tests for ExcelOrchestrator._resolve_jd_document."""
+    """Tests for OrchestratorBase._resolve_jd_document."""
 
     def test_valid_jd_file(self, tmp_path):
         jd = tmp_path / "job_description.md"
         jd.write_text("Senior Engineer role...")
 
-        result = ExcelOrchestrator._resolve_jd_document(str(jd))
+        result = OrchestratorBase._resolve_jd_document(str(jd))
         assert result["reference_name"] == "job_description"
         assert result["common_name"] == "Job Description"
         assert result["tags"] == "jd"
@@ -64,7 +67,7 @@ class TestResolveJdDocument:
 
     def test_jd_file_not_found(self, tmp_path):
         with pytest.raises(FileNotFoundError, match="Job description file not found"):
-            ExcelOrchestrator._resolve_jd_document(str(tmp_path / "nonexistent.md"))
+            OrchestratorBase._resolve_jd_document(str(tmp_path / "nonexistent.md"))
 
 
 class TestExcelOrchestratorInjection:
@@ -348,3 +351,283 @@ class TestExcelOrchestratorInjection:
 
         for doc in orchestrator.document_registry.documents.values():
             assert Path(doc["file_path"]).is_absolute()
+
+
+class TestManifestOrchestratorInjection:
+    """Tests for ManifestOrchestrator with resumes_path and jd_path."""
+
+    def _create_minimal_manifest(self, manifest_dir: Path) -> None:
+        """Create a minimal manifest folder with required YAML files."""
+        manifest_dir.mkdir(parents=True, exist_ok=True)
+
+        manifest_yaml = {
+            "name": "test_manifest",
+            "description": "Test manifest",
+            "version": "1.0",
+            "has_data": False,
+            "has_clients": False,
+            "has_documents": False,
+            "has_tools": False,
+            "has_scoring": False,
+            "has_synthesis": False,
+            "has_planning": False,
+            "prompt_count": 1,
+        }
+        with open(manifest_dir / "manifest.yaml", "w") as f:
+            yaml.dump(manifest_yaml, f)
+
+        config_yaml = {"name": "test"}
+        with open(manifest_dir / "config.yaml", "w") as f:
+            yaml.dump(config_yaml, f)
+
+        prompts_yaml = {
+            "prompts": [
+                {
+                    "sequence": 10,
+                    "prompt_name": "test_prompt",
+                    "prompt": "Say hello",
+                    "history": [],
+                }
+            ]
+        }
+        with open(manifest_dir / "prompts.yaml", "w") as f:
+            yaml.dump(prompts_yaml, f)
+
+    def test_inject_jd_only(self, tmp_path):
+        manifest_dir = tmp_path / "manifest"
+        self._create_minimal_manifest(manifest_dir)
+
+        jd = tmp_path / "jd.md"
+        jd.write_text("Senior Engineer role...")
+
+        client = MagicMock()
+        orchestrator = ManifestOrchestrator(
+            manifest_dir=str(manifest_dir),
+            client=client,
+            jd_path=str(jd),
+        )
+        orchestrator._load_source()
+
+        assert orchestrator.has_documents
+        assert "job_description" in orchestrator.document_registry.documents
+
+    def test_inject_resumes_only(self, tmp_path):
+        manifest_dir = tmp_path / "manifest"
+        self._create_minimal_manifest(manifest_dir)
+
+        resumes = tmp_path / "resumes"
+        resumes.mkdir()
+        (resumes / "alice.pdf").write_text("Alice resume")
+        (resumes / "bob.docx").write_text("Bob resume")
+
+        client = MagicMock()
+        orchestrator = ManifestOrchestrator(
+            manifest_dir=str(manifest_dir),
+            client=client,
+            resumes_path=str(resumes),
+        )
+        orchestrator._load_source()
+
+        assert orchestrator.has_documents
+        assert orchestrator.is_batch_mode
+        assert len(orchestrator.batch_data) == 2
+        assert "alice" in orchestrator.document_registry.documents
+        assert "bob" in orchestrator.document_registry.documents
+
+    def test_inject_both_jd_and_resumes(self, tmp_path):
+        manifest_dir = tmp_path / "manifest"
+        self._create_minimal_manifest(manifest_dir)
+
+        jd = tmp_path / "jd.md"
+        jd.write_text("Senior Engineer role...")
+
+        resumes = tmp_path / "resumes"
+        resumes.mkdir()
+        (resumes / "alice.pdf").write_text("Alice resume")
+        (resumes / "bob.docx").write_text("Bob resume")
+
+        client = MagicMock()
+        orchestrator = ManifestOrchestrator(
+            manifest_dir=str(manifest_dir),
+            client=client,
+            resumes_path=str(resumes),
+            jd_path=str(jd),
+        )
+        orchestrator._load_source()
+
+        assert orchestrator.has_documents
+        assert orchestrator.is_batch_mode
+        assert len(orchestrator.batch_data) == 2
+        assert "job_description" in orchestrator.document_registry.documents
+        assert "alice" in orchestrator.document_registry.documents
+        assert "bob" in orchestrator.document_registry.documents
+
+    def test_batch_data_has_documents_binding(self, tmp_path):
+        manifest_dir = tmp_path / "manifest"
+        self._create_minimal_manifest(manifest_dir)
+
+        resumes = tmp_path / "resumes"
+        resumes.mkdir()
+        (resumes / "alice.pdf").write_text("Alice resume")
+
+        client = MagicMock()
+        orchestrator = ManifestOrchestrator(
+            manifest_dir=str(manifest_dir),
+            client=client,
+            resumes_path=str(resumes),
+        )
+        orchestrator._load_source()
+
+        row = orchestrator.batch_data[0]
+        assert row["candidate_name"] == "alice"
+        assert row["_documents"] == '["alice"]'
+
+    def test_no_injection_when_no_paths(self, tmp_path):
+        manifest_dir = tmp_path / "manifest"
+        self._create_minimal_manifest(manifest_dir)
+
+        client = MagicMock()
+        orchestrator = ManifestOrchestrator(
+            manifest_dir=str(manifest_dir),
+            client=client,
+        )
+        orchestrator._load_source()
+
+        assert not orchestrator.has_documents
+        assert not orchestrator.is_batch_mode
+
+    def test_inject_merges_with_manifest_documents(self, tmp_path):
+        """When manifest has existing documents, discovery merges them."""
+        manifest_dir = tmp_path / "manifest"
+        manifest_dir.mkdir(parents=True, exist_ok=True)
+
+        doc_file = tmp_path / "existing.txt"
+        doc_file.write_text("existing content")
+
+        manifest_yaml = {
+            "name": "test_manifest",
+            "version": "1.0",
+            "has_data": False,
+            "has_clients": False,
+            "has_documents": True,
+            "has_tools": False,
+            "has_scoring": False,
+            "has_synthesis": False,
+            "has_planning": False,
+            "prompt_count": 1,
+        }
+        with open(manifest_dir / "manifest.yaml", "w") as f:
+            yaml.dump(manifest_yaml, f)
+
+        config_yaml = {"name": "test"}
+        with open(manifest_dir / "config.yaml", "w") as f:
+            yaml.dump(config_yaml, f)
+
+        prompts_yaml = {
+            "prompts": [
+                {
+                    "sequence": 10,
+                    "prompt_name": "test_prompt",
+                    "prompt": "Say hello",
+                    "history": [],
+                }
+            ]
+        }
+        with open(manifest_dir / "prompts.yaml", "w") as f:
+            yaml.dump(prompts_yaml, f)
+
+        docs_yaml = {
+            "documents": [
+                {
+                    "reference_name": "existing_doc",
+                    "common_name": "Existing Doc",
+                    "file_path": str(doc_file),
+                    "tags": "test",
+                    "notes": "",
+                }
+            ]
+        }
+        with open(manifest_dir / "documents.yaml", "w") as f:
+            yaml.dump(docs_yaml, f)
+
+        resumes = tmp_path / "resumes"
+        resumes.mkdir()
+        (resumes / "alice.pdf").write_text("Alice resume")
+
+        client = MagicMock()
+        orchestrator = ManifestOrchestrator(
+            manifest_dir=str(manifest_dir),
+            client=client,
+            resumes_path=str(resumes),
+        )
+        orchestrator._load_source()
+
+        assert "existing_doc" in orchestrator.document_registry.documents
+        assert "alice" in orchestrator.document_registry.documents
+        assert len(orchestrator.batch_data) == 1
+
+    def test_inject_merges_with_manifest_batch_data(self, tmp_path):
+        """When manifest has existing batch data, discovery appends rows."""
+        manifest_dir = tmp_path / "manifest"
+        manifest_dir.mkdir(parents=True, exist_ok=True)
+
+        manifest_yaml = {
+            "name": "test_manifest",
+            "version": "1.0",
+            "has_data": True,
+            "has_clients": False,
+            "has_documents": False,
+            "has_tools": False,
+            "has_scoring": False,
+            "has_synthesis": False,
+            "has_planning": False,
+            "prompt_count": 1,
+        }
+        with open(manifest_dir / "manifest.yaml", "w") as f:
+            yaml.dump(manifest_yaml, f)
+
+        config_yaml = {"name": "test"}
+        with open(manifest_dir / "config.yaml", "w") as f:
+            yaml.dump(config_yaml, f)
+
+        prompts_yaml = {
+            "prompts": [
+                {
+                    "sequence": 10,
+                    "prompt_name": "test_prompt",
+                    "prompt": "Say hello",
+                    "history": [],
+                }
+            ]
+        }
+        with open(manifest_dir / "prompts.yaml", "w") as f:
+            yaml.dump(prompts_yaml, f)
+
+        data_yaml = {
+            "batches": [
+                {
+                    "id": 1,
+                    "batch_name": "existing_batch",
+                    "candidate_name": "Existing Candidate",
+                    "_documents": '["existing_doc"]',
+                }
+            ]
+        }
+        with open(manifest_dir / "data.yaml", "w") as f:
+            yaml.dump(data_yaml, f)
+
+        resumes = tmp_path / "resumes"
+        resumes.mkdir()
+        (resumes / "alice.pdf").write_text("Alice resume")
+
+        client = MagicMock()
+        orchestrator = ManifestOrchestrator(
+            manifest_dir=str(manifest_dir),
+            client=client,
+            resumes_path=str(resumes),
+        )
+        orchestrator._load_source()
+
+        assert len(orchestrator.batch_data) == 2
+        assert orchestrator.batch_data[0]["batch_name"] == "existing_batch"
+        assert orchestrator.batch_data[1]["batch_name"] == "alice"
