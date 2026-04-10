@@ -69,6 +69,7 @@ def discover_documents(
     folder_path: str | Path,
     extensions: set[str] | None = None,
     tags: list[str] | None = None,
+    absolute_paths: bool = False,
 ) -> list[dict[str, Any]]:
     """Scan a folder for documents and return definitions matching DOCUMENTS_HEADERS.
 
@@ -80,13 +81,17 @@ def discover_documents(
         extensions: Set of file extensions to include. Defaults to
             ``{".pdf", ".docx", ".doc", ".txt", ".md"}``.
         tags: Optional tags to assign to all discovered documents.
+        absolute_paths: If True, store absolute file paths instead of
+            paths relative to the scanned folder. Useful for runtime
+            injection where paths must resolve independently of the
+            workbook directory.
 
     Returns:
         List of dicts with keys matching ``DOCUMENTS_HEADERS``:
         ``reference_name``, ``common_name``, ``file_path``, ``tags``, ``notes``.
 
     """
-    folder = Path(folder_path)
+    folder = Path(folder_path).resolve()
     if not folder.is_dir():
         raise ValueError(f"Folder does not exist: {folder_path}")
 
@@ -108,13 +113,16 @@ def discover_documents(
             logger.warning(f"Skipping file with empty reference name: {filepath.name}")
             continue
 
-        relative_path = filepath.relative_to(folder).as_posix()
+        if absolute_paths:
+            stored_path = str(filepath.resolve())
+        else:
+            stored_path = filepath.relative_to(folder).as_posix()
 
         document_defs.append(
             {
                 "reference_name": reference_name,
                 "common_name": common_name,
-                "file_path": relative_path,
+                "file_path": stored_path,
                 "tags": tags_str,
                 "chunking_strategy": "",
                 "notes": "",

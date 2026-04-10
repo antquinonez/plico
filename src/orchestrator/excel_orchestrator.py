@@ -12,6 +12,7 @@ workflows defined in Excel workbooks with support for:
 - Document reference injection
 - Semantic search via RAG (semantic_query)
 - Conditional execution
+- Auto-discovery of documents from a folder (resumes_path)
 """
 
 from __future__ import annotations
@@ -49,6 +50,8 @@ class ExcelOrchestrator(OrchestratorBase):
         config_overrides: dict[str, Any] | None = None,
         concurrency: int | None = None,
         progress_callback: Callable[..., None] | None = None,
+        resumes_path: str | None = None,
+        jd_path: str | None = None,
     ) -> None:
         """Initialize the ExcelOrchestrator.
 
@@ -58,6 +61,12 @@ class ExcelOrchestrator(OrchestratorBase):
             config_overrides: Optional config overrides from workbook.
             concurrency: Maximum concurrent API calls (1-max). Uses config default if None.
             progress_callback: Optional callback for progress updates.
+            resumes_path: Optional folder path to auto-discover documents (e.g., resumes).
+                Discovered documents populate the documents registry and batch data
+                at runtime without modifying the workbook.
+            jd_path: Optional path to a job description file. Added as a shared
+                document with ``reference_name="job_description"`` available to all
+                prompts via ``references: '["job_description"]'``.
 
         """
         super().__init__(
@@ -65,6 +74,8 @@ class ExcelOrchestrator(OrchestratorBase):
             config_overrides=config_overrides,
             concurrency=concurrency,
             progress_callback=progress_callback,
+            resumes_path=resumes_path,
+            jd_path=jd_path,
         )
         self._workbook_path = workbook_path
         self.builder = WorkbookParser(workbook_path)
@@ -143,7 +154,8 @@ class ExcelOrchestrator(OrchestratorBase):
         self.batch_data = self.builder.load_data()
         self.is_batch_mode = len(self.batch_data) > 0
 
-        # Detect and separate planning-phase prompts
+        self._inject_discovery_overrides(os.path.dirname(self._workbook_path))
+
         self._detect_planning_prompts()
 
     def _load_config(self) -> None:

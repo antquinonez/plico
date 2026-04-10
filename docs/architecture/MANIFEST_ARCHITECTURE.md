@@ -71,7 +71,9 @@ manifests/
     ├── prompts.yaml       # Prompt definitions
     ├── data.yaml          # Batch data (if applicable)
     ├── clients.yaml       # Client configs (if applicable)
-    └── documents.yaml     # Document refs (if applicable)
+    ├── documents.yaml     # Document refs (if applicable)
+    ├── scoring.yaml       # Scoring criteria (if applicable)
+    └── synthesis.yaml     # Synthesis prompts (if applicable)
 ```
 
 ### manifest.yaml
@@ -630,6 +632,7 @@ anthropic_results = orchestrator_anthropic.run()
 
 ```
 ManifestOrchestrator
+├── OrchestratorBase (extends)
 ├── FFAI (internal)
 │   ├── FFAIClientBase
 │   └── OrderedPromptHistory

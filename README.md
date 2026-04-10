@@ -904,6 +904,7 @@ client = FFLiteLLMClient(
 - Need version-controllable prompt configurations
 - Want document Q&A with semantic search
 - Need prompts that can call tools (search, calculate, fetch) at runtime
+- Want to screen resumes against a job description with AI scoring
 
 ### Consider alternatives if you need:
 
@@ -943,7 +944,9 @@ client = FFMistralSmall(api_key="your-key")
 orchestrator = ManifestOrchestrator(
     manifest_dir="./manifests/my_workflow/",
     client=client,
-    concurrency=4
+    concurrency=4,
+    resumes_path="./resumes/",       # Auto-discover documents
+    jd_path="./job_description.md",  # Shared JD as "job_description"
 )
 parquet_path = orchestrator.run()
 
@@ -995,6 +998,8 @@ Plico/
 │   └── sample_workbook.yaml           # Sample workbook creation defaults
 ├── scripts/                           # CLI tools and workbook utilities
 │   ├── run_orchestrator.py            # Execute workbook directly
+│   ├── create_screening_workbook.py   # Create screening workbook from folder
+│   ├── create_screening_manifest.py   # Create screening manifest (YAML) from folder
 │   ├── export_manifest.py             # Convert workbook to manifest folder
 │   ├── run_manifest.py                # Execute manifest and write parquet
 │   ├── inspect_parquet.py             # Inspect/export parquet results
@@ -1021,6 +1026,7 @@ Plico/
 | [RAG ARCHITECTURE](https://github.com/antquinonez/plico/blob/main/docs/architecture/RAG_ARCHITECTURE.md) | Semantic search subsystem |
 | [CLIENTS ARCHITECTURE](https://github.com/antquinonez/plico/blob/main/docs/architecture/CLIENTS_ARCHITECTURE.md) | Adding new providers |
 | [AGENTIC_README](AGENTIC_README.md) | Agent mode and built-in tools |
+| [Resume Screening](USE_CASES/resume_screening.md) | Screen resumes against a job description |
 
 ---
 

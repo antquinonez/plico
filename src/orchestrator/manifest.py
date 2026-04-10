@@ -269,6 +269,8 @@ class ManifestOrchestrator(OrchestratorBase):
         config_overrides: dict[str, Any] | None = None,
         concurrency: int | None = None,
         progress_callback: Callable[..., None] | None = None,
+        resumes_path: str | None = None,
+        jd_path: str | None = None,
     ) -> None:
         """Initialize the ManifestOrchestrator.
 
@@ -278,6 +280,8 @@ class ManifestOrchestrator(OrchestratorBase):
             config_overrides: Optional config overrides.
             concurrency: Maximum concurrent API calls.
             progress_callback: Optional callback for progress updates.
+            resumes_path: Optional folder path to auto-discover documents (e.g., resumes).
+            jd_path: Optional path to a job description file.
 
         """
         super().__init__(
@@ -285,6 +289,8 @@ class ManifestOrchestrator(OrchestratorBase):
             config_overrides=config_overrides,
             concurrency=concurrency,
             progress_callback=progress_callback,
+            resumes_path=resumes_path,
+            jd_path=jd_path,
         )
         self._manifest_dir = Path(manifest_dir)
         self._manifest_meta: dict[str, Any] = {}
@@ -445,7 +451,16 @@ class ManifestOrchestrator(OrchestratorBase):
                 self.has_synthesis = True
                 logger.info(f"Synthesis enabled with {len(synthesis_data)} prompts")
 
-        # Detect and separate planning-phase prompts
+        # Inject runtime discovery overrides (resumes_path / jd_path)
+        source_dir = str(
+            Path(self._source_workbook).parent
+            if self._source_workbook
+            else Path(self._manifest_dir)
+        )
+        self._inject_discovery_overrides(source_dir)
+
+        # Detect and separate planning-phase prompts (after discovery injection
+        # so batch_mode is set before the planning warning fires)
         self._detect_planning_prompts()
 
         logger.info(
@@ -535,7 +550,15 @@ class ManifestOrchestrator(OrchestratorBase):
             }
             rows.append(row)
 
-        df = pl.DataFrame(rows)
+        try:
+            df = pl.DataFrame(rows)
+        except pl.ComputeError:
+            logger.warning(
+                "Polars schema inference failed, falling back to full scan. "
+                "This may happen when result rows have mixed types "
+                "(e.g., batch + synthesis results with different null patterns)."
+            )
+            df = pl.DataFrame(rows, infer_schema_length=None)
 
         import pyarrow.parquet as pq
 

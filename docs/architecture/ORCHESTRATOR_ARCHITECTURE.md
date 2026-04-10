@@ -26,7 +26,13 @@ Plico provides a declarative execution engine for AI prompt workflows. Workflows
                                │
                                ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│               ExcelOrchestrator / ManifestOrchestrator           │
+│               OrchestratorBase (ABC)                            │
+│               - run(), _validate(), _init_client()             │
+│               - shared base for both orchestrators             │
+│                                                                  │
+│   ┌─────────────────┐  ┌─────────────────┐                     │
+│   │ExcelOrchestrator│  │ManifestOrchestr.│                     │
+│   └─────────────────┘  └─────────────────┘                     │
 │                                                                  │
 │   ┌─────────────────┐  ┌─────────────────┐  ┌───────────────┐  │
 │   │ _init_workbook  │  │ _load_config    │  │ _init_client  │  │
@@ -43,6 +49,20 @@ Plico provides a declarative execution engine for AI prompt workflows. Workflows
 │   │  - Load documents from 'documents' sheet or documents.yaml │
 │   │  - Initialize DocumentProcessor & DocumentRegistry       │   │
 │   │  - Validate all document paths, pre-index for RAG        │   │
+│   │  - Auto-discovery via resumes_path / jd_path             │   │
+│   └─────────────────────────────────────────────────────────┘   │
+│                                                                  │
+│   ┌─────────────────────────────────────────────────────────┐   │
+│   │              Planning Phase (if has_planning)             │   │
+│   │  - Execute planning prompts sequentially                 │   │
+│   │  - Parse generator artifacts (scoring_criteria, prompts) │   │
+│   │  - Inject generated prompts, auto-derive ScoringRubric   │   │
+│   └─────────────────────────────────────────────────────────┘   │
+│                                                                  │
+│   ┌─────────────────────────────────────────────────────────┐   │
+│   │              Post-Execution                               │   │
+│   │  - ScoreAggregator (extract scores, compute composites)   │   │
+│   │  - SynthesisExecutor (cross-row ranking/comparison)       │   │
 │   └─────────────────────────────────────────────────────────┘   │
 │                                                                  │
 │   ┌─────────────────────────────────────────────────────────┐   │
@@ -54,11 +74,18 @@ Plico provides a declarative execution engine for AI prompt workflows. Workflows
 │   │  └──────────────────┘  └──────────────────┘             │   │
 │   │  ┌──────────────────┐  ┌──────────────────┐             │   │
 │   │  │  ResultBuilder   │  │  PromptResult    │             │   │
-│   │  │ (fluent builder) │  │  (17 fields)     │             │   │
+│   │  │ (fluent builder) │  │  (18+ fields)    │             │   │
 │   │  └──────────────────┘  └──────────────────┘             │   │
 │   │                                                          │   │
 │   │  execute_sequential()  execute_parallel()                 │   │
 │   │  execute_batch()        execute_batch_parallel()          │   │
+│   └─────────────────────────────────────────────────────────┘   │
+│                                                                  │
+│   ┌─────────────────────────────────────────────────────────┐   │
+│   │              Agent Mode (if agent_mode=true)               │   │
+│   │  - AgentLoop wraps client for multi-round tool calls       │   │
+│   │  - ToolRegistry resolves builtin: and python: tools        │   │
+│   │  - AgentResult with tool_calls, total_rounds, etc.        │   │
 │   └─────────────────────────────────────────────────────────┘   │
 │                                                                  │
 └──────────────────────────────┬──────────────────────────────────┘
@@ -125,6 +152,12 @@ Plico provides a declarative execution engine for AI prompt workflows. Workflows
 | client | No | Named client from clients sheet (uses default if empty) |
 | references | No | JSON array of document reference_names for full injection |
 | semantic_query | No | Search query for RAG-based context retrieval |
+| condition | No | Conditional expression for execution |
+| phase | No | `planning` or `execution` (default) |
+| generator | No | `true` to mark prompt as returning structured JSON artifacts |
+| agent_mode | No | `true` to enable agentic tool-call loop |
+| tools | No | JSON array of tool names for agent mode |
+| max_tool_rounds | No | Max tool-call rounds for agent mode |
 
 ### data Sheet (Optional)
 
@@ -147,6 +180,30 @@ Plico provides a declarative execution engine for AI prompt workflows. Workflows
 | product_spec | Product Specification | library/product_spec.md | Main product docs |
 | api_guide | API Reference | library/api_reference.pdf | REST API documentation |
 | config | Configuration | library/config.json | System configuration |
+
+### scoring Sheet (Optional)
+
+Defines evaluation criteria for score extraction from LLM responses.
+
+| criteria_name | description | scale_min | scale_max | weight | source_prompt |
+|---------------|-------------|-----------|-----------|--------|---------------|
+| skills_match | Technical skills match | 1 | 10 | 1.0 | evaluate_skills |
+
+### synthesis Sheet (Optional)
+
+Post-batch prompts for cross-row comparison and ranking.
+
+| sequence | prompt_name | prompt | source_scope | source_prompts |
+|----------|-------------|--------|--------------|----------------|
+| 1 | rank_candidates | Rank candidates | top:3 | `["evaluate_skills"]` |
+
+### tools Sheet (Optional)
+
+Tool definitions for agent mode execution.
+
+| name | description | parameters | implementation | enabled |
+|------|-------------|------------|----------------|---------|
+| calculate | Safe math evaluation | `{"type":"object",...}` | `builtin:calculate` | true |
 
 ### results_{timestamp} Sheet (Generated)
 
@@ -745,6 +802,8 @@ Where:
 | multiclient | `sample_workbook_multiclient_create_v001.py` | `sample_workbook_multiclient_validate_v001.py` | 13 | Multi-client execution |
 | batch | `sample_workbook_batch_create_v001.py` | `sample_workbook_batch_validate_v001.py` | 35 × 5 | Batch execution with variables |
 | max | `sample_workbook_max_create_v001.py` | `sample_workbook_max_validate_v001.py` | 27 | Combined features (batch + conditional + multi-client + RAG) |
+| agent | `sample_workbook_agent_create_v001.py` | `sample_workbook_agent_validate_v001.py` | - | Agentic tool-call loops |
+| screening | `sample_workbook_screening_create_v001.py` | `sample_workbook_screening_validate_v001.py` | - | Document evaluation with scoring and synthesis |
 
 ### Test Workbook Paths
 

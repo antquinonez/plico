@@ -338,6 +338,50 @@ else:
 
 ---
 
+## Agent Mode
+
+The agent module provides opt-in agentic tool-call execution within the deterministic DAG orchestrator.
+
+### Usage via Orchestrator
+
+Agent mode is configured in the workbook `prompts` sheet:
+
+| Column | Values | Description |
+|--------|--------|-------------|
+| `agent_mode` | `true` / `false` | Enable tool-call loop |
+| `tools` | JSON array | Tool names to use |
+| `max_tool_rounds` | integer | Max rounds (default from config) |
+
+### Built-in Tools
+
+| Tool | Description |
+|------|-------------|
+| `calculate` | Safe math expression evaluation via AST |
+| `json_extract` | Extract fields from JSON using dot notation |
+| `http_get` | Fetch text content from a URL |
+| `rag_search` | Semantic search across indexed documents |
+| `read_document` | Read a document's full content |
+| `list_documents` | List available document names |
+
+### Agent Result
+
+When agent mode is used, the result includes:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `agent_mode` | bool | `true` if agent loop was used |
+| `tool_calls` | list | List of tool call records |
+| `total_rounds` | int | Number of agentic loop rounds |
+| `total_llm_calls` | int | Total LLM API calls |
+
+These properties are also accessible in conditional expressions:
+```
+{{research.tool_calls_count}} > 0
+{{research.total_rounds}} <= 3
+```
+
+---
+
 ## FFAI Wrapper
 
 The `FFAI` class wraps any client and adds powerful context management features.

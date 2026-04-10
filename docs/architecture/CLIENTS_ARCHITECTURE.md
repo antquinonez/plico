@@ -195,7 +195,7 @@ Connect via Azure AI Inference API.
 Factory function for creating Azure clients with environment-based configuration:
 
 ```python
-from src.Clients.FFAzureLiteLLM import create_azure_client
+from src.Clients import create_azure_client
 
 # Creates FFLiteLLMClient configured for Azure
 client = create_azure_client(
@@ -217,6 +217,8 @@ The factory reads from environment variables:
 - `{env_prefix}_KEY` - API key
 - `{env_prefix}_ENDPOINT` - API base endpoint
 - `{env_prefix}_API_VERSION` - API version (defaults to `"2024-02-01"`)
+
+**Module:** `src/Clients/FFAzureLiteLLM.py`
 
 ### 5. Special Clients
 

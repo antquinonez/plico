@@ -299,6 +299,47 @@ retry:
   log_level: "info"             # Logging level for retry attempts
 ```
 
+### Planning Configuration (`main.yaml`)
+
+The planning phase enables dynamic prompt generation from LLM calls.
+
+```yaml
+planning:
+  enabled: true                     # Enable planning phase
+  save_artifacts: false              # Save intermediate artifacts
+  generated_sequence_base: "auto"    # Sequence base for generated prompts
+  generated_sequence_step: 10        # Step between generated sequences
+  continue_on_parse_error: true      # Continue on JSON parse errors
+```
+
+### Agent Configuration (`main.yaml`)
+
+Agent mode provides agentic tool-call execution within the DAG.
+
+```yaml
+agent:
+  enabled: true                  # Enable agent mode
+  max_tool_rounds: 5             # Max tool-call rounds per prompt
+  tool_timeout: 30.0             # Timeout per tool execution (seconds)
+  continue_on_tool_error: true    # Continue on tool errors
+```
+
+### Evaluation Configuration (`main.yaml`)
+
+The evaluation module provides scoring and synthesis for document evaluation workflows.
+
+```yaml
+evaluation:
+  enabled: true
+  default_strategy: "default"     # Default weight override strategy
+  strategies:
+    default: {}
+    conservative:
+      weights:
+        - criteria: "experience"
+          multiplier: 1.5
+```
+
 **Configuration fields:**
 
 | Field | Type | Description |

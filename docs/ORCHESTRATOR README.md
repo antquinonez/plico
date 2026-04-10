@@ -14,6 +14,10 @@ The Excel Orchestrator enables non-programmers to define and execute AI prompt w
 - **Per-prompt client configuration**
 - **Document reference injection**
 - **Conditional execution**
+- **Agent mode (tool-call loops)**
+- **Planning phase (dynamic prompt generation)**
+- **Evaluation (scoring rubrics and synthesis ranking)**
+- **Document auto-discovery**
 - **Manifest-based orchestration with parquet output**
 
 ## Quick Start
@@ -508,7 +512,240 @@ Both `references` (full document) and `semantic_query` (relevant chunks) can be 
 
 ---
 
-## Execution
+## Agent Mode (Tool-Call Loops)
+
+### Overview
+
+Agent mode enables opt-in agentic execution within the deterministic DAG orchestrator. Prompts can use tools like `calculate`, `json_extract`, `http_get`, `rag_search`, `read_document`, and `list_documents` via a multi-round LLM loop.
+
+### Enabling Agent Mode
+
+Add an `agent_mode` column and a `tools` column to your prompts sheet:
+
+| Column | Values | Description |
+|--------|--------|-------------|
+| `agent_mode` | `true` / `false` | Enable tool-call loop for this prompt |
+| `tools` | JSON array | Tool names to make available |
+| `max_tool_rounds` | integer | Max tool-call rounds (default from config) |
+
+**Example prompts sheet:**
+
+| sequence | prompt_name | prompt | agent_mode | tools |
+|----------|-------------|--------|------------|-------|
+| 1 | research | Find the total revenue from the financial document | `true` | `["read_document", "calculate"]` |
+| 2 | summarize | Summarize the research findings | | |
+
+### Built-in Tools
+
+| Tool | Description |
+|------|-------------|
+| `calculate` | Evaluate math expressions safely via AST |
+| `json_extract` | Extract fields from JSON using dot notation |
+| `http_get` | Fetch text content from a URL |
+| `rag_search` | Semantic search across indexed documents |
+| `read_document` | Read a document's full content by name |
+| `list_documents` | List available document names |
+
+### Custom Tools
+
+Define custom tools in a `tools` sheet:
+
+| Column | Description |
+|--------|-------------|
+| `name` | Unique tool name |
+| `description` | Tool description for the LLM |
+| `parameters` | JSON Schema for parameters |
+| `implementation` | `builtin:<name>` or `python:<module.func>` |
+| `enabled` | `true` / `false` |
+
+### Agent Result Fields
+
+Agent execution populates additional fields on the result:
+
+| Field | Description |
+|-------|-------------|
+| `agent_mode` | `true` if agent loop was used |
+| `tool_calls` | List of tool call records |
+| `total_rounds` | Number of agentic loop rounds |
+| `total_llm_calls` | Total LLM API calls within the loop |
+
+### Configuration (`config/main.yaml`)
+
+```yaml
+agent:
+  enabled: true
+  max_tool_rounds: 5
+  tool_timeout: 30.0
+  continue_on_tool_error: true
+```
+
+---
+
+## Planning Phase (Dynamic Prompt Generation)
+
+### Overview
+
+The planning phase enables the orchestrator to derive scoring criteria and evaluation prompts from documents (e.g., a job description) via LLM calls, eliminating the need for manual scoring worksheet authoring.
+
+### Planning Prompts
+
+Planning prompts run in a dedicated phase before batch execution. Mark prompts with `phase=planning` and `generator=true`:
+
+| Column | Values | Description |
+|--------|--------|-------------|
+| `phase` | `planning` / `execution` | Controls when the prompt runs |
+| `generator` | `true` / `false` | Whether the prompt returns structured JSON artifacts |
+
+### Generator Response Schema
+
+```json
+{
+  "scoring_criteria": [
+    {"criteria_name": "skills_match", "description": "...", "scale_min": 1, "scale_max": 10, "weight": 1.0, "source_prompt": "evaluate_skills"}
+  ],
+  "prompts": [
+    {"prompt_name": "evaluate_skills", "prompt": "Evaluate {{candidate_name}}'s skills.", "references": ["job_desc"]}
+  ]
+}
+```
+
+### Phase Rules
+
+- Planning prompts execute **sequentially** (never parallel)
+- Planning prompts **cannot** use `{{variable}}` batch references
+- Planning prompts **can** use `references` for document injection and `history` for chaining
+- If a manual scoring sheet exists, it takes priority (logged as warning)
+
+### Configuration (`config/main.yaml`)
+
+```yaml
+planning:
+  enabled: true
+  save_artifacts: false
+  generated_sequence_base: "auto"
+  generated_sequence_step: 10
+  continue_on_parse_error: true
+```
+
+### Execution Order with Planning
+
+```
+run() → _load_source() → _validate_pre_planning() → _init_client()
+  → Planning Phase (if has_planning)
+    → Execute planning prompts sequentially
+    → Parse generator artifacts
+    → Inject generated prompts
+    → Auto-derive ScoringRubric
+  → Execution Phase (static + generated prompts)
+  → Post-Execution (score aggregation → synthesis → results)
+```
+
+---
+
+## Evaluation Module (Scoring and Synthesis)
+
+### Overview
+
+The evaluation module enables structured document evaluation workflows: score extraction, weighted aggregation, and cross-row comparison/ranking.
+
+### Scoring Sheet
+
+Define evaluation criteria in a `scoring` sheet:
+
+| Column | Description |
+|--------|-------------|
+| `criteria_name` | Machine-readable key (e.g., `skills_match`) |
+| `description` | Human-readable description |
+| `scale_min` / `scale_max` | Score range |
+| `weight` | Base weight for aggregation |
+| `source_prompt` | Which prompt response contains this score |
+
+### Synthesis Sheet
+
+Define post-batch comparison prompts in a `synthesis` sheet:
+
+| Column | Description |
+|--------|-------------|
+| `sequence` | Execution order |
+| `prompt_name` | Unique name |
+| `prompt` | The prompt text |
+| `source_scope` | `all` or `top:N` |
+| `source_prompts` | JSON array of prompt names to include |
+| `include_scores` | Include scoring breakdown (default: true) |
+| `history` | Synthesis prompt dependencies |
+| `condition` | Condition for execution |
+
+### Per-Row Document Binding
+
+Data rows can declare per-row documents via the `_documents` column (additively merged with prompt `references`):
+
+| id | batch_name | candidate_name | _documents |
+|----|------------|----------------|------------|
+| 1 | alice_chen | Alice Chen | `["resume_alice"]` |
+
+### Result Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `scores` | JSON | Extracted scores per criteria |
+| `composite_score` | Float | Weighted average |
+| `scoring_status` | String | `ok`, `partial`, `failed`, or `skipped` |
+| `strategy` | String | Strategy name used |
+| `result_type` | String | `batch`, `synthesis`, or `planning` |
+
+---
+
+## Document Auto-Discovery
+
+### Overview
+
+The discovery module auto-discovers documents from a folder and bootstraps evaluation workbooks, eliminating manual data row creation.
+
+### Runtime Injection
+
+Pass `resumes_path` and `jd_path` to the orchestrator for automatic document discovery:
+
+```python
+from src.orchestrator import ExcelOrchestrator
+from src.Clients.FFMistralSmall import FFMistralSmall
+
+client = FFMistralSmall(api_key="...")
+orchestrator = ExcelOrchestrator(
+    workbook_path="screening.xlsx",
+    client=client,
+    resumes_path="./resumes/",       # Auto-discover documents
+    jd_path="./job_description.md",  # Shared JD as "job_description"
+)
+orchestrator.run()
+```
+
+### CLI Integration
+
+```bash
+python scripts/run_orchestrator.py ./prompts.xlsx \
+    --resumes-path ./resumes/ --jd ./jd.md -c 1
+```
+
+### Screening Invoke Tasks
+
+```bash
+inv screening.create -r ./resumes/ -j ./jd.md        # Create workbook
+inv screening.run -r ./resumes/ -j ./jd.md          # Create and run
+inv screening.manifest -r ./resumes/ -j ./jd.md     # Create and run manifest
+inv screening.inspect ./screening.xlsx                # Inspect results
+```
+
+### Discovery Functions
+
+```python
+from src.orchestrator.discovery import discover_documents, create_data_rows_from_documents, create_evaluation_workbook
+
+docs = discover_documents("./resumes/")
+data_rows = create_data_rows_from_documents(docs)
+create_evaluation_workbook("screening.xlsx", "./resumes/", jd_path="./jd.md")
+```
+
+---
 
 ### Run Command
 
@@ -563,7 +800,7 @@ Manifest-based orchestration decouples workbook parsing from execution, enabling
 ### Workflow
 
 ```
-Workbook → export_manifest.py → Manifest Folder → run_manifest.py → Parquet
+Workbook → manifest_export.py → Manifest Folder → manifest_run.py → Parquet
 ```
 
 ### Quick Start
@@ -600,7 +837,9 @@ manifest_<workbook_name>/
 ├── prompts.yaml       # All prompt definitions
 ├── data.yaml          # Batch data (if present)
 ├── clients.yaml       # Client configurations (if present)
-└── documents.yaml     # Document references (if present)
+├── documents.yaml     # Document references (if present)
+├── scoring.yaml       # Scoring criteria (if present)
+└── synthesis.yaml     # Synthesis prompts (if present)
 ```
 
 ### Run Manifest Command
@@ -722,7 +961,7 @@ print(f"Failed: {summary['failed']}")
 | Use Case | Recommended Approach |
 |----------|---------------------|
 | Quick iteration, testing | Direct workbook (`run_orchestrator.py`) |
-| Production workflows | Manifest (`run_manifest.py`) |
+| Production workflows | Manifest (`manifest_run.py`) |
 | Version controlling prompts | Manifest (YAML is git-friendly) |
 | Archiving results | Manifest + parquet |
 | CI/CD integration | Manifest + parquet |
@@ -906,6 +1145,9 @@ sample_workbook_<type>_<action>_v<NNN>.py
 | **multiclient** | 13 | Multi-client execution with named configurations |
 | **batch** | 35 | Batch execution with variable templating (35 × 5 = 175 executions) |
 | **max** | 27 | Combined features: batch + conditional + multi-client + RAG |
+| **agent** | - | Agentic tool-call loop with built-in tools |
+| **screening** | - | Document evaluation pipeline with scoring and synthesis |
+| **screening v002** | - | Planning phase screening with auto-derived scoring |
 
 ### Using Invoke Tasks (Recommended)
 
@@ -932,6 +1174,26 @@ inv wb.conditional
 inv wb.documents
 inv wb.batch
 inv wb.max
+inv wb.agent
+inv wb.screening
+```
+
+### RAG Tasks
+
+```bash
+inv rag.status      # Show RAG indexing status
+inv rag.clear       # Clear all RAG indexes
+inv rag.rebuild     # Rebuild indexes from documents
+inv rag.stats       # Show detailed RAG statistics
+```
+
+### Screening Tasks
+
+```bash
+inv screening.create -r ./resumes/ -j ./jd.md
+inv screening.run -r ./resumes/ -j ./jd.md
+inv screening.manifest -r ./resumes/ -j ./jd.md
+inv screening.inspect ./screening.xlsx
 ```
 
 ### Using Makefile
@@ -995,28 +1257,18 @@ make max
 | `inv wb.documents` | Create, run, and validate documents workbook |
 | `inv wb.batch` | Create, run, and validate batch workbook |
 | `inv wb.max` | Create, run, and validate max workbook |
+| `inv wb.agent` | Create, run, and validate agent workbook |
+| `inv wb.screening` | Create, run, and validate screening workbook |
+| `inv rag.status` | Show RAG indexing status |
+| `inv rag.clear` | Clear all RAG indexes |
+| `inv rag.rebuild` | Rebuild indexes from documents |
+| `inv rag.stats` | Show detailed RAG statistics |
+| `inv screening.create` | Create screening workbook from folder |
+| `inv screening.run` | Create and run screening workbook |
+| `inv screening.manifest` | Create and run screening manifest |
+| `inv screening.inspect` | Inspect screening results |
 
 ### Options
-
-| Option | Description |
-|--------|-------------|
-| `CONCURRENCY=N` (Makefile) | Set parallel execution (default: 3) |
-| `-c N` (Invoke) | Set parallel execution (default: varies by workbook) |
-
-### Validation Scripts
-
-Each workbook type has a dedicated validation script:
-
-| Script | Purpose |
-|--------|---------|
-| `sample_workbook_basic_validate_v001.py` | Validates basic workbook (31 prompts, 4 dependency levels) |
-| `sample_workbook_multiclient_validate_v001.py` | Validates multiclient workbook (client assignment verification) |
-| `sample_workbook_conditional_validate_v001.py` | Validates conditional workbook (50 prompts, condition evaluation) |
-| `sample_workbook_documents_validate_v001.py` | Validates documents workbook (references vs semantic_query) |
-| `sample_workbook_batch_validate_v001.py` | Validates batch workbook (35 prompts × 5 batches) |
-| `sample_workbook_max_validate_v001.py` | Validates max workbook (batch + conditional + multi-client + RAG) |
-
-Validation scripts check:
 - Execution status (success/failed/skipped)
 - Dependency chain resolution
 - Condition evaluation results
@@ -1089,6 +1341,32 @@ python scripts/sample_workbook_max_validate_v001.py [workbook_path]
 ```
 
 27 prompts combining batch execution, conditional branching, multi-client configuration, and RAG semantic search with 13 documents.
+
+#### Agent Sample Workbook
+
+```bash
+python scripts/sample_workbook_agent_create_v001.py [output_path] [--client CLIENT]
+python scripts/sample_workbook_agent_validate_v001.py [workbook_path]
+```
+
+Agentic tool-call loop with built-in tools, multi-round execution.
+
+#### Screening Sample Workbook
+
+```bash
+python scripts/sample_workbook_screening_create_v001.py [output_path]
+python scripts/sample_workbook_screening_validate_v001.py [workbook_path]
+```
+
+Document evaluation pipeline with per-row documents, scoring rubric, and synthesis ranking.
+
+#### Screening v002 Sample Workbook (Planning Phase)
+
+```bash
+python scripts/sample_workbook_screening_create_v002.py [output_path] --planning
+```
+
+Planning phase screening with auto-derived scoring from LLM, generator prompts, and refinement pattern.
 
 ---
 
@@ -1184,7 +1462,7 @@ Check that the prompt_name exists and is defined before it's referenced.
 
 ```
 ┌─────────────────────────────────────────┐
-│          export_manifest.py             │
+│          manifest_export.py             │
 └─────────────────────────────────────────┘
                     │
                     ▼
@@ -1207,7 +1485,7 @@ Check that the prompt_name exists and is defined before it's referenced.
                     │
                     ▼
 ┌─────────────────────────────────────────┐
-│          run_manifest.py                │
+│          manifest_run.py                │
 └─────────────────────────────────────────┘
                     │
                     ▼
@@ -1229,7 +1507,7 @@ Check that the prompt_name exists and is defined before it's referenced.
                     │
                     ▼
 ┌─────────────────────────────────────────┐
-│          inspect_parquet.py             │
+│          manifest_inspect.py             │
 │  - Summary statistics                   │
 │  - Data preview                         │
 │  - Export to CSV/JSON                   │

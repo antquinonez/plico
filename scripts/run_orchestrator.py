@@ -21,6 +21,10 @@ Examples:
 
     # Run with logging to file only (quiet mode)
     python scripts/run_orchestrator.py my_prompts.xlsx --quiet
+
+    # Run with auto-discovered resumes and a job description
+    python scripts/run_orchestrator.py screening.xlsx \
+        --resumes-path ./resumes/ --jd ./job_description.md -c 1
 """
 
 import argparse
@@ -83,6 +87,16 @@ def main():
         help="Suppress console logging (logs to file only)",
     )
     parser.add_argument("--verbose", action="store_true", help="Enable debug logging")
+    parser.add_argument(
+        "--resumes-path",
+        help="Folder path to auto-discover documents (e.g., resumes). "
+        "Populates documents and batch data at runtime without modifying the workbook.",
+    )
+    parser.add_argument(
+        "--jd",
+        help="Path to a job description file. Added as a shared document "
+        "with reference_name='job_description' available to all prompts.",
+    )
 
     args = parser.parse_args()
 
@@ -157,11 +171,17 @@ def main():
         client=client,
         concurrency=args.concurrency,
         progress_callback=progress.update,
+        resumes_path=args.resumes_path,
+        jd_path=args.jd,
     )
 
     print(f"\nStarting orchestration with concurrency={args.concurrency}")
     print(f"Client type: {client_type}")
     print(f"Total prompts: {len(prompts)}")
+    if args.resumes_path:
+        print(f"Resumes path: {args.resumes_path} (auto-discovered)")
+    if args.jd:
+        print(f"Job description: {args.jd}")
     log_dir = os.path.join(
         os.path.dirname(os.path.dirname(os.path.abspath(__file__))), app_config.logging.directory
     )
