@@ -835,6 +835,71 @@ def screening_run(
     print("\nScreening complete!")
 
 
+@task
+def screening_manifest(
+    c: Context,
+    resumes_path: str = "",
+    jd: str = "",
+    output: str = "",
+    planning: bool = False,
+    extensions: str = "",
+    client: str | None = None,
+    concurrency: str = "1",
+):
+    """Create a screening manifest from a folder of resumes and run it.
+
+    Creates manifest YAML files directly (no Excel intermediary), then
+    runs via manifest_run.py with --resumes-path and --jd for runtime
+    document injection.
+
+    Args:
+        resumes_path: Folder containing resume documents
+        jd: Path to job description file
+        output: Output manifest directory (default: ./manifests/manifest_screening)
+        planning: Use planning phase mode (auto-derive scoring from JD)
+        extensions: Space-separated file extensions (default: .pdf .docx .doc .txt .md)
+        client: Client type from clients.yaml
+        concurrency: Parallel execution concurrency
+
+    Examples:
+        inv screening.manifest --resumes-path ./resumes/ --jd ./jd.md
+        inv screening.manifest -r ./resumes/ -j ./jd.md --planning
+        inv screening.manifest -r ./resumes/ -j ./jd.md -c 2
+
+    """
+    if not resumes_path:
+        print("Error: --resumes-path / -r is required")
+        return
+    if not jd:
+        print("Error: --jd / -j is required")
+        return
+
+    planning_flag = " --planning" if planning else ""
+    client_flag = f" --client {client}" if client else ""
+    ext_flag = f" --extensions {extensions}" if extensions else ""
+    output_flag = f" {output}" if output else ""
+
+    print("Creating screening manifest from folder...")
+    _run_cmd(
+        c,
+        f"python scripts/create_screening_manifest.py{output_flag} "
+        f"--resumes-path {resumes_path} --jd {jd}{planning_flag}{client_flag}{ext_flag}",
+    )
+
+    config = get_config()
+    manifest_path = output or str(Path(config.paths.manifest_dir) / "manifest_screening")
+
+    print("\nRunning manifest orchestrator...")
+    orchestrator_client = f" --client {client}" if client else ""
+    _run_cmd(
+        c,
+        f"python scripts/manifest_run.py {manifest_path} "
+        f"--resumes-path {resumes_path} --jd {jd} -c {concurrency}{orchestrator_client}",
+    )
+
+    print("\nScreening manifest complete!")
+
+
 # ============================================================================
 # RAG TASKS (rag namespace)
 # ============================================================================
@@ -1112,6 +1177,7 @@ rag.add_task(rag_stats, name="stats")
 screening = Collection()
 screening.add_task(screening_create, name="create")
 screening.add_task(screening_run, name="run")
+screening.add_task(screening_manifest, name="manifest")
 
 # Root namespace
 ns = Collection()

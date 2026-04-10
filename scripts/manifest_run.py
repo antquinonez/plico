@@ -19,6 +19,10 @@ Examples:
     # Dry run to validate manifest
     python scripts/manifest_run.py ./manifests/manifest_my_prompts --dry-run
 
+    # Run with auto-discovered resumes and a job description
+    python scripts/manifest_run.py ./manifests/manifest_screening \
+        --resumes-path ./resumes/ --jd ./job_description.md -c 1
+
 Output:
     Results are written to a parquet file:
     ./outputs/<manifest_name>/<timestamp>.parquet
@@ -86,6 +90,16 @@ def main():
         help="Suppress console logging (logs to file only)",
     )
     parser.add_argument("--verbose", action="store_true", help="Enable debug logging")
+    parser.add_argument(
+        "--resumes-path",
+        help="Folder path to auto-discover documents (e.g., resumes). "
+        "Populates documents and batch data at runtime without modifying the manifest.",
+    )
+    parser.add_argument(
+        "--jd",
+        help="Path to a job description file. Added as a shared document "
+        "with reference_name='job_description' available to all prompts.",
+    )
 
     args = parser.parse_args()
 
@@ -184,12 +198,18 @@ def main():
         client=client,
         concurrency=args.concurrency,
         progress_callback=progress.update,
+        resumes_path=args.resumes_path,
+        jd_path=args.jd,
     )
 
     print(f"\nStarting orchestration with concurrency={args.concurrency}")
     print(f"Client type: {client_type}")
     print(f"Total prompts: {len(prompts)}")
     print(f"Output directory: {output_dir}")
+    if args.resumes_path:
+        print(f"Resumes path: {args.resumes_path} (auto-discovered)")
+    if args.jd:
+        print(f"Job description: {args.jd}")
     print()
 
     parquet_path = orchestrator.run()
