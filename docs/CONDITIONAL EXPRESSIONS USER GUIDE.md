@@ -100,6 +100,11 @@ Access previous prompt results using double-brace syntax:
 | `attempts` | int | 0, 1, 2, ... | Number of retry attempts made |
 | `error` | string | Error message or empty string | Error message if the prompt failed |
 | `has_response` | bool | `true`, `false` | True if response exists and is non-empty |
+| `agent_mode` | bool | `true`, `false` | True if prompt used agentic tool-call loop |
+| `tool_calls_count` | int | 0, 1, 2, ... | Number of tool calls made |
+| `last_tool_name` | string | Tool name or empty string | Name of last tool called |
+| `total_rounds` | int | 0, 1, 2, ... | Number of rounds in agentic loop |
+| `total_llm_calls` | int | 0, 1, 2, ... | Total LLM API calls within agent loop |
 
 ### Comparison Operators
 
@@ -156,6 +161,9 @@ The pattern (right operand) is a Python regular expression matched against the t
 | `min` | `min(a, b, ...)` | Minimum value | `min({{a.response}}, {{b.response}}) > 0` |
 | `max` | `max(a, b, ...)` | Maximum value | `max({{a.response}}, {{b.response}}) < 100` |
 | `round` | `round(value, digits)` | Round to precision | `round({{score.response}}, 2) == 0.75` |
+| `rfind` | `rfind(value, sub)` | Find substring position from right | `rfind({{text.response}}, "key") >= 0` |
+| `rsplit` | `rsplit(value, sep)` | Split from right | `len(rsplit({{csv.response}}, ",")) > 3` |
+| `slice` | `slice(value, start, end)` | Slice string/list | `slice({{text.response}}, 0, 10) == "prefix" |
 | `is_null` | `is_null(value)` | Check if null/None | `is_null({{optional.response}})` |
 | `is_empty` | `is_empty(value)` | Check if empty/null/whitespace | `is_empty({{text.response}})` |
 | `json_parse` | `json_parse(string)` | Parse JSON string | `json_parse({{api.response}})` |
@@ -165,6 +173,7 @@ The pattern (right operand) is a Python regular expression matched against the t
 | `json_keys` | `json_keys(string)` | Get object keys | `len(json_keys({{api.response}})) > 0` |
 | `json_values` | `json_values(string)` | Get object values | `len(json_values({{api.response}})) > 0` |
 | `json_type` | `json_type(string, path)` | Get type at path | `json_type({{api.response}}, "data") == "object"` |
+| `json_values` | `json_values(string)` | Get object values | `len(json_values({{api.response}})) > 0` |
 
 All functions handle `null` values gracefully:
 - `lower(null)` returns `""`
@@ -264,6 +273,23 @@ The JSON functions handle common LLM output issues:
 - Unquoted keys
 - Single quotes instead of double quotes
 - Comments in JSON
+
+### Arithmetic Operators
+
+Standard arithmetic is supported on numeric values:
+
+| Operator | Syntax | Example |
+|----------|--------|---------|
+| Addition | `+` | `{{a.response}} + {{b.response}}` |
+| Subtraction | `-` | `{{a.response}} - 10` |
+| Multiplication | `*` | `{{a.response}} * 2` |
+| Division | `/` | `{{a.response}} / 3` |
+
+String concatenation also uses `+`:
+
+```
+{{first.response}} + " " + {{last.response}} == "Alice Chen"
+```
 
 ### Ternary Expressions
 
@@ -595,7 +621,7 @@ Condition String
 4. **Sandboxed Functions** - 27+ safe functions available (string, math, JSON, type checking)
 5. **Sandboxed Methods** - Only 30+ whitelisted string/list/dict methods allowed
 6. **No Private Access** - Methods starting with `_` are blocked
-7. **Controlled Property Access** - Can only access the 5 defined properties (`status`, `response`, `attempts`, `error`, `has_response`)
+7. **Controlled Property Access** - Can only access the 10 defined properties (`status`, `response`, `attempts`, `error`, `has_response`, `agent_mode`, `tool_calls_count`, `last_tool_name`, `total_rounds`, `total_llm_calls`)
 
 ---
 

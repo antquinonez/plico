@@ -118,14 +118,17 @@ Same manifest. Same execution engine. Same audit trail.
 **Purpose:** Orchestrate prompt execution with dependency-aware scheduling, parallel execution, and multi-modal I/O.
 
 **Key Components:**
-- `ExcelOrchestrator` - Workbook-based orchestration engine
-- `ManifestOrchestrator` - Manifest-based orchestration engine with parquet output
+- `OrchestratorBase` (ABC) - Shared base class for both orchestrators with `run()`, `_validate()`, `_init_client()`
+- `ExcelOrchestrator` - Workbook-based orchestration engine (extends OrchestratorBase)
+- `ManifestOrchestrator` - Manifest-based orchestration engine with parquet output (extends OrchestratorBase)
 - `Executor` - Shared execution engine for both orchestrators (sequential, parallel, batch modes)
 - `WorkbookParser` - Excel file creation, validation, and I/O
+- `WorkbookFormatter` - Excel formatting utilities
 - `ClientRegistry` - Client factory and multi-client support
 - `DocumentProcessor` - Document parsing and checksum-based caching
 - `DocumentRegistry` - Document lookup and reference injection
 - `ConditionEvaluator` - AST-sandboxed conditional expression evaluation
+- `OrchestratorValidator` - Startup validation with structured error reporting
 - `ExecutionState` - Thread-safe shared state for parallel execution
 - `PromptNode` - Dependency graph node with level assignment
 - `PromptResult` / `ResultBuilder` - Structured result DTOs with fluent builder
@@ -140,8 +143,77 @@ Same manifest. Same execution engine. Same audit trail.
 - Document reference injection with LlamaParse support
 - Conditional execution with expression-based prompt skipping
 - Manifest export/import workflow for version control
+- OrchestratorValidator for structured startup validation with ValidationError/ValidationResult
 
 **See:** [ORCHESTRATOR_ARCHITECTURE.md](./ORCHESTRATOR_ARCHITECTURE.md)
+
+### Subsystem 7: Agent Module
+**Purpose:** Provide opt-in agentic tool-call execution within the deterministic DAG orchestrator.
+
+**Key Components:**
+- `AgentResult` - Dataclass capturing final response, tool call records, total rounds, total LLM calls
+- `ToolCallRecord` - Dataclass for individual tool call results with duration and error tracking
+- `AgentLoop` - Multi-round LLM loop that executes tool calls via ToolRegistry
+- `ToolRegistry` - Registry of ToolDefinition objects with `builtin:` and `python:` implementations
+- `builtin_tools` - 6 built-in tools: `calculate`, `json_extract`, `http_get`, `rag_search`, `read_document`, `list_documents`
+
+**Features:**
+- Opt-in via `agent_mode=true` column in prompts sheet
+- Tools defined in dedicated `tools` sheet or inline via `tools` column
+- Context-dependent tools (`rag_search`, `read_document`, `list_documents`) bound at runtime
+- Configurable `max_tool_rounds`, `tool_timeout`, `continue_on_tool_error`
+- Agent result properties accessible in condition expressions
+
+**See:** [ORCHESTRATOR README.md](../ORCHESTRATOR%20README.md) for agent mode usage.
+
+### Subsystem 8: Planning Phase
+**Purpose:** Enable the orchestrator to derive scoring criteria and evaluation prompts from documents via LLM calls.
+
+**Key Components:**
+- `PlanningArtifactParser` - Parses generator prompt JSON responses with `json_repair`
+- `GeneratedArtifact` - Dataclass holding scoring criteria and generated prompts
+- Validation, merging, and sequence assignment for generated artifacts
+
+**Features:**
+- Generator prompts (`generator=true`) return structured JSON with `scoring_criteria` and `prompts`
+- Planning prompts execute sequentially before batch execution
+- Auto-derives `ScoringRubric` if no manual scoring sheet exists
+- Generated prompts injected into execution with `_generated: true` tag
+
+**See:** [ORCHESTRATOR README.md](../ORCHESTRATOR%20README.md) for planning phase usage.
+
+### Subsystem 9: Evaluation Module (Scoring and Synthesis)
+**Purpose:** Enable structured document evaluation workflows with score extraction, weighted aggregation, and cross-row comparison.
+
+**Key Components:**
+- `ScoringCriteria` - Dataclass for evaluation criteria definition
+- `ScoringRubric` - Extracts scores from LLM JSON responses and computes composites
+- `ScoreAggregator` - Aggregates scores across batch entries with strategy-based weight overrides
+- `SynthesisExecutor` - Cross-row comparison and ranking with configurable scope
+
+**Features:**
+- `scoring` sheet defines criteria with scale, weight, and source prompt mapping
+- `synthesis` sheet defines post-batch prompts for comparison/ranking
+- Per-row document binding via `_documents` column in data sheet
+- Result fields: `scores` (JSON), `composite_score`, `scoring_status`, `strategy`, `result_type`
+
+**See:** [ORCHESTRATOR README.md](../ORCHESTRATOR%20README.md) for evaluation usage.
+
+### Subsystem 10: Discovery Module
+**Purpose:** Auto-discover documents from a folder and bootstrap evaluation workbooks.
+
+**Key Components:**
+- `discover_documents()` - Scans folders for supported file types
+- `create_data_rows_from_documents()` - Generates batch data rows from discovered documents
+- `create_evaluation_workbook()` - Creates complete `.xlsx` with all sheets
+
+**Features:**
+- Automatic document scanning (`.pdf`, `.docx`, `.txt`, `.md`, etc.)
+- Shared document support (e.g., a job description for all rows)
+- Integration with ExcelOrchestrator and ManifestOrchestrator via `resumes_path`/`jd_path`
+- Resume screening use case with dedicated invoke tasks
+
+**See:** [ORCHESTRATOR README.md](../ORCHESTRATOR%20README.md) for discovery usage.
 
 ### Subsystem 3: Document Reference System
 **Purpose:** Allow prompts to reference external documents that are parsed, cached, and injected at runtime.
@@ -263,7 +335,7 @@ Results → Parquet (Manifest) or Excel sheet (Workbook)
 All three paths produce the same YAML manifest format:
 
 ```
-Excel Workbook → export_manifest.py → Manifest Folder → ManifestOrchestrator → Parquet
+Excel Workbook → manifest_export.py → Manifest Folder → ManifestOrchestrator → Parquet
 Python Script                         → Manifest Folder → ManifestOrchestrator → Parquet
 AI Agent      → (writes YAML directly) → Manifest Folder → ManifestOrchestrator → Parquet
 ```
@@ -329,22 +401,40 @@ Plico/
 │   │   ├── FFAzureMSDeepSeekR1.py
 │   │   └── FFAzurePhi.py
 │   │
-│   └── orchestrator/                  # SUBSYSTEM 2: Execution Engine
-│       ├── __init__.py
-│       ├── executor.py                # Shared execution engine (sequential/parallel/batch)
-│       ├── excel_orchestrator.py      # Workbook-based orchestration
-│       ├── manifest.py                # Manifest export/execution
-│       ├── workbook_parser.py         # Excel I/O and validation
-│       ├── client_registry.py         # Client factory and registry
-│       ├── document_processor.py      # Document parsing and caching
-│       ├── document_registry.py       # Document lookup and injection
-│       ├── condition_evaluator.py     # AST-sandboxed conditional expression evaluation
-│       ├── state/                     # Execution state and dependency nodes
-│       │   ├── execution_state.py     #   Thread-safe ExecutionState dataclass
-│       │   └── prompt_node.py         #   PromptNode with is_ready() and level assignment
-│       └── results/                   # Result builders and DTOs
-│           ├── result.py              #   PromptResult dataclass (18 fields)
-│           └── builder.py             #   ResultBuilder fluent builder
+│   ├── agent/                         # SUBSYSTEM 7: Agent (Agentic Tool-Call Loop)
+│   │   ├── __init__.py                # Exports AgentResult, ToolCallRecord
+│   │   ├── agent_result.py            # AgentResult, ToolCallRecord dataclasses
+│   │   └── agent_loop.py              # Native agentic loop for tool-call execution
+│   │
+│   ├── orchestrator/                  # SUBSYSTEM 2: Execution Engine
+│   │   ├── __init__.py
+│   │   ├── base/                      # Base orchestrator class hierarchy
+│   │   │   ├── __init__.py
+│   │   │   └── orchestrator_base.py   #   OrchestratorBase ABC (shared run/init/validate)
+│   │   ├── executor.py                # Shared execution engine (sequential/parallel/batch)
+│   │   ├── excel_orchestrator.py      # Workbook-based orchestration
+│   │   ├── manifest.py                # Manifest export/execution
+│   │   ├── workbook_parser.py         # Excel I/O and validation
+│   │   ├── workbook_formatter.py      # Excel formatting utilities
+│   │   ├── client_registry.py         # Client factory and registry
+│   │   ├── document_processor.py      # Document parsing and caching
+│   │   ├── document_registry.py       # Document lookup and injection
+│   │   ├── condition_evaluator.py     # AST-sandboxed conditional expression evaluation
+│   │   ├── validation.py              # OrchestratorValidator, ValidationError, ValidationResult
+│   │   ├── planning.py                # Planning phase (generator prompts, artifact parsing)
+│   │   ├── scoring.py                 # Scoring rubric extraction and weighted aggregation
+│   │   ├── synthesis.py               # Cross-row synthesis for ranking/comparison
+│   │   ├── discovery.py               # Auto-discovery of documents for evaluation
+│   │   ├── tool_registry.py           # Tool registration and execution for agent mode
+│   │   ├── builtin_tools.py           # Built-in tool implementations
+│   │   ├── state/                     # Execution state and dependency nodes
+│   │   │   ├── __init__.py
+│   │   │   ├── execution_state.py     #   Thread-safe ExecutionState dataclass
+│   │   │   └── prompt_node.py         #   PromptNode with is_ready() and level assignment
+│   │   └── results/                   # Result builders and DTOs
+│   │       ├── __init__.py
+│   │       ├── result.py              #   PromptResult dataclass (18+ fields)
+│   │       └── builder.py             #   ResultBuilder fluent builder
 │   │
 │   └── RAG/                           # SUBSYSTEM 4: RAG (Semantic Search)
 │       ├── __init__.py
@@ -376,9 +466,13 @@ Plico/
 │
 ├── scripts/
 │   ├── run_orchestrator.py            # Execute workbook directly
-│   ├── export_manifest.py             # Export workbook to YAML manifest
-│   ├── run_manifest.py                # Run from manifest folder
-│   ├── inspect_parquet.py             # Inspect/export parquet results
+│   ├── manifest_export.py             # Export workbook to YAML manifest
+│   ├── manifest_run.py                # Run from manifest folder
+│   ├── manifest_inspect.py            # Inspect/export parquet results
+│   ├── manifest_extract.py            # Extract fields from parquet results
+│   ├── parquet_to_excel.py            # Export parquet results to Excel workbook
+│   ├── create_screening_workbook.py   # Create screening workbook from folder
+│   ├── create_screening_manifest.py   # Create screening manifest (YAML) from folder
 │   ├── sample_workbook_*_create_v001.py    # Workbook creation scripts
 │   ├── sample_workbook_*_validate_v001.py  # Workbook validation scripts
 │   ├── sample_workbooks/              # Shared workbook infrastructure
@@ -386,7 +480,13 @@ Plico/
 │   │   ├── base.py                    #   PromptSpec, SectionDefinition, constants
 │   │   ├── builders.py                #   Shared workbook builders
 │   │   ├── validators.py              #   Shared validation utilities
-│   │   └── utils.py                   #   Shared utility functions
+│   │   ├── utils.py                   #   Shared utility functions
+│   │   └── screening.py               #   Screening workbook helpers
+│   ├── _shared/                       # Shared script utilities
+│   │   ├── __init__.py
+│   │   ├── client.py                  #   Client creation helpers
+│   │   ├── logging.py                 #   Logging setup
+│   │   └── progress.py                #   Progress indicator
 │   ├── try_ai_mistralsmall_script.py  # Example usage script
 │   └── validation/                   # Validation scripts
 │       ├── __init__.py
@@ -413,37 +513,59 @@ Plico/
 │   ├── fixtures/                      # Test fixtures (documents, etc.)
 │   │   └── documents/
 │   ├── integration/                   # Integration tests
+│   │   ├── __init__.py
 │   │   ├── conftest.py
 │   │   ├── test_orchestrator_integration.py
 │   │   ├── test_batch_integration.py
 │   │   ├── test_multiclient_integration.py
 │   │   ├── test_conditional_integration.py
 │   │   ├── test_context_assembly.py
-│   │   └── test_client_isolation.py
+│   │   ├── test_client_isolation.py
+│   │   ├── test_agent_integration.py
+│   │   ├── test_ffgemini_parameters.py
+│   │   └── test_ffmistralsmall_integration.py
 │   ├── test_ffai.py
 │   ├── test_config.py
 │   ├── test_manifest.py
+│   ├── test_manifest_comprehensive.py
 │   ├── test_fflitellm_client.py
 │   ├── test_ffmistral.py
 │   ├── test_ffanthropic.py
+│   ├── test_ffanthropic_cached.py
 │   ├── test_ffperplexity.py
 │   ├── test_ffnvidia_deepseek.py
 │   ├── test_ffazure_clients.py
+│   ├── test_ffazure_litellm.py
+│   ├── test_ffaiclient_base.py
 │   ├── test_ffgemini.py
 │   ├── test_ffopenai_assistant.py
+│   ├── test_retry_utils.py
 │   ├── test_ordered_prompt_history.py
 │   ├── test_permanent_history.py
 │   ├── test_excel_orchestrator.py
+│   ├── test_orchestrator_base.py
 │   ├── test_workbook_parser.py
 │   ├── test_client_registry.py
 │   ├── test_document_processor.py
 │   ├── test_document_registry.py
 │   ├── test_condition_evaluator.py
+│   ├── test_validation.py
+│   ├── test_planning.py
+│   ├── test_planning_artifact_parser.py
+│   ├── test_scoring.py
+│   ├── test_synthesis.py
+│   ├── test_discovery.py
+│   ├── test_discovery_injection.py
+│   ├── test_agent.py
+│   ├── test_builtin_tools.py
+│   ├── test_results.py
+│   ├── test_state.py
 │   ├── test_rag.py                     # RAG subsystem tests
 │   ├── test_rag_chunkers.py            # Chunking strategy tests
 │   ├── test_rag_indexing.py            # BM25, hierarchical index tests
 │   ├── test_rag_search.py              # Hybrid search, reranker tests
 │   ├── test_rag_enhancements.py        # RAG enhancement tests
+│   ├── test_text_splitter.py           # Legacy text splitter tests
 │   └── test_litellm_orchestrator_integration.py
 │
 ├── manifests/                          # Exported YAML manifests
@@ -475,12 +597,12 @@ Plico/
 
 | Pattern | Location | Purpose |
 |---------|----------|---------|
-| Abstract Base Class | `FFAIClientBase`, `FFAzureClientBase` | Define client contract |
+| Abstract Base Class | `FFAIClientBase`, `FFAzureClientBase`, `OrchestratorBase` | Define client/orchestrator contract |
 | Facade | `FFAI` | Simplify client interaction, add context management |
 | Builder | `WorkbookParser`, `ResultBuilder` | Construct Excel workbooks, build result DTOs |
 | Strategy | Client implementations | Interchangeable AI providers |
 | Template Method | `FFAzureClientBase._initialize_client()` | Allow subclasses to customize |
-| Registry | `ClientRegistry` | Lazy client instantiation, name-to-factory mapping |
+| Registry | `ClientRegistry`, `ToolRegistry` | Lazy client/tool instantiation, name-to-factory mapping |
 | Singleton | `get_config()` | Global configuration instance |
 | Clone | All clients | Thread-safe isolated instances for parallel execution |
 
@@ -606,19 +728,25 @@ Executor (shared by both orchestrators)
   └── ConditionEvaluator (for condition evaluation)
 
 ExcelOrchestrator
+  ├── OrchestratorBase (extends)
   ├── FFAI (uses)
   ├── Executor (delegates to)
   ├── WorkbookParser
   ├── ClientRegistry
   ├── DocumentProcessor
-  └── DocumentRegistry
+  ├── DocumentRegistry
+  ├── ToolRegistry (agent mode)
+  ├── DiscoveryModule (auto-discovery)
 
 ManifestOrchestrator
+  ├── OrchestratorBase (extends)
   ├── FFAI (uses)
   ├── Executor (delegates to)
   ├── ClientRegistry
   ├── DocumentProcessor
   ├── DocumentRegistry
+  ├── ToolRegistry (agent mode)
+  ├── DiscoveryModule (auto-discovery)
   └── polars (external, parquet output)
 
 ClientRegistry
