@@ -70,8 +70,10 @@ inv rag.stats                 # Show detailed RAG statistics
 ```bash
 inv screening.create -r ./resumes/ -j ./jd.md                     # Create workbook only
 inv screening.create -r ./resumes/ -j ./jd.md --planning          # Create with planning mode
-inv screening.run -r ./resumes/ -j ./jd.md                        # Create and run
+inv screening.run -r ./resumes/ -j ./jd.md                        # Create and run (Excel)
 inv screening.run -r ./resumes/ -j ./jd.md --planning -c 2        # Planning mode, concurrency 2
+inv screening.manifest -r ./resumes/ -j ./jd.md                   # Create manifest and run (YAML)
+inv screening.manifest -r ./resumes/ -j ./jd.md --planning        # Manifest with planning mode
 inv screening.inspect ./screening.xlsx                             # Inspect results
 ```
 
@@ -217,6 +219,7 @@ config/
 scripts/
 ├── run_orchestrator.py        # Run Excel orchestrator
 ├── create_screening_workbook.py  # Create screening workbook from folder
+├── create_screening_manifest.py  # Create screening manifest (YAML) from folder
 ├── export_manifest.py         # Export workbook to YAML manifest
 ├── run_manifest.py            # Run from manifest folder
 ├── inspect_parquet.py         # Inspect parquet results
@@ -684,6 +687,7 @@ python scripts/run_orchestrator.py ./prompts.xlsx \
 
 ```bash
 inv screening.run -r ./resumes/ -j ./jd.md
+inv screening.manifest -r ./resumes/ -j ./jd.md          # Manifest-first (no Excel)
 inv screening.create -r ./resumes/ -j ./jd.md --planning
 inv screening.inspect ./screening.xlsx
 ```
@@ -693,6 +697,18 @@ inv screening.inspect ./screening.xlsx
 ```python
 orchestrator = ExcelOrchestrator(
     workbook_path="screening.xlsx",
+    client=client,
+    resumes_path="./resumes/",      # Auto-discover documents
+    jd_path="./job_description.md", # Shared JD as "job_description"
+)
+orchestrator.run()
+```
+
+### ManifestOrchestrator Discovery Parameters
+
+```python
+orchestrator = ManifestOrchestrator(
+    manifest_dir="./manifests/manifest_screening",
     client=client,
     resumes_path="./resumes/",      # Auto-discover documents
     jd_path="./job_description.md", # Shared JD as "job_description"

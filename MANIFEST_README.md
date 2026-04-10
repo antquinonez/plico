@@ -128,6 +128,10 @@ python scripts/manifest_run.py ./manifests/manifest_my_workflow --client mistral
 
 # Dry run to validate
 python scripts/manifest_run.py ./manifests/manifest_my_workflow --dry-run
+
+# Run with auto-discovered resumes and a job description
+python scripts/manifest_run.py ./manifests/manifest_screening \
+    --resumes-path ./resumes/ --jd ./job_description.md -c 1
 ```
 
 ### Python API
@@ -140,7 +144,9 @@ client = FFLiteLLMClient(model_string="openai/gpt-4o-mini")
 orchestrator = ManifestOrchestrator(
     manifest_dir="./manifests/manifest_my_workflow",
     client=client,
-    concurrency=4
+    concurrency=4,
+    resumes_path="./resumes/",       # Auto-discover documents
+    jd_path="./job_description.md",  # Shared JD as "job_description"
 )
 parquet_path = orchestrator.run()
 
@@ -900,6 +906,32 @@ GROQ_API_KEY=your-key
 
 ---
 
+## Screening / Resume Evaluation
+
+The manifest system supports resume screening workflows where documents and
+batch data are injected at runtime from a folder, rather than baked into the
+manifest YAML files.
+
+### Quick Start
+
+```bash
+# One-command: create manifest + run with runtime injection
+inv screening.manifest --resumes-path ./resumes/ --jd ./jd.md
+
+# Or step by step:
+python scripts/create_screening_manifest.py --resumes-path ./resumes/ --jd ./jd.md
+python scripts/manifest_run.py ./manifests/manifest_screening \
+    --resumes-path ./resumes/ --jd ./jd.md -c 1
+```
+
+The manifest is created without `data.yaml` or `documents.yaml` — those are
+injected at runtime via `--resumes-path` and `--jd`. This means the same
+manifest can screen different resume folders against different job descriptions.
+
+For full documentation, see [USE_CASES/resume_screening.md](../USE_CASES/resume_screening.md).
+
+---
+
 ## Complete Example Manifests
 
 ### Basic Workflow
@@ -1326,8 +1358,15 @@ manifest_minimal/
 # Export Excel to manifest
 python scripts/manifest_export.py ./workbook.xlsx
 
+# Create screening manifest from folder (YAML-only, no baked data)
+python scripts/create_screening_manifest.py --resumes-path ./resumes/ --jd ./jd.md
+
 # Run manifest (outputs to ./outputs/<manifest_name>/<timestamp>.parquet)
 python scripts/manifest_run.py ./manifests/manifest_name/ -c 4
+
+# Run manifest with runtime document injection
+python scripts/manifest_run.py ./manifests/manifest_name/ \
+    --resumes-path ./resumes/ --jd ./jd.md -c 1
 
 # Validate manifest (dry run)
 python scripts/manifest_run.py ./manifests/manifest_name/ --dry-run
@@ -1383,7 +1422,9 @@ client = FFLiteLLMClient(model_string="mistral/mistral-small-latest")
 orchestrator = ManifestOrchestrator(
     manifest_dir="./manifests/manifest_name",
     client=client,
-    concurrency=4
+    concurrency=4,
+    resumes_path="./resumes/",       # Auto-discover documents
+    jd_path="./job_description.md",  # Shared JD as "job_description"
 )
 parquet_path = orchestrator.run()
 ```

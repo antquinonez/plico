@@ -14,16 +14,19 @@ scoring, ranking, and synthesis.
 # 2. Create a workbook and run it
 inv screening.run --resumes-path ./resumes/ --jd ./jd.md
 
-# 3. Results are written into the workbook
+#    Or create a manifest and run it (no Excel intermediary)
+inv screening.manifest --resumes-path ./resumes/ --jd ./jd.md
+
+# 3. Results are written into the workbook (Excel) or parquet (Manifest)
 ```
 
 That's it. Two arguments: a folder and a file.
 
 ---
 
-## Two Approaches
+## Three Approaches
 
-### Approach 1: Create a Workbook, Then Run (Recommended)
+### Approach 1: Create a Workbook, Then Run (Excel)
 
 Creates a `.xlsx` workbook you can inspect, edit prompts, and re-run.
 
@@ -38,23 +41,52 @@ python scripts/run_orchestrator.py ./screening.xlsx -c 1
 ```
 
 **Why this approach:** You can open the `.xlsx`, tweak prompts, adjust scoring
-weights, or add synthesis prompts before running.
+weights, or add synthesis prompts before running. Results are written back
+into the workbook.
 
-### Approach 2: Runtime Injection (No Workbook Modification)
+### Approach 2: Create a Manifest, Then Run (YAML)
 
-Run the orchestrator with `--resumes-path` and `--jd` flags. Documents and
-batch data are injected at runtime without modifying the workbook.
+Creates a manifest folder (YAML files) directly — no Excel needed. Documents
+and batch data are injected at runtime via `--resumes-path` and `--jd`.
 
 ```bash
-# Requires an existing workbook with at least prompts/scoring sheets
+# Create the manifest (YAML only — no baked-in data/documents)
+python scripts/create_screening_manifest.py ./manifests/manifest_screening \
+    --resumes-path ./resumes/ \
+    --jd ./job_description.md
+
+# Run the manifest orchestrator with runtime injection
+python scripts/manifest_run.py ./manifests/manifest_screening \
+    --resumes-path ./resumes/ \
+    --jd ./job_description.md \
+    -c 1
+```
+
+**Why this approach:** Manifests are Git-friendly, AI-composable, and the
+canonical workflow representation. Documents are injected at runtime so the
+same manifest can screen different resume folders. Results go to parquet.
+
+### Approach 3: Runtime Injection (No Workbook/Manifest Modification)
+
+Run the orchestrator with `--resumes-path` and `--jd` flags. Documents and
+batch data are injected at runtime without modifying the workbook or manifest.
+
+```bash
+# Excel path
 python scripts/run_orchestrator.py ./my_prompts.xlsx \
+    --resumes-path ./resumes/ \
+    --jd ./job_description.md \
+    -c 2
+
+# Manifest path
+python scripts/manifest_run.py ./manifests/manifest_screening \
     --resumes-path ./resumes/ \
     --jd ./job_description.md \
     -c 2
 ```
 
-**Why this approach:** You maintain a single reusable workbook and swap out
-the resume folder per requisition.
+**Why this approach:** You maintain a single reusable workbook or manifest
+and swap out the resume folder per requisition.
 
 ---
 
@@ -146,6 +178,44 @@ python scripts/create_screening_workbook.py ./screening.xlsx \
     --system-instructions "You are a senior technical recruiter for a fintech company."
 ```
 
+### `create_screening_manifest.py`
+
+Creates a manifest folder (YAML files) directly from a folder of resumes.
+No Excel intermediary. Documents and batch data are injected at runtime
+via `manifest_run.py --resumes-path` and `--jd`.
+
+```bash
+python scripts/create_screening_manifest.py [output_dir] [options]
+```
+
+| Argument | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `output` | No | `./manifests/manifest_screening` | Output manifest directory |
+| `--resumes-path` | Yes | — | Folder containing resume documents |
+| `--jd` | Yes | — | Path to job description file |
+| `--planning` | No | off | Auto-derive scoring from JD via LLM |
+| `--extensions` | No | `.pdf .docx .doc .txt .md` | File extensions to include |
+| `--client` | No | config default | Client type from `config/clients.yaml` |
+| `--system-instructions` | No | recruiter prompt | System instructions for AI |
+| `--evaluation-strategy` | No | `balanced` | Scoring strategy name |
+| `--verbose` | No | off | Enable verbose output |
+
+**Examples:**
+
+```bash
+# Basic static scoring
+python scripts/create_screening_manifest.py \
+    --resumes-path ./resumes/ --jd ./jd.md
+
+# Custom output directory and planning mode
+python scripts/create_screening_manifest.py ./manifests/my_screening \
+    --resumes-path ./resumes/ --jd ./jd.md --planning
+```
+
+**Note:** This script validates that resumes are discovered and the JD exists,
+but does *not* bake documents or batch data into the manifest. They are
+injected at runtime via `manifest_run.py --resumes-path` and `--jd`.
+
 ### `run_orchestrator.py` (with discovery flags)
 
 Runs the orchestrator. When `--resumes-path` and/or `--jd` are provided,
@@ -183,14 +253,53 @@ python scripts/run_orchestrator.py ./screening.xlsx --dry-run
 python scripts/run_orchestrator.py ./screening.xlsx --quiet
 ```
 
+### `manifest_run.py` (with discovery flags)
+
+Runs the manifest orchestrator. When `--resumes-path` and/or `--jd` are
+provided, documents and batch data are injected at runtime.
+
+```bash
+python scripts/manifest_run.py <manifest_dir> [options]
+```
+
+| Argument | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `manifest_dir` | Yes | — | Path to manifest folder |
+| `--resumes-path` | No | — | Auto-discover documents from folder |
+| `--jd` | No | — | Job description file (shared doc) |
+| `--client` | No | config default | Client type override |
+| `--concurrency` / `-c` | No | 2 | Max concurrent API calls |
+| `--dry-run` | No | off | Validate without executing |
+| `--verbose` | No | off | Debug logging |
+
+**Examples:**
+
+```bash
+# Standard run
+python scripts/manifest_run.py ./manifests/manifest_screening -c 1
+
+# With runtime injection (no manifest modification)
+python scripts/manifest_run.py ./manifests/manifest_screening \
+    --resumes-path ./resumes/ --jd ./jd.md -c 2
+
+# Dry run to validate before executing
+python scripts/manifest_run.py ./manifests/manifest_screening --dry-run
+```
+
 ### Invoke Tasks
 
 ```bash
-# One-command create + run
+# One-command create + run (Excel)
 inv screening.run --resumes-path ./resumes/ --jd ./jd.md
 
-# Create + run with planning phase
+# One-command create + run (Manifest)
+inv screening.manifest --resumes-path ./resumes/ --jd ./jd.md
+
+# Create + run with planning phase (Excel)
 inv screening.run --resumes-path ./resumes/ --jd ./jd.md --planning
+
+# Create + run with planning phase (Manifest)
+inv screening.manifest --resumes-path ./resumes/ --jd ./jd.md --planning
 
 # Just create (don't run)
 inv screening.create --resumes-path ./resumes/ --jd ./jd.md --output ./my_screen.xlsx
@@ -202,7 +311,8 @@ inv screening.inspect ./screening.xlsx
 | Task | Description |
 |------|-------------|
 | `inv screening.create` | Create workbook from folder (don't run) |
-| `inv screening.run` | Create workbook from folder and run |
+| `inv screening.run` | Create workbook from folder and run (Excel) |
+| `inv screening.manifest` | Create manifest from folder and run (YAML) |
 | `inv screening.inspect` | Inspect results in a workbook |
 
 | Option | Flag | Description |
@@ -339,17 +449,18 @@ resumes/               job_descriptions/
    with _documents          to any data row)
    column binding)                │
        │                          │
-       v                          v
-  ┌──────────────────────────────────────┐
-  │  ExcelOrchestrator._load_source()    │
-  │                                      │
-  │  1. Load workbook sheets             │
-  │  2. If resumes_path: discover &      │
-  │     inject documents + batch data    │
-  │  3. If jd_path: inject as shared doc │
-  │  4. Merge with any workbook docs     │
-  │  5. Run validation + execution       │
-  └──────────────────────────────────────┘
+        v                          v
+   ┌──────────────────────────────────────────────────────┐
+   │  OrchestratorBase._inject_discovery_overrides()       │
+   │                                                        │
+   │  1. Load workbook sheets OR manifest YAML files        │
+   │  2. If resumes_path: discover & inject docs + data    │
+   │  3. If jd_path: inject as shared doc                  │
+   │  4. Merge with any source docs                        │
+   │  5. Run validation + execution                        │
+   └──────────────────────────────────────────────────────┘
+
+   Shared by both ExcelOrchestrator and ManifestOrchestrator.
 ```
 
 Key points:
