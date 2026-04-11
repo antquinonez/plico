@@ -4,33 +4,42 @@
 # Contact: antquinonez@farfiner.com
 
 """
-Create a screening evaluation workbook from a folder of resumes.
+Create a screening evaluation workbook.
 
-Auto-discovers documents from --resumes-path, adds a job description from
---jd, and creates a complete .xlsx workbook ready for the orchestrator.
+Creates a .xlsx workbook with prompts, scoring, and synthesis sheets for
+resume screening. Documents and batch data can be baked in or injected
+at runtime via the orchestrator.
 
-Supports two modes:
+Supports two scoring modes:
     - Static scoring (default): Includes a scoring sheet with predefined
       criteria. Prompts extract scores from LLM JSON responses.
     - Planning phase (--planning): Uses generator prompts to auto-derive
       scoring criteria and evaluation prompts from the JD. No scoring sheet.
 
+Three creation modes:
+    - Self-contained: JD and resumes baked in. Run with no flags.
+    - Template (JD baked): JD baked in, resumes injected at runtime.
+    - Template (generic): Nothing baked in. All injected at runtime.
+
 Usage:
+    # Self-contained (JD + resumes baked in)
     python scripts/create_screening_workbook.py <output_path> \
         --resumes-path <folder> --jd <file>
 
+    # Template with JD baked in
+    python scripts/create_screening_workbook.py <output_path> --jd <file>
+
+    # Generic template (nothing baked in)
+    python scripts/create_screening_workbook.py <output_path>
+
 Examples:
-    # Static scoring mode
     python scripts/create_screening_workbook.py ./screening.xlsx \
         --resumes-path ./resumes/ --jd ./job_description.md
 
-    # Planning phase mode (auto-derive scoring)
-    python scripts/create_screening_workbook.py ./screening.xlsx \
-        --resumes-path ./resumes/ --jd ./jd.md --planning
+    python scripts/create_screening_workbook.py ./template.xlsx \
+        --jd ./jd.md --planning
 
-    # With custom file extensions
-    python scripts/create_screening_workbook.py ./screening.xlsx \
-        --resumes-path ./resumes/ --jd ./jd.md --extensions .pdf .docx .txt .md
+    python scripts/create_screening_workbook.py ./template.xlsx
 """
 
 from __future__ import annotations
@@ -59,10 +68,12 @@ from src.orchestrator.discovery import (
 
 load_dotenv()
 
+DEFAULT_SYNTHESIS_TOP_N = 10
+
 
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Create a screening evaluation workbook from a folder of resumes.",
+        description="Create a screening evaluation workbook.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
@@ -72,13 +83,17 @@ def main() -> int:
     )
     parser.add_argument(
         "--resumes-path",
-        required=True,
-        help="Folder path containing resume documents to auto-discover",
+        default=None,
+        help="Folder path containing resume documents to bake in. "
+        "If omitted, resumes must be injected at runtime via "
+        "--documents-path on run_orchestrator.py.",
     )
     parser.add_argument(
         "--jd",
-        required=True,
-        help="Path to the job description file",
+        default=None,
+        help="Path to the job description file to bake in. "
+        "If omitted, a JD must be injected at runtime via "
+        "--shared-document on run_orchestrator.py.",
     )
     parser.add_argument(
         "--planning",
@@ -113,6 +128,10 @@ def main() -> int:
 
     args = parser.parse_args()
 
+    if not args.resumes_path and not args.jd:
+        print("Note: Neither --resumes-path nor --jd provided.")
+        print("      Creating a generic template. All data must be injected at runtime.\n")
+
     config = get_config()
     app_config = config
     default_client = app_config.get_default_client_type()
@@ -120,32 +139,58 @@ def main() -> int:
 
     extensions = {ext if ext.startswith(".") else f".{ext}" for ext in args.extensions}
 
+    mode_label = "planning" if args.planning else "static scoring"
+    if args.resumes_path and args.jd:
+        creation_mode = "self-contained"
+    elif args.jd:
+        creation_mode = "template (JD baked)"
+    elif args.resumes_path:
+        creation_mode = "template (resumes baked)"
+    else:
+        creation_mode = "template (generic)"
+
     print(f"\nCreating screening workbook: {args.output}")
-    print(f"  Resumes path: {args.resumes_path}")
-    print(f"  Job description: {args.jd}")
-    print(f"  Mode: {'planning' if args.planning else 'static scoring'}")
+    print(f"  Mode: {mode_label}")
+    print(f"  Creation: {creation_mode}")
+    if args.jd:
+        print(f"  Job description: {args.jd}")
+    if args.resumes_path:
+        print(f"  Resumes path: {args.resumes_path}")
 
-    jd_doc = create_jd_document(args.jd)
+    all_documents: list[dict[str, str | list[str]]] = []
+    data_rows: list[dict[str, str | int]] = []
+    resume_docs: list[dict[str, str | list[str]]] = []
 
-    resume_docs = discover_documents(
-        args.resumes_path,
-        extensions=extensions,
-        absolute_paths=True,
-        tags=["resume"],
+    if args.jd:
+        jd_doc = create_jd_document(args.jd)
+        all_documents.append(jd_doc)
+
+    if args.resumes_path:
+        resume_docs = discover_documents(
+            args.resumes_path,
+            extensions=extensions,
+            absolute_paths=True,
+            tags=["resume"],
+        )
+
+        if not resume_docs:
+            print(f"\nError: No documents found in {args.resumes_path}")
+            print(f"  Extensions: {', '.join(sorted(extensions))}")
+            return 1
+
+        print(f"  Discovered {len(resume_docs)} documents")
+        all_documents.extend(resume_docs)
+        data_rows = create_data_rows_from_documents(resume_docs)
+
+    candidate_count = len(data_rows)
+    synthesis_top_n = (
+        max(candidate_count, DEFAULT_SYNTHESIS_TOP_N)
+        if candidate_count > 0
+        else DEFAULT_SYNTHESIS_TOP_N
     )
 
-    if not resume_docs:
-        print(f"\nError: No documents found in {args.resumes_path}")
-        print(f"  Extensions: {', '.join(sorted(extensions))}")
-        return 1
-
-    print(f"  Discovered {len(resume_docs)} documents")
-
-    all_documents = [jd_doc, *resume_docs]
-    data_rows = create_data_rows_from_documents(resume_docs)
-
     prompts = get_planning_screening_prompts() if args.planning else get_static_screening_prompts()
-    synthesis = get_screening_synthesis_prompts(top_n=len(resume_docs))
+    synthesis = get_screening_synthesis_prompts(top_n=synthesis_top_n)
 
     batch_config = config.workbook.batch
 
@@ -178,8 +223,11 @@ def main() -> int:
             ),
         ],
     )
-    builder.add_documents_sheet(all_documents)
-    builder.add_data_sheet(data_rows)
+
+    if all_documents:
+        builder.add_documents_sheet(all_documents)
+    if data_rows:
+        builder.add_data_sheet(data_rows)
 
     if not args.planning:
         builder.add_scoring_sheet(get_screening_scoring_criteria())
@@ -199,23 +247,37 @@ def main() -> int:
     else:
         prompt_summary = f"{total_prompts} evaluation prompts"
 
+    summary_extra: dict[str, str] = {
+        "Creation mode": creation_mode,
+        "Prompts": prompt_summary,
+        "Scoring": "Auto-derived from planning phase" if args.planning else "Static (5 criteria)",
+        "Synthesis prompts": str(len(synthesis)),
+        "Client": client_type,
+    }
+    if args.jd:
+        summary_extra["Job description"] = jd_doc["file_path"]
+    if candidate_count > 0:
+        summary_extra["Resumes discovered"] = str(candidate_count)
+        summary_extra["Candidates (batch rows)"] = str(candidate_count)
+        summary_extra["Total batch executions"] = (
+            f"{total_prompts} prompts x {candidate_count} candidates = "
+            f"{total_prompts * candidate_count}"
+        )
+
+    run_flags: list[str] = []
+    if args.jd and not args.resumes_path:
+        run_flags.append("--documents-path ./resumes/")
+    elif not args.jd:
+        run_flags.append("--shared-document ./jd.md --shared-document-name job_description")
+        run_flags.append("--documents-path ./resumes/")
+    run_command = f"python scripts/run_orchestrator.py {args.output} -c 1"
+    if run_flags:
+        run_command += " \\\n    " + " \\\n    ".join(run_flags)
+
     builder.print_summary(
-        f"screening ({'planning' if args.planning else 'static'})",
-        {
-            "Resumes discovered": len(resume_docs),
-            "Job description": jd_doc["file_path"],
-            "Documents total": len(all_documents),
-            "Candidates (batch rows)": len(data_rows),
-            "Prompts": prompt_summary,
-            "Scoring": "Auto-derived from planning phase"
-            if args.planning
-            else "Static (5 criteria)",
-            "Synthesis prompts": len(synthesis),
-            "Client": client_type,
-            "Total batch executions": f"{total_prompts} prompts x {len(data_rows)} candidates = "
-            f"{total_prompts * len(data_rows)}",
-        },
-        run_command=f"python scripts/run_orchestrator.py {args.output} -c 1",
+        f"screening ({mode_label})",
+        summary_extra,
+        run_command=run_command,
     )
 
     return 0

@@ -4,37 +4,50 @@
 # Contact: antquinonez@farfiner.com
 
 """
-Create a screening evaluation manifest from a folder of resumes.
+Create a screening evaluation manifest.
 
-Generates a manifest folder (YAML files) directly, without an Excel
-intermediary. Documents and batch data are injected at runtime via
-manifest_run.py --resumes-path and --jd flags.
+Generates a manifest folder (YAML files) for resume screening evaluation.
+The JD can optionally be baked into documents.yaml; resumes are always
+injected at runtime via manifest_run.py --documents-path.
 
-Supports two modes:
+Supports two scoring modes:
     - Static scoring (default): Includes scoring.yaml with predefined
       criteria. Prompts extract scores from LLM JSON responses.
     - Planning phase (--planning): Uses generator prompts to auto-derive
       scoring criteria and evaluation prompts from the JD. No scoring.yaml.
 
+Two creation modes:
+    - Template (JD baked): JD baked into documents.yaml. Resumes injected
+      at runtime via --documents-path.
+    - Template (generic): Nothing baked in. Both JD and resumes injected
+      at runtime.
+
 Usage:
-    python scripts/create_screening_manifest.py [output_dir] \
-        --resumes-path <folder> --jd <file>
+    # Template with JD baked in
+    python scripts/create_screening_manifest.py --jd <file>
+
+    # Generic template (nothing baked in)
+    python scripts/create_screening_manifest.py
+
+    # With resume count for synthesis top_n sizing
+    python scripts/create_screening_manifest.py --jd ./jd.md --resumes-path ./resumes/
 
 Examples:
-    # Static scoring mode
     python scripts/create_screening_manifest.py ./manifests/manifest_screening \
-        --resumes-path ./resumes/ --jd ./job_description.md
+        --jd ./job_description.md
 
-    # Planning phase mode (auto-derive scoring)
     python scripts/create_screening_manifest.py --planning \
-        --resumes-path ./resumes/ --jd ./jd.md
-
-    # Create only (no execution)
-    python scripts/create_screening_manifest.py --resumes-path ./resumes/ --jd ./jd.md
+        --jd ./jd.md
 
 Runtime execution:
+    # With JD baked in
     python scripts/manifest_run.py <manifest_dir> \
-        --resumes-path ./resumes/ --jd ./jd.md -c 1
+        --documents-path ./resumes/ -c 1
+
+    # With JD injected at runtime
+    python scripts/manifest_run.py <manifest_dir> \
+        --shared-document ./jd.md --shared-document-name job_description \
+        --documents-path ./resumes/ -c 1
 """
 
 from __future__ import annotations
@@ -52,6 +65,7 @@ import yaml
 from dotenv import load_dotenv
 from sample_workbooks.screening import (
     _parse_json_field,
+    create_jd_document,
     get_planning_screening_prompts,
     get_screening_scoring_criteria,
     get_screening_synthesis_prompts,
@@ -63,6 +77,8 @@ from src.config import get_config
 from src.orchestrator.discovery import discover_documents
 
 load_dotenv()
+
+DEFAULT_SYNTHESIS_TOP_N = 10
 
 
 def write_yaml(path: Path, data: dict[str, Any]) -> None:
@@ -78,13 +94,19 @@ def write_yaml(path: Path, data: dict[str, Any]) -> None:
         yaml.dump(data, f, default_flow_style=False, sort_keys=False, allow_unicode=True)
 
 
-def build_manifest_yaml(name: str, planning: bool, prompt_count: int) -> dict[str, Any]:
+def build_manifest_yaml(
+    name: str,
+    planning: bool,
+    prompt_count: int,
+    has_documents: bool = False,
+) -> dict[str, Any]:
     """Build manifest.yaml metadata.
 
     Args:
         name: Manifest name.
         planning: Whether planning phase is enabled.
         prompt_count: Number of prompts.
+        has_documents: Whether documents.yaml was written.
 
     Returns:
         Manifest metadata dict.
@@ -97,7 +119,7 @@ def build_manifest_yaml(name: str, planning: bool, prompt_count: int) -> dict[st
         "exported_at": datetime.now().isoformat(),
         "has_data": False,
         "has_clients": False,
-        "has_documents": False,
+        "has_documents": has_documents,
         "has_tools": False,
         "has_scoring": not planning,
         "has_synthesis": True,
@@ -193,9 +215,22 @@ def build_synthesis_yaml(synthesis: list[dict[str, Any]]) -> dict[str, Any]:
     return {"synthesis": parsed}
 
 
+def build_documents_yaml(documents: list[dict[str, Any]]) -> dict[str, Any]:
+    """Build documents.yaml data.
+
+    Args:
+        documents: List of document definition dicts.
+
+    Returns:
+        Documents dict with 'documents' key.
+
+    """
+    return {"documents": documents}
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
-        description="Create a screening evaluation manifest from a folder of resumes.",
+        description="Create a screening evaluation manifest.",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
@@ -208,13 +243,16 @@ def main() -> int:
     )
     parser.add_argument(
         "--resumes-path",
-        required=True,
-        help="Folder path containing resume documents to validate discovery",
+        default=None,
+        help="Folder path containing resume documents. Used to count "
+        "candidates for synthesis top_n sizing. Resumes are always "
+        "injected at runtime via --documents-path on manifest_run.py.",
     )
     parser.add_argument(
         "--jd",
-        required=True,
-        help="Path to the job description file",
+        default=None,
+        help="Path to the job description file. If provided, baked into "
+        "documents.yaml with reference_name='job_description'.",
     )
     parser.add_argument(
         "--planning",
@@ -249,6 +287,10 @@ def main() -> int:
 
     args = parser.parse_args()
 
+    if not args.resumes_path and not args.jd:
+        print("Note: Neither --resumes-path nor --jd provided.")
+        print("      Creating a generic template. All data must be injected at runtime.\n")
+
     config = get_config()
     default_client = config.get_default_client_type()
     client_type = args.client or default_client
@@ -258,31 +300,41 @@ def main() -> int:
     output_dir = args.output or str(Path(config.paths.manifest_dir) / "manifest_screening")
     manifest_path = Path(output_dir)
 
-    print(f"\nCreating screening manifest: {manifest_path}")
-    print(f"  Resumes path: {args.resumes_path}")
-    print(f"  Job description: {args.jd}")
-    print(f"  Mode: {'planning' if args.planning else 'static scoring'}")
+    mode_label = "planning" if args.planning else "static scoring"
+    creation_mode = "template (JD baked)" if args.jd else "template (generic)"
 
-    if not Path(args.jd).is_file():
+    print(f"\nCreating screening manifest: {manifest_path}")
+    print(f"  Mode: {mode_label}")
+    print(f"  Creation: {creation_mode}")
+    if args.jd:
+        print(f"  Job description: {args.jd}")
+    if args.resumes_path:
+        print(f"  Resumes path: {args.resumes_path}")
+
+    if args.jd and not Path(args.jd).is_file():
         print(f"\nError: Job description file not found: {args.jd}")
         return 1
 
-    resume_docs = discover_documents(
-        args.resumes_path,
-        extensions=extensions,
-        absolute_paths=True,
-        tags=["resume"],
+    resume_count = 0
+    if args.resumes_path:
+        resume_docs = discover_documents(
+            args.resumes_path,
+            extensions=extensions,
+            absolute_paths=True,
+            tags=["resume"],
+        )
+        resume_count = len(resume_docs)
+        if resume_count > 0:
+            print(f"  Discovered {resume_count} documents")
+        else:
+            print(f"  Warning: No documents found in {args.resumes_path}")
+
+    synthesis_top_n = (
+        max(resume_count, DEFAULT_SYNTHESIS_TOP_N) if resume_count > 0 else DEFAULT_SYNTHESIS_TOP_N
     )
 
-    if not resume_docs:
-        print(f"\nError: No documents found in {args.resumes_path}")
-        print(f"  Extensions: {', '.join(sorted(extensions))}")
-        return 1
-
-    print(f"  Discovered {len(resume_docs)} documents")
-
     prompts = get_planning_screening_prompts() if args.planning else get_static_screening_prompts()
-    synthesis = get_screening_synthesis_prompts(top_n=len(resume_docs))
+    synthesis = get_screening_synthesis_prompts(top_n=synthesis_top_n)
     batch_config = config.workbook.batch
 
     manifest_name = (
@@ -291,9 +343,13 @@ def main() -> int:
         else manifest_path.name
     )
 
+    has_documents = args.jd is not None
+
     write_yaml(
         manifest_path / "manifest.yaml",
-        build_manifest_yaml(manifest_name, args.planning, len(prompts)),
+        build_manifest_yaml(
+            manifest_name, args.planning, len(prompts), has_documents=has_documents
+        ),
     )
     write_yaml(
         manifest_path / "config.yaml",
@@ -322,6 +378,13 @@ def main() -> int:
         build_synthesis_yaml(synthesis),
     )
 
+    if args.jd:
+        jd_doc = create_jd_document(args.jd)
+        write_yaml(
+            manifest_path / "documents.yaml",
+            build_documents_yaml([jd_doc]),
+        )
+
     total_prompts = len(prompts)
     if args.planning:
         planning_count = sum(1 for p in prompts if p.phase == "planning")
@@ -334,27 +397,36 @@ def main() -> int:
         prompt_summary = f"{total_prompts} evaluation prompts"
 
     print(f"\n{'=' * 60}")
-    print(f"Created screening ({'planning' if args.planning else 'static'}) manifest")
+    print(f"Created screening ({mode_label}) manifest")
     print(f"{'=' * 60}")
     print(f"Manifest path:   {manifest_path}")
-    print(f"Resumes:         {len(resume_docs)} discovered")
-    print(f"Job description: {args.jd}")
+    print(f"Creation mode:   {creation_mode}")
+    if args.jd:
+        print(f"Job description: baked in ({args.jd})")
+    else:
+        print("Job description: inject at runtime (--shared-document)")
+    if resume_count > 0:
+        print(f"Resumes:         {resume_count} discovered (injected at runtime)")
+    else:
+        print("Resumes:         inject at runtime (--documents-path)")
     print(f"Prompts:         {prompt_summary}")
     print(
         f"Scoring:         {'Auto-derived from planning phase' if args.planning else 'Static (5 criteria)'}"
     )
     print(f"Synthesis:       {len(synthesis)} prompts")
     print(f"Client:          {client_type}")
-    print("\nNote: Documents and batch data are injected at runtime, not baked in.")
-    print(
-        f"  Total batch executions: {total_prompts} prompts x {len(resume_docs)} candidates = "
-        f"{total_prompts * len(resume_docs)}"
-    )
-    print("\nRun with:")
-    print(
-        f"  python scripts/manifest_run.py {manifest_path} "
-        f"--resumes-path {args.resumes_path} --jd {args.jd} -c 1"
-    )
+
+    if args.jd:
+        print("\nRun with:")
+        print(f"  python scripts/manifest_run.py {manifest_path} --documents-path ./resumes/ -c 1")
+    else:
+        print("\nRun with:")
+        print(
+            f"  python scripts/manifest_run.py {manifest_path} "
+            f"--shared-document ./jd.md --shared-document-name job_description "
+            f"--documents-path ./resumes/ -c 1"
+        )
+
     print(f"{'=' * 60}\n")
 
     return 0

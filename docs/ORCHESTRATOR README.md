@@ -703,7 +703,7 @@ The discovery module auto-discovers documents from a folder and bootstraps evalu
 
 ### Runtime Injection
 
-Pass `resumes_path` and `jd_path` to the orchestrator for automatic document discovery:
+Pass `documents_path` and `shared_document_path` to the orchestrator for automatic document discovery:
 
 ```python
 from src.orchestrator import ExcelOrchestrator
@@ -713,8 +713,8 @@ client = FFMistralSmall(api_key="...")
 orchestrator = ExcelOrchestrator(
     workbook_path="screening.xlsx",
     client=client,
-    resumes_path="./resumes/",       # Auto-discover documents
-    jd_path="./job_description.md",  # Shared JD as "job_description"
+    documents_path="./resumes/",          # Auto-discover documents
+    shared_document_path="./jd.md",      # Shared document (name derived from filename)
 )
 orchestrator.run()
 ```
@@ -742,7 +742,7 @@ from src.orchestrator.discovery import discover_documents, create_data_rows_from
 
 docs = discover_documents("./resumes/")
 data_rows = create_data_rows_from_documents(docs)
-create_evaluation_workbook("screening.xlsx", "./resumes/", jd_path="./jd.md")
+create_evaluation_workbook("screening.xlsx", "./resumes/", shared_documents=[jd_doc])
 ```
 
 ---

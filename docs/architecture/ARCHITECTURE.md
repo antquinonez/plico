@@ -210,7 +210,7 @@ Same manifest. Same execution engine. Same audit trail.
 **Features:**
 - Automatic document scanning (`.pdf`, `.docx`, `.txt`, `.md`, etc.)
 - Shared document support (e.g., a job description for all rows)
-- Integration with ExcelOrchestrator and ManifestOrchestrator via `resumes_path`/`jd_path`
+- Integration with ExcelOrchestrator and ManifestOrchestrator via `documents_path`/`shared_document_path`
 - Resume screening use case with dedicated invoke tasks
 
 **See:** [ORCHESTRATOR README.md](../ORCHESTRATOR%20README.md) for discovery usage.

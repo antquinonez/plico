@@ -82,8 +82,9 @@ class OrchestratorBase(ABC):
         config_overrides: dict[str, Any] | None = None,
         concurrency: int | None = None,
         progress_callback: Callable[..., None] | None = None,
-        resumes_path: str | None = None,
-        jd_path: str | None = None,
+        documents_path: str | None = None,
+        shared_document_path: str | None = None,
+        shared_document_name: str | None = None,
     ) -> None:
         """Initialize the orchestrator base.
 
@@ -92,13 +93,23 @@ class OrchestratorBase(ABC):
             config_overrides: Optional config overrides.
             concurrency: Maximum concurrent API calls (1-max). Uses config default if None.
             progress_callback: Optional callback for progress updates.
-            resumes_path: Optional folder path to auto-discover documents (e.g., resumes).
-            jd_path: Optional path to a job description file.
+            documents_path: Optional folder path to auto-discover documents.
+                Discovered documents populate the documents registry and batch
+                data at runtime without modifying the source.
+            shared_document_path: Optional path to a shared document file (e.g.,
+                a job description, rubric, or reference document) added to the
+                documents registry.
+            shared_document_name: Optional reference name for the shared document.
+                When provided, this is used as the ``reference_name`` in the
+                documents registry (e.g., ``"job_description"``). When omitted,
+                the name is derived from the filename stem using snake_case
+                sanitization.
 
         """
         self.client = client
-        self._resumes_path = resumes_path
-        self._jd_path = jd_path
+        self._documents_path = documents_path
+        self._shared_document_path = shared_document_path
+        self._shared_document_name = shared_document_name
         self.config_overrides = config_overrides or {}
 
         config = get_config()
@@ -1501,33 +1512,43 @@ class OrchestratorBase(ABC):
                 )
 
     @staticmethod
-    def _resolve_jd_document(jd_path: str) -> dict[str, Any]:
-        """Create a document definition for a job description file.
+    def _resolve_shared_document(
+        document_path: str,
+        reference_name: str | None = None,
+    ) -> dict[str, Any]:
+        """Create a document definition for a shared document file.
 
         Args:
-            jd_path: Path to the job description file.
+            document_path: Path to the shared document file.
+            reference_name: Optional reference name. If not provided, derived
+                from the filename stem using snake_case sanitization.
 
         Returns:
-            Document definition dict with reference_name="job_description".
+            Document definition dict suitable for the documents registry.
 
         """
         from pathlib import Path
 
-        path = Path(jd_path).resolve()
+        path = Path(document_path).resolve()
         if not path.is_file():
-            raise FileNotFoundError(f"Job description file not found: {jd_path}")
+            raise FileNotFoundError(f"Shared document file not found: {document_path}")
+
+        if reference_name is None:
+            import re
+
+            reference_name = re.sub(r"[^a-z0-9_]+", "_", path.stem.lower()).strip("_")
 
         return {
-            "reference_name": "job_description",
-            "common_name": "Job Description",
+            "reference_name": reference_name,
+            "common_name": path.stem,
             "file_path": str(path),
-            "tags": "jd",
+            "tags": "shared",
             "chunking_strategy": "",
-            "notes": f"Shared job description: {path.name}",
+            "notes": f"Shared document: {path.name}",
         }
 
     def _inject_discovery_overrides(self, source_dir: str) -> None:
-        """Inject documents and batch data from resumes_path and jd_path.
+        """Inject documents and batch data from documents_path and shared_document_path.
 
         Called by subclasses during _load_source() after loading their own
         documents and batch data. Discovered documents merge with any
@@ -1542,36 +1563,41 @@ class OrchestratorBase(ABC):
 
         discovered_docs: list[dict[str, Any]] = []
 
-        if self._jd_path:
-            jd_doc = self._resolve_jd_document(self._jd_path)
-            discovered_docs.append(jd_doc)
-            logger.info(f"Injected JD as shared document: {jd_doc['file_path']}")
-
-        if self._resumes_path:
-            resume_docs = discover_documents(
-                self._resumes_path,
-                absolute_paths=True,
-                tags=["resume"],
+        if self._shared_document_path:
+            shared_doc = self._resolve_shared_document(
+                self._shared_document_path,
+                reference_name=self._shared_document_name,
             )
-            if not resume_docs:
-                logger.warning(f"No documents discovered in resumes_path: {self._resumes_path}")
+            discovered_docs.append(shared_doc)
+            logger.info(
+                f"Injected shared document '{shared_doc['reference_name']}': "
+                f"{shared_doc['file_path']}"
+            )
+
+        if self._documents_path:
+            folder_docs = discover_documents(
+                self._documents_path,
+                absolute_paths=True,
+            )
+            if not folder_docs:
+                logger.warning(f"No documents discovered in documents_path: {self._documents_path}")
             else:
-                discovered_docs.extend(resume_docs)
+                discovered_docs.extend(folder_docs)
                 logger.info(
-                    f"Discovered {len(resume_docs)} documents from resumes_path: "
-                    f"{self._resumes_path}"
+                    f"Discovered {len(folder_docs)} documents from documents_path: "
+                    f"{self._documents_path}"
                 )
 
-                resume_data = create_data_rows_from_documents(resume_docs)
+                folder_data = create_data_rows_from_documents(folder_docs)
                 if self.batch_data:
-                    self.batch_data.extend(resume_data)
+                    self.batch_data.extend(folder_data)
                     logger.info(
-                        f"Appended {len(resume_data)} batch rows to existing "
-                        f"{len(self.batch_data) - len(resume_data)} source rows"
+                        f"Appended {len(folder_data)} batch rows to existing "
+                        f"{len(self.batch_data) - len(folder_data)} source rows"
                     )
                 else:
-                    self.batch_data = resume_data
-                    logger.info(f"Created {len(resume_data)} batch rows from discovered documents")
+                    self.batch_data = folder_data
+                    logger.info(f"Created {len(folder_data)} batch rows from discovered documents")
 
                 self.is_batch_mode = len(self.batch_data) > 0
 

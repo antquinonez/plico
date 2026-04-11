@@ -945,8 +945,8 @@ orchestrator = ManifestOrchestrator(
     manifest_dir="./manifests/my_workflow/",
     client=client,
     concurrency=4,
-    resumes_path="./resumes/",       # Auto-discover documents
-    jd_path="./job_description.md",  # Shared JD as "job_description"
+    documents_path="./resumes/",          # Auto-discover documents
+    shared_document_path="./job_description.md",  # Shared document (name derived from filename)
 )
 parquet_path = orchestrator.run()
 

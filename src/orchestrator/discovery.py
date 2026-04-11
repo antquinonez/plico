@@ -139,20 +139,24 @@ def discover_documents(
 def create_data_rows_from_documents(
     document_defs: list[dict[str, Any]],
     documents_column: str = "_documents",
+    name_column: str = "candidate_name",
 ) -> list[dict[str, Any]]:
     """Generate data rows for batch execution from document definitions.
 
     Each document becomes one data row with ``id``, ``batch_name``,
-    ``candidate_name``, and ``_documents`` columns.
+    ``name_column``, and ``_documents`` columns.
 
     Args:
         document_defs: List of dicts as returned by ``discover_documents()``
             or matching ``DOCUMENTS_HEADERS`` format.
         documents_column: Name of the column that binds documents to rows.
+        name_column: Name of the column holding the display name for each
+            document entry (e.g., ``"candidate_name"`` for resume screening,
+            ``"document_name"`` for generic document evaluation).
 
     Returns:
-        List of dicts with keys: ``id``, ``batch_name``, ``candidate_name``,
-        ``_documents``.
+        List of dicts with keys: ``id``, ``batch_name``, ``name_column``,
+        ``documents_column``.
 
     """
     rows: list[dict[str, Any]] = []
@@ -163,7 +167,7 @@ def create_data_rows_from_documents(
             {
                 "id": idx,
                 "batch_name": doc.get("reference_name", ""),
-                "candidate_name": common_name,
+                name_column: common_name,
                 documents_column: f'["{ref_name}"]',
             }
         )
