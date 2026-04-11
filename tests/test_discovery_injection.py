@@ -51,27 +51,38 @@ class TestDiscoverDocumentsAbsolutePaths:
         assert Path(result[0]["file_path"]).is_absolute()
 
 
-class TestResolveJdDocument:
-    """Tests for OrchestratorBase._resolve_jd_document."""
+class TestResolveSharedDocument:
+    """Tests for OrchestratorBase._resolve_shared_document."""
 
-    def test_valid_jd_file(self, tmp_path):
+    def test_valid_shared_document(self, tmp_path):
         jd = tmp_path / "job_description.md"
         jd.write_text("Senior Engineer role...")
 
-        result = OrchestratorBase._resolve_jd_document(str(jd))
+        result = OrchestratorBase._resolve_shared_document(str(jd))
         assert result["reference_name"] == "job_description"
-        assert result["common_name"] == "Job Description"
-        assert result["tags"] == "jd"
+        assert result["common_name"] == "job_description"
+        assert result["tags"] == "shared"
         assert Path(result["file_path"]).is_absolute()
         assert "job_description.md" in result["file_path"]
 
-    def test_jd_file_not_found(self, tmp_path):
-        with pytest.raises(FileNotFoundError, match="Job description file not found"):
-            OrchestratorBase._resolve_jd_document(str(tmp_path / "nonexistent.md"))
+    def test_custom_reference_name(self, tmp_path):
+        doc = tmp_path / "my_rubric.pdf"
+        doc.write_text("Scoring rubric...")
+
+        result = OrchestratorBase._resolve_shared_document(
+            str(doc), reference_name="scoring_rubric"
+        )
+        assert result["reference_name"] == "scoring_rubric"
+        assert result["common_name"] == "my_rubric"
+        assert result["tags"] == "shared"
+
+    def test_document_not_found(self, tmp_path):
+        with pytest.raises(FileNotFoundError, match="Shared document file not found"):
+            OrchestratorBase._resolve_shared_document(str(tmp_path / "nonexistent.md"))
 
 
 class TestExcelOrchestratorInjection:
-    """Tests for ExcelOrchestrator with resumes_path and jd_path."""
+    """Tests for ExcelOrchestrator with documents_path and shared_document_path."""
 
     def _create_minimal_workbook(self, path: Path) -> None:
         """Create a minimal workbook with prompts sheet only."""
@@ -99,7 +110,25 @@ class TestExcelOrchestratorInjection:
 
         wb.save(str(path))
 
-    def test_inject_jd_only(self, tmp_path):
+    def test_inject_shared_document_only(self, tmp_path):
+        workbook = tmp_path / "test.xlsx"
+        self._create_minimal_workbook(workbook)
+
+        jd = tmp_path / "job_description.md"
+        jd.write_text("Senior Engineer role...")
+
+        client = MagicMock()
+        orchestrator = ExcelOrchestrator(
+            workbook_path=str(workbook),
+            client=client,
+            shared_document_path=str(jd),
+        )
+        orchestrator._load_source()
+
+        assert orchestrator.has_documents
+        assert "job_description" in orchestrator.document_registry.documents
+
+    def test_shared_document_name_overrides_filename(self, tmp_path):
         workbook = tmp_path / "test.xlsx"
         self._create_minimal_workbook(workbook)
 
@@ -110,14 +139,16 @@ class TestExcelOrchestratorInjection:
         orchestrator = ExcelOrchestrator(
             workbook_path=str(workbook),
             client=client,
-            jd_path=str(jd),
+            shared_document_path=str(jd),
+            shared_document_name="job_description",
         )
         orchestrator._load_source()
 
         assert orchestrator.has_documents
         assert "job_description" in orchestrator.document_registry.documents
+        assert "jd" not in orchestrator.document_registry.documents
 
-    def test_inject_resumes_only(self, tmp_path):
+    def test_inject_documents_only(self, tmp_path):
         workbook = tmp_path / "test.xlsx"
         self._create_minimal_workbook(workbook)
 
@@ -130,7 +161,7 @@ class TestExcelOrchestratorInjection:
         orchestrator = ExcelOrchestrator(
             workbook_path=str(workbook),
             client=client,
-            resumes_path=str(resumes),
+            documents_path=str(resumes),
         )
         orchestrator._load_source()
 
@@ -140,11 +171,11 @@ class TestExcelOrchestratorInjection:
         assert "alice" in orchestrator.document_registry.documents
         assert "bob" in orchestrator.document_registry.documents
 
-    def test_inject_both_jd_and_resumes(self, tmp_path):
+    def test_inject_both_shared_document_and_documents(self, tmp_path):
         workbook = tmp_path / "test.xlsx"
         self._create_minimal_workbook(workbook)
 
-        jd = tmp_path / "jd.md"
+        jd = tmp_path / "job_description.md"
         jd.write_text("Senior Engineer role...")
 
         resumes = tmp_path / "resumes"
@@ -156,8 +187,8 @@ class TestExcelOrchestratorInjection:
         orchestrator = ExcelOrchestrator(
             workbook_path=str(workbook),
             client=client,
-            resumes_path=str(resumes),
-            jd_path=str(jd),
+            documents_path=str(resumes),
+            shared_document_path=str(jd),
         )
         orchestrator._load_source()
 
@@ -180,7 +211,7 @@ class TestExcelOrchestratorInjection:
         orchestrator = ExcelOrchestrator(
             workbook_path=str(workbook),
             client=client,
-            resumes_path=str(resumes),
+            documents_path=str(resumes),
         )
         orchestrator._load_source()
 
@@ -250,7 +281,7 @@ class TestExcelOrchestratorInjection:
         orchestrator = ExcelOrchestrator(
             workbook_path=str(workbook),
             client=client,
-            resumes_path=str(resumes),
+            documents_path=str(resumes),
         )
         orchestrator._load_source()
 
@@ -303,7 +334,7 @@ class TestExcelOrchestratorInjection:
         orchestrator = ExcelOrchestrator(
             workbook_path=str(workbook),
             client=client,
-            resumes_path=str(resumes),
+            documents_path=str(resumes),
         )
         orchestrator._load_source()
 
@@ -311,7 +342,7 @@ class TestExcelOrchestratorInjection:
         assert orchestrator.batch_data[0]["batch_name"] == "existing_batch"
         assert orchestrator.batch_data[1]["batch_name"] == "alice"
 
-    def test_empty_resumes_path_warns(self, tmp_path):
+    def test_empty_documents_path_warns(self, tmp_path):
         workbook = tmp_path / "test.xlsx"
         self._create_minimal_workbook(workbook)
 
@@ -322,18 +353,18 @@ class TestExcelOrchestratorInjection:
         orchestrator = ExcelOrchestrator(
             workbook_path=str(workbook),
             client=client,
-            resumes_path=str(empty_folder),
+            documents_path=str(empty_folder),
         )
         orchestrator._load_source()
 
         assert not orchestrator.is_batch_mode
         assert len(orchestrator.batch_data) == 0
 
-    def test_jd_paths_are_absolute(self, tmp_path):
+    def test_shared_document_paths_are_absolute(self, tmp_path):
         workbook = tmp_path / "test.xlsx"
         self._create_minimal_workbook(workbook)
 
-        jd = tmp_path / "jd.md"
+        jd = tmp_path / "job_description.md"
         jd.write_text("Senior Engineer role...")
 
         resumes = tmp_path / "resumes"
@@ -344,8 +375,8 @@ class TestExcelOrchestratorInjection:
         orchestrator = ExcelOrchestrator(
             workbook_path=str(workbook),
             client=client,
-            resumes_path=str(resumes),
-            jd_path=str(jd),
+            documents_path=str(resumes),
+            shared_document_path=str(jd),
         )
         orchestrator._load_source()
 
@@ -354,7 +385,7 @@ class TestExcelOrchestratorInjection:
 
 
 class TestManifestOrchestratorInjection:
-    """Tests for ManifestOrchestrator with resumes_path and jd_path."""
+    """Tests for ManifestOrchestrator with documents_path and shared_document_path."""
 
     def _create_minimal_manifest(self, manifest_dir: Path) -> None:
         """Create a minimal manifest folder with required YAML files."""
@@ -393,7 +424,25 @@ class TestManifestOrchestratorInjection:
         with open(manifest_dir / "prompts.yaml", "w") as f:
             yaml.dump(prompts_yaml, f)
 
-    def test_inject_jd_only(self, tmp_path):
+    def test_inject_shared_document_only(self, tmp_path):
+        manifest_dir = tmp_path / "manifest"
+        self._create_minimal_manifest(manifest_dir)
+
+        jd = tmp_path / "job_description.md"
+        jd.write_text("Senior Engineer role...")
+
+        client = MagicMock()
+        orchestrator = ManifestOrchestrator(
+            manifest_dir=str(manifest_dir),
+            client=client,
+            shared_document_path=str(jd),
+        )
+        orchestrator._load_source()
+
+        assert orchestrator.has_documents
+        assert "job_description" in orchestrator.document_registry.documents
+
+    def test_shared_document_name_overrides_filename(self, tmp_path):
         manifest_dir = tmp_path / "manifest"
         self._create_minimal_manifest(manifest_dir)
 
@@ -404,14 +453,16 @@ class TestManifestOrchestratorInjection:
         orchestrator = ManifestOrchestrator(
             manifest_dir=str(manifest_dir),
             client=client,
-            jd_path=str(jd),
+            shared_document_path=str(jd),
+            shared_document_name="job_description",
         )
         orchestrator._load_source()
 
         assert orchestrator.has_documents
         assert "job_description" in orchestrator.document_registry.documents
+        assert "jd" not in orchestrator.document_registry.documents
 
-    def test_inject_resumes_only(self, tmp_path):
+    def test_inject_documents_only(self, tmp_path):
         manifest_dir = tmp_path / "manifest"
         self._create_minimal_manifest(manifest_dir)
 
@@ -424,7 +475,7 @@ class TestManifestOrchestratorInjection:
         orchestrator = ManifestOrchestrator(
             manifest_dir=str(manifest_dir),
             client=client,
-            resumes_path=str(resumes),
+            documents_path=str(resumes),
         )
         orchestrator._load_source()
 
@@ -434,11 +485,11 @@ class TestManifestOrchestratorInjection:
         assert "alice" in orchestrator.document_registry.documents
         assert "bob" in orchestrator.document_registry.documents
 
-    def test_inject_both_jd_and_resumes(self, tmp_path):
+    def test_inject_both_shared_document_and_documents(self, tmp_path):
         manifest_dir = tmp_path / "manifest"
         self._create_minimal_manifest(manifest_dir)
 
-        jd = tmp_path / "jd.md"
+        jd = tmp_path / "job_description.md"
         jd.write_text("Senior Engineer role...")
 
         resumes = tmp_path / "resumes"
@@ -450,8 +501,8 @@ class TestManifestOrchestratorInjection:
         orchestrator = ManifestOrchestrator(
             manifest_dir=str(manifest_dir),
             client=client,
-            resumes_path=str(resumes),
-            jd_path=str(jd),
+            documents_path=str(resumes),
+            shared_document_path=str(jd),
         )
         orchestrator._load_source()
 
@@ -474,7 +525,7 @@ class TestManifestOrchestratorInjection:
         orchestrator = ManifestOrchestrator(
             manifest_dir=str(manifest_dir),
             client=client,
-            resumes_path=str(resumes),
+            documents_path=str(resumes),
         )
         orchestrator._load_source()
 
@@ -558,7 +609,7 @@ class TestManifestOrchestratorInjection:
         orchestrator = ManifestOrchestrator(
             manifest_dir=str(manifest_dir),
             client=client,
-            resumes_path=str(resumes),
+            documents_path=str(resumes),
         )
         orchestrator._load_source()
 
@@ -624,7 +675,7 @@ class TestManifestOrchestratorInjection:
         orchestrator = ManifestOrchestrator(
             manifest_dir=str(manifest_dir),
             client=client,
-            resumes_path=str(resumes),
+            documents_path=str(resumes),
         )
         orchestrator._load_source()
 

@@ -312,7 +312,7 @@ def create_jd_document(jd_path: str) -> dict[str, Any]:
         "reference_name": "job_description",
         "common_name": "Job Description",
         "file_path": str(path),
-        "tags": "jd",
+        "tags": "shared",
         "chunking_strategy": "",
         "notes": f"Shared job description: {path.name}",
     }

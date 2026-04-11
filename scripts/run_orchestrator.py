@@ -22,9 +22,9 @@ Examples:
     # Run with logging to file only (quiet mode)
     python scripts/run_orchestrator.py my_prompts.xlsx --quiet
 
-    # Run with auto-discovered resumes and a job description
+    # Run with auto-discovered documents and a shared document
     python scripts/run_orchestrator.py screening.xlsx \
-        --resumes-path ./resumes/ --jd ./job_description.md -c 1
+        --documents-path ./resumes/ --shared-document ./job_description.md -c 1
 """
 
 import argparse
@@ -88,14 +88,19 @@ def main():
     )
     parser.add_argument("--verbose", action="store_true", help="Enable debug logging")
     parser.add_argument(
-        "--resumes-path",
-        help="Folder path to auto-discover documents (e.g., resumes). "
+        "--documents-path",
+        help="Folder path to auto-discover documents. "
         "Populates documents and batch data at runtime without modifying the workbook.",
     )
     parser.add_argument(
-        "--jd",
-        help="Path to a job description file. Added as a shared document "
-        "with reference_name='job_description' available to all prompts.",
+        "--shared-document",
+        help="Path to a shared document file (e.g., job description, rubric). "
+        "Added to the documents registry under a reference name derived from the filename.",
+    )
+    parser.add_argument(
+        "--shared-document-name",
+        help="Explicit reference name for the shared document (e.g., 'job_description'). "
+        "Required when the filename doesn't match the reference name used in prompts.",
     )
 
     args = parser.parse_args()
@@ -171,17 +176,18 @@ def main():
         client=client,
         concurrency=args.concurrency,
         progress_callback=progress.update,
-        resumes_path=args.resumes_path,
-        jd_path=args.jd,
+        documents_path=args.documents_path,
+        shared_document_path=args.shared_document,
+        shared_document_name=args.shared_document_name,
     )
 
     print(f"\nStarting orchestration with concurrency={args.concurrency}")
     print(f"Client type: {client_type}")
     print(f"Total prompts: {len(prompts)}")
-    if args.resumes_path:
-        print(f"Resumes path: {args.resumes_path} (auto-discovered)")
-    if args.jd:
-        print(f"Job description: {args.jd}")
+    if args.documents_path:
+        print(f"Documents path: {args.documents_path} (auto-discovered)")
+    if args.shared_document:
+        print(f"Shared document: {args.shared_document}")
     log_dir = os.path.join(
         os.path.dirname(os.path.dirname(os.path.abspath(__file__))), app_config.logging.directory
     )

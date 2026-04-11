@@ -24,69 +24,101 @@ That's it. Two arguments: a folder and a file.
 
 ---
 
+## Creation Modes
+
+Both creation scripts support optional `--resumes-path` and `--jd` arguments,
+giving you control over what gets baked in vs injected at runtime.
+
+### Workbook Modes
+
+| Mode | JD | Resumes | Creation | Runtime |
+|------|----|---------|----------|---------|
+| **Self-contained** | `--jd` | `--resumes-path` | `create_screening_workbook.py ./out.xlsx --jd ./jd.md --resumes-path ./resumes/` | `run_orchestrator.py ./out.xlsx` |
+| **Template (JD baked)** | `--jd` | *(omit)* | `create_screening_workbook.py ./template.xlsx --jd ./jd.md` | `run_orchestrator.py ./template.xlsx --documents-path ./resumes/` |
+| **Template (generic)** | *(omit)* | *(omit)* | `create_screening_workbook.py ./template.xlsx` | `run_orchestrator.py ./template.xlsx --shared-document ./jd.md --shared-document-name job_description --documents-path ./resumes/` |
+
+### Manifest Modes
+
+| Mode | JD | Resumes | Creation | Runtime |
+|------|----|---------|----------|---------|
+| **Template (JD baked)** | `--jd` | *(omit)* | `create_screening_manifest.py --jd ./jd.md` | `manifest_run.py ./manifest_screening --documents-path ./resumes/` |
+| **Template (generic)** | *(omit)* | *(omit)* | `create_screening_manifest.py` | `manifest_run.py ./manifest_screening --shared-document ./jd.md --shared-document-name job_description --documents-path ./resumes/` |
+
+`--resumes-path` on the manifest script is optional and used only for sizing
+the synthesis `top_n` count. Resumes are always injected at runtime.
+
+---
+
 ## Three Approaches
 
-### Approach 1: Create a Workbook, Then Run (Excel)
+### Approach 1: Self-Contained Workbook (Excel)
 
-Creates a `.xlsx` workbook you can inspect, edit prompts, and re-run.
+Creates a `.xlsx` workbook with all documents and batch data baked in.
 
 ```bash
-# Create the workbook
+# Create the workbook (JD + resumes baked in)
 python scripts/create_screening_workbook.py ./screening.xlsx \
     --resumes-path ./resumes/ \
     --jd ./job_description.md
 
-# Run the orchestrator
+# Run the orchestrator (no flags needed)
 python scripts/run_orchestrator.py ./screening.xlsx -c 1
 ```
 
-**Why this approach:** You can open the `.xlsx`, tweak prompts, adjust scoring
-weights, or add synthesis prompts before running. Results are written back
-into the workbook.
+**Why this approach:** Self-contained file you can share, email, or version.
+Results are written back into the workbook.
 
-### Approach 2: Create a Manifest, Then Run (YAML)
+### Approach 2: Template Workbook (Excel)
 
-Creates a manifest folder (YAML files) directly — no Excel needed. Documents
-and batch data are injected at runtime via `--resumes-path` and `--jd`.
+Creates a `.xlsx` workbook with prompts and scoring but no baked-in data.
+Reusable across different JDs and resume folders.
 
 ```bash
-# Create the manifest (YAML only — no baked-in data/documents)
-python scripts/create_screening_manifest.py ./manifests/manifest_screening \
-    --resumes-path ./resumes/ \
+# Template with JD baked in
+python scripts/create_screening_workbook.py ./template.xlsx \
     --jd ./job_description.md
 
-# Run the manifest orchestrator with runtime injection
+# Run with resumes injected at runtime
+python scripts/run_orchestrator.py ./template.xlsx \
+    --documents-path ./resumes/ -c 1
+
+# Generic template (nothing baked in)
+python scripts/create_screening_workbook.py ./template.xlsx
+
+python scripts/run_orchestrator.py ./template.xlsx \
+    --shared-document ./jd.md --shared-document-name job_description \
+    --documents-path ./resumes/ -c 2
+```
+
+**Why this approach:** Edit prompts once in the template, screen different
+requisitions by swapping `--documents-path` and `--shared-document` at runtime.
+
+### Approach 3: Template Manifest (YAML)
+
+Creates a manifest folder (YAML files) directly — no Excel needed. The JD
+can optionally be baked into `documents.yaml`; resumes are always injected
+at runtime.
+
+```bash
+# Template with JD baked in
+python scripts/create_screening_manifest.py ./manifests/manifest_screening \
+    --jd ./job_description.md
+
+# Run with resumes injected at runtime
 python scripts/manifest_run.py ./manifests/manifest_screening \
-    --resumes-path ./resumes/ \
-    --jd ./job_description.md \
-    -c 1
+    --documents-path ./resumes/ -c 1
+
+# Generic template (nothing baked in)
+python scripts/create_screening_manifest.py ./manifests/manifest_screening
+
+python scripts/manifest_run.py ./manifests/manifest_screening \
+    --shared-document ./jd.md --shared-document-name job_description \
+    --documents-path ./resumes/ -c 1
 ```
 
 **Why this approach:** Manifests are Git-friendly, AI-composable, and the
-canonical workflow representation. Documents are injected at runtime so the
-same manifest can screen different resume folders. Results go to parquet.
-
-### Approach 3: Runtime Injection (No Workbook/Manifest Modification)
-
-Run the orchestrator with `--resumes-path` and `--jd` flags. Documents and
-batch data are injected at runtime without modifying the workbook or manifest.
-
-```bash
-# Excel path
-python scripts/run_orchestrator.py ./my_prompts.xlsx \
-    --resumes-path ./resumes/ \
-    --jd ./job_description.md \
-    -c 2
-
-# Manifest path
-python scripts/manifest_run.py ./manifests/manifest_screening \
-    --resumes-path ./resumes/ \
-    --jd ./job_description.md \
-    -c 2
-```
-
-**Why this approach:** You maintain a single reusable workbook or manifest
-and swap out the resume folder per requisition.
+canonical workflow representation. Prompts, scoring, and synthesis travel in
+version control; data stays on disk. Results go to parquet.
 
 ---
 
@@ -138,7 +170,7 @@ python scripts/create_screening_workbook.py ./screening.xlsx \
 
 ### `create_screening_workbook.py`
 
-Creates a complete `.xlsx` workbook from a folder of resumes.
+Creates a `.xlsx` workbook with prompts, scoring, and synthesis sheets.
 
 ```bash
 python scripts/create_screening_workbook.py <output_path> [options]
@@ -147,8 +179,8 @@ python scripts/create_screening_workbook.py <output_path> [options]
 | Argument | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `output` | Yes | — | Output `.xlsx` path |
-| `--resumes-path` | Yes | — | Folder containing resume documents |
-| `--jd` | Yes | — | Path to job description file |
+| `--resumes-path` | No | — | Folder containing resume documents (baked in if provided) |
+| `--jd` | No | — | Path to job description file (baked in if provided) |
 | `--planning` | No | off | Auto-derive scoring from JD via LLM |
 | `--extensions` | No | `.pdf .docx .doc .txt .md` | File extensions to include |
 | `--client` | No | config default | Client type from `config/clients.yaml` |
@@ -159,7 +191,7 @@ python scripts/create_screening_workbook.py <output_path> [options]
 **Examples:**
 
 ```bash
-# Basic static scoring
+# Self-contained (JD + resumes baked in)
 python scripts/create_screening_workbook.py ./screening.xlsx \
     --resumes-path ./resumes/ --jd ./jd.md
 
@@ -167,22 +199,18 @@ python scripts/create_screening_workbook.py ./screening.xlsx \
 python scripts/create_screening_workbook.py ./screening.xlsx \
     --resumes-path ./resumes/ --jd ./jd.md --planning
 
-# Only PDF and DOCX files, with Anthropic
-python scripts/create_screening_workbook.py ./screening.xlsx \
-    --resumes-path ./resumes/ --jd ./jd.md \
-    --extensions .pdf .docx --client anthropic
+# Template with JD baked in (resumes injected at runtime)
+python scripts/create_screening_workbook.py ./template.xlsx \
+    --jd ./jd.md
 
-# Custom system instructions
-python scripts/create_screening_workbook.py ./screening.xlsx \
-    --resumes-path ./resumes/ --jd ./jd.md \
-    --system-instructions "You are a senior technical recruiter for a fintech company."
+# Generic template (nothing baked in)
+python scripts/create_screening_workbook.py ./template.xlsx
 ```
 
 ### `create_screening_manifest.py`
 
-Creates a manifest folder (YAML files) directly from a folder of resumes.
-No Excel intermediary. Documents and batch data are injected at runtime
-via `manifest_run.py --resumes-path` and `--jd`.
+Creates a manifest folder (YAML files) directly. The JD can optionally be
+baked into `documents.yaml`; resumes are always injected at runtime.
 
 ```bash
 python scripts/create_screening_manifest.py [output_dir] [options]
@@ -191,8 +219,8 @@ python scripts/create_screening_manifest.py [output_dir] [options]
 | Argument | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `output` | No | `./manifests/manifest_screening` | Output manifest directory |
-| `--resumes-path` | Yes | — | Folder containing resume documents |
-| `--jd` | Yes | — | Path to job description file |
+| `--resumes-path` | No | — | Folder for top_n sizing (not baked in) |
+| `--jd` | No | — | Path to JD file (baked into `documents.yaml` if provided) |
 | `--planning` | No | off | Auto-derive scoring from JD via LLM |
 | `--extensions` | No | `.pdf .docx .doc .txt .md` | File extensions to include |
 | `--client` | No | config default | Client type from `config/clients.yaml` |
@@ -203,23 +231,22 @@ python scripts/create_screening_manifest.py [output_dir] [options]
 **Examples:**
 
 ```bash
-# Basic static scoring
+# Template with JD baked in
 python scripts/create_screening_manifest.py \
-    --resumes-path ./resumes/ --jd ./jd.md
+    --jd ./job_description.md
 
-# Custom output directory and planning mode
+# Generic template (nothing baked in)
+python scripts/create_screening_manifest.py
+
+# Planning mode with JD and resume count for top_n sizing
 python scripts/create_screening_manifest.py ./manifests/my_screening \
-    --resumes-path ./resumes/ --jd ./jd.md --planning
+    --jd ./jd.md --planning --resumes-path ./resumes/
 ```
-
-**Note:** This script validates that resumes are discovered and the JD exists,
-but does *not* bake documents or batch data into the manifest. They are
-injected at runtime via `manifest_run.py --resumes-path` and `--jd`.
 
 ### `run_orchestrator.py` (with discovery flags)
 
-Runs the orchestrator. When `--resumes-path` and/or `--jd` are provided,
-documents and batch data are injected at runtime.
+Runs the orchestrator. When `--documents-path` and/or `--shared-document` are
+provided, documents and batch data are injected at runtime.
 
 ```bash
 python scripts/run_orchestrator.py <workbook> [options]
@@ -228,8 +255,9 @@ python scripts/run_orchestrator.py <workbook> [options]
 | Argument | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `workbook` | Yes | — | Path to `.xlsx` workbook |
-| `--resumes-path` | No | — | Auto-discover documents from folder |
-| `--jd` | No | — | Job description file (shared doc) |
+| `--documents-path` | No | — | Auto-discover documents from folder |
+| `--shared-document` | No | — | Shared document file (e.g., job description) |
+| `--shared-document-name` | No | — | Explicit reference name for the shared document |
 | `--client` | No | config default | Client type override |
 | `--concurrency` / `-c` | No | 2 | Max concurrent API calls |
 | `--dry-run` | No | off | Validate without executing |
@@ -244,7 +272,8 @@ python scripts/run_orchestrator.py ./screening.xlsx -c 1
 
 # With runtime injection (no workbook modification)
 python scripts/run_orchestrator.py ./screening.xlsx \
-    --resumes-path ./resumes/ --jd ./jd.md -c 2
+    --documents-path ./resumes/ --shared-document ./jd.md \
+    --shared-document-name job_description -c 2
 
 # Dry run to validate before executing
 python scripts/run_orchestrator.py ./screening.xlsx --dry-run
@@ -255,8 +284,9 @@ python scripts/run_orchestrator.py ./screening.xlsx --quiet
 
 ### `manifest_run.py` (with discovery flags)
 
-Runs the manifest orchestrator. When `--resumes-path` and/or `--jd` are
-provided, documents and batch data are injected at runtime.
+Runs the manifest orchestrator. When `--documents-path` and/or
+`--shared-document` are provided, documents and batch data are injected at
+runtime.
 
 ```bash
 python scripts/manifest_run.py <manifest_dir> [options]
@@ -265,8 +295,9 @@ python scripts/manifest_run.py <manifest_dir> [options]
 | Argument | Required | Default | Description |
 |----------|----------|---------|-------------|
 | `manifest_dir` | Yes | — | Path to manifest folder |
-| `--resumes-path` | No | — | Auto-discover documents from folder |
-| `--jd` | No | — | Job description file (shared doc) |
+| `--documents-path` | No | — | Auto-discover documents from folder |
+| `--shared-document` | No | — | Shared document file (e.g., job description) |
+| `--shared-document-name` | No | — | Explicit reference name for the shared document |
 | `--client` | No | config default | Client type override |
 | `--concurrency` / `-c` | No | 2 | Max concurrent API calls |
 | `--dry-run` | No | off | Validate without executing |
@@ -280,7 +311,8 @@ python scripts/manifest_run.py ./manifests/manifest_screening -c 1
 
 # With runtime injection (no manifest modification)
 python scripts/manifest_run.py ./manifests/manifest_screening \
-    --resumes-path ./resumes/ --jd ./jd.md -c 2
+    --documents-path ./resumes/ --shared-document ./jd.md \
+    --shared-document-name job_description -c 2
 
 # Dry run to validate before executing
 python scripts/manifest_run.py ./manifests/manifest_screening --dry-run
@@ -433,42 +465,46 @@ resumes/               job_descriptions/
   alice_chen.md          senior_engineer.md
   bob_martinez.pdf
   carol_okafor.docx
-       │                      │
-       v                      v
-  discover_documents()   _resolve_jd_document()
-       │                      │
-       │  reference_name      │  reference_name
-       │  common_name         │  "job_description"
-       │  file_path           │  file_path (absolute)
-       │  tags=["resume"]     │  tags="jd"
-       │                      │
-       v                      v
-  create_data_rows_        Shared doc
-  from_documents()         (available to all
-  (one row per resume       prompts, not bound
-   with _documents          to any data row)
-   column binding)                │
-       │                          │
-        v                          v
-   ┌──────────────────────────────────────────────────────┐
-   │  OrchestratorBase._inject_discovery_overrides()       │
-   │                                                        │
-   │  1. Load workbook sheets OR manifest YAML files        │
-   │  2. If resumes_path: discover & inject docs + data    │
-   │  3. If jd_path: inject as shared doc                  │
-   │  4. Merge with any source docs                        │
-   │  5. Run validation + execution                        │
-   └──────────────────────────────────────────────────────┘
+        │                      │
+        v                      v
+   discover_documents()   _resolve_shared_document()
+        │                      │
+        │  reference_name      │  reference_name (derived
+        │  common_name         │    from filename stem,
+        │  file_path           │    e.g. "senior_engineer")
+        │                      │  file_path (absolute)
+        │                      │  tags="shared"
+        │                      │
+        v                      v
+   create_data_rows_        Shared doc
+   from_documents()         (available to all
+   (one row per resume       prompts, not bound
+    with _documents          to any data row)
+    column binding)                │
+        │                          │
+         v                          v
+    ┌──────────────────────────────────────────────────────┐
+    │  OrchestratorBase._inject_discovery_overrides()       │
+    │                                                        │
+    │  1. Load workbook sheets OR manifest YAML files        │
+    │  2. If documents_path: discover & inject docs + data   │
+    │  3. If shared_document_path: inject as shared doc      │
+    │  4. Merge with any source docs                        │
+    │  5. Run validation + execution                        │
+    └──────────────────────────────────────────────────────┘
 
-   Shared by both ExcelOrchestrator and ManifestOrchestrator.
+    Shared by both ExcelOrchestrator and ManifestOrchestrator.
 ```
 
 Key points:
 
-- `--jd` creates a document with `reference_name="job_description"`. Reference
-  it in prompts via `references: '["job_description"]'`.
-- `--resumes-path` creates one data row per discovered file. Each row binds
-  its document via the `_documents` column.
+- `--shared-document` creates a document with a `reference_name` derived
+  from the filename (e.g., `senior_engineer.md` → `senior_engineer`).
+  Use `--shared-document-name` to override (e.g., `--shared-document-name
+  job_description` ensures the name matches prompts that reference
+  `["job_description"]`).
+- `--documents-path` creates one data row per discovered file. Each row
+  binds its document via the `_documents` column.
 - Paths are stored as absolute for runtime injection, relative for workbook
   creation.
 - Discovery merges with existing workbook documents/data if present.

@@ -12,7 +12,7 @@ workflows defined in Excel workbooks with support for:
 - Document reference injection
 - Semantic search via RAG (semantic_query)
 - Conditional execution
-- Auto-discovery of documents from a folder (resumes_path)
+- Auto-discovery of documents from a folder (documents_path)
 """
 
 from __future__ import annotations
@@ -50,8 +50,9 @@ class ExcelOrchestrator(OrchestratorBase):
         config_overrides: dict[str, Any] | None = None,
         concurrency: int | None = None,
         progress_callback: Callable[..., None] | None = None,
-        resumes_path: str | None = None,
-        jd_path: str | None = None,
+        documents_path: str | None = None,
+        shared_document_path: str | None = None,
+        shared_document_name: str | None = None,
     ) -> None:
         """Initialize the ExcelOrchestrator.
 
@@ -61,12 +62,14 @@ class ExcelOrchestrator(OrchestratorBase):
             config_overrides: Optional config overrides from workbook.
             concurrency: Maximum concurrent API calls (1-max). Uses config default if None.
             progress_callback: Optional callback for progress updates.
-            resumes_path: Optional folder path to auto-discover documents (e.g., resumes).
-                Discovered documents populate the documents registry and batch data
-                at runtime without modifying the workbook.
-            jd_path: Optional path to a job description file. Added as a shared
-                document with ``reference_name="job_description"`` available to all
-                prompts via ``references: '["job_description"]'``.
+            documents_path: Optional folder path to auto-discover documents.
+                Discovered documents populate the documents registry and batch
+                data at runtime without modifying the workbook.
+            shared_document_path: Optional path to a shared document file (e.g.,
+                a job description, rubric, or reference document) added to the
+                documents registry.
+            shared_document_name: Optional reference name for the shared document.
+                When omitted, the name is derived from the filename stem.
 
         """
         super().__init__(
@@ -74,8 +77,9 @@ class ExcelOrchestrator(OrchestratorBase):
             config_overrides=config_overrides,
             concurrency=concurrency,
             progress_callback=progress_callback,
-            resumes_path=resumes_path,
-            jd_path=jd_path,
+            documents_path=documents_path,
+            shared_document_path=shared_document_path,
+            shared_document_name=shared_document_name,
         )
         self._workbook_path = workbook_path
         self.builder = WorkbookParser(workbook_path)

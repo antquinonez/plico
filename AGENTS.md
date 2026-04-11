@@ -665,30 +665,43 @@ Auto-discover resumes from a folder and evaluate against a job description.
 
 ### CLI Integration
 
-**Create a workbook from a folder:**
+**Create a self-contained workbook (JD + resumes baked in):**
 
 ```bash
 python scripts/create_screening_workbook.py ./screening.xlsx \
     --resumes-path ./resumes/ --jd ./job_description.md
-
-# With planning phase (auto-derive scoring from JD)
-python scripts/create_screening_workbook.py ./screening.xlsx \
-    --resumes-path ./resumes/ --jd ./jd.md --planning
 ```
 
-**Runtime injection (no workbook modification):**
+**Create a template workbook (reusable across requisitions):**
 
 ```bash
-python scripts/run_orchestrator.py ./prompts.xlsx \
-    --resumes-path ./resumes/ --jd ./jd.md -c 1
+# JD baked in, resumes injected at runtime
+python scripts/create_screening_workbook.py ./template.xlsx \
+    --jd ./job_description.md
+
+# Generic template (nothing baked in)
+python scripts/create_screening_workbook.py ./template.xlsx
+```
+
+**Runtime injection (use template with different data):**
+
+```bash
+# Template with JD baked in
+python scripts/run_orchestrator.py ./template.xlsx \
+    --documents-path ./resumes/ -c 1
+
+# Generic template
+python scripts/run_orchestrator.py ./template.xlsx \
+    --shared-document ./jd.md --shared-document-name job_description \
+    --documents-path ./resumes/ -c 1
 ```
 
 **Invoke tasks:**
 
 ```bash
-inv screening.run -r ./resumes/ -j ./jd.md
-inv screening.manifest -r ./resumes/ -j ./jd.md          # Manifest-first (no Excel)
-inv screening.create -r ./resumes/ -j ./jd.md --planning
+inv screening.run --resumes-path ./resumes/ --jd ./jd.md
+inv screening.manifest --resumes-path ./resumes/ --jd ./jd.md
+inv screening.create --jd ./jd.md --output ./template.xlsx
 inv screening.inspect ./screening.xlsx
 ```
 
@@ -698,8 +711,8 @@ inv screening.inspect ./screening.xlsx
 orchestrator = ExcelOrchestrator(
     workbook_path="screening.xlsx",
     client=client,
-    resumes_path="./resumes/",      # Auto-discover documents
-    jd_path="./job_description.md", # Shared JD as "job_description"
+    documents_path="./resumes/",          # Auto-discover documents
+    shared_document_path="./jd.md",      # Shared document (name derived from filename)
 )
 orchestrator.run()
 ```
@@ -710,8 +723,8 @@ orchestrator.run()
 orchestrator = ManifestOrchestrator(
     manifest_dir="./manifests/manifest_screening",
     client=client,
-    resumes_path="./resumes/",      # Auto-discover documents
-    jd_path="./job_description.md", # Shared JD as "job_description"
+    documents_path="./resumes/",          # Auto-discover documents
+    shared_document_path="./jd.md",      # Shared document (name derived from filename)
 )
 orchestrator.run()
 ```

@@ -737,11 +737,16 @@ def screening_create(
     extensions: str = "",
     client: str | None = None,
 ):
-    """Create a screening workbook from a folder of resumes.
+    """Create a screening workbook.
+
+    Creates a .xlsx workbook with prompts, scoring, and synthesis sheets.
+    If --resumes-path and --jd are provided, documents and batch data are
+    baked in (self-contained). If omitted, a reusable template is created
+    for runtime injection.
 
     Args:
-        resumes_path: Folder containing resume documents
-        jd: Path to job description file
+        resumes_path: Folder containing resume documents (optional)
+        jd: Path to job description file (optional)
         output: Output workbook path (default: ./screening.xlsx)
         planning: Use planning phase mode (auto-derive scoring from JD)
         extensions: Space-separated file extensions (default: .pdf .docx .doc .txt .md)
@@ -749,16 +754,12 @@ def screening_create(
 
     Examples:
         inv screening.create --resumes-path ./resumes/ --jd ./jd.md
-        inv screening.create -r ./resumes/ -j ./jd.md -o ./screen.xlsx --planning
-        inv screening.create -r ./resumes/ -j ./jd.md -e ".pdf .docx"
+        inv screening.create --jd ./jd.md --planning
+        inv screening.create --output ./template.xlsx
 
     """
-    if not resumes_path:
-        print("Error: --resumes-path / -r is required")
-        return
-    if not jd:
-        print("Error: --jd / -j is required")
-        return
+    if not resumes_path and not jd:
+        print("Note: Creating generic template. Inject data at runtime.")
 
     config = get_config()
     workbook_path = output or config.sample.workbooks.screening
@@ -766,11 +767,13 @@ def screening_create(
     planning_flag = " --planning" if planning else ""
     client_flag = f" --client {client}" if client else ""
     ext_flag = f" --extensions {extensions}" if extensions else ""
+    resumes_flag = f" --resumes-path {resumes_path}" if resumes_path else ""
+    jd_flag = f" --jd {jd}" if jd else ""
 
     _run_cmd(
         c,
-        f"python scripts/create_screening_workbook.py {workbook_path} "
-        f"--resumes-path {resumes_path} --jd {jd}{planning_flag}{client_flag}{ext_flag}",
+        f"python scripts/create_screening_workbook.py {workbook_path}"
+        f"{resumes_flag}{jd_flag}{planning_flag}{client_flag}{ext_flag}",
     )
 
 
@@ -785,9 +788,10 @@ def screening_run(
     client: str | None = None,
     concurrency: str = "1",
 ):
-    """Create a screening workbook from a folder of resumes and run it.
+    """Create a screening workbook and run it.
 
-    Combines screening.create and orchestrator execution in one command.
+    When --resumes-path and --jd are provided, creates a self-contained
+    workbook and runs it directly.
 
     Args:
         resumes_path: Folder containing resume documents
@@ -800,15 +804,11 @@ def screening_run(
 
     Examples:
         inv screening.run --resumes-path ./resumes/ --jd ./jd.md
-        inv screening.run -r ./resumes/ -j ./jd.md --planning
-        inv screening.run -r ./resumes/ -j ./jd.md -o ./screen.xlsx -c 2
+        inv screening.run --resumes-path ./resumes/ --jd ./jd.md --planning
 
     """
-    if not resumes_path:
-        print("Error: --resumes-path / -r is required")
-        return
-    if not jd:
-        print("Error: --jd / -j is required")
+    if not resumes_path or not jd:
+        print("Error: --resumes-path and --jd are both required for screening.run")
         return
 
     config = get_config()
@@ -846,11 +846,10 @@ def screening_manifest(
     client: str | None = None,
     concurrency: str = "1",
 ):
-    """Create a screening manifest from a folder of resumes and run it.
+    """Create a screening manifest and run it.
 
-    Creates manifest YAML files directly (no Excel intermediary), then
-    runs via manifest_run.py with --resumes-path and --jd for runtime
-    document injection.
+    Creates manifest YAML files (no Excel intermediary). The JD can be
+    baked into documents.yaml; resumes are always injected at runtime.
 
     Args:
         resumes_path: Folder containing resume documents
@@ -863,15 +862,11 @@ def screening_manifest(
 
     Examples:
         inv screening.manifest --resumes-path ./resumes/ --jd ./jd.md
-        inv screening.manifest -r ./resumes/ -j ./jd.md --planning
-        inv screening.manifest -r ./resumes/ -j ./jd.md -c 2
+        inv screening.manifest --resumes-path ./resumes/ --jd ./jd.md --planning
 
     """
-    if not resumes_path:
-        print("Error: --resumes-path / -r is required")
-        return
-    if not jd:
-        print("Error: --jd / -j is required")
+    if not resumes_path or not jd:
+        print("Error: --resumes-path and --jd are both required for screening.manifest")
         return
 
     planning_flag = " --planning" if planning else ""
@@ -879,7 +874,7 @@ def screening_manifest(
     ext_flag = f" --extensions {extensions}" if extensions else ""
     output_flag = f" {output}" if output else ""
 
-    print("Creating screening manifest from folder...")
+    print("Creating screening manifest...")
     _run_cmd(
         c,
         f"python scripts/create_screening_manifest.py{output_flag} "
@@ -891,10 +886,11 @@ def screening_manifest(
 
     print("\nRunning manifest orchestrator...")
     orchestrator_client = f" --client {client}" if client else ""
+
     _run_cmd(
         c,
         f"python scripts/manifest_run.py {manifest_path} "
-        f"--resumes-path {resumes_path} --jd {jd} -c {concurrency}{orchestrator_client}",
+        f"--documents-path {resumes_path} -c {concurrency}{orchestrator_client}",
     )
 
     print("\nScreening manifest complete!")

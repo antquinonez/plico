@@ -49,7 +49,7 @@ Plico provides a declarative execution engine for AI prompt workflows. Workflows
 │   │  - Load documents from 'documents' sheet or documents.yaml │
 │   │  - Initialize DocumentProcessor & DocumentRegistry       │   │
 │   │  - Validate all document paths, pre-index for RAG        │   │
-│   │  - Auto-discovery via resumes_path / jd_path             │   │
+│   │  - Auto-discovery via documents_path / shared_document_path     │   │
 │   └─────────────────────────────────────────────────────────┘   │
 │                                                                  │
 │   ┌─────────────────────────────────────────────────────────┐   │

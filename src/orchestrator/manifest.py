@@ -269,8 +269,9 @@ class ManifestOrchestrator(OrchestratorBase):
         config_overrides: dict[str, Any] | None = None,
         concurrency: int | None = None,
         progress_callback: Callable[..., None] | None = None,
-        resumes_path: str | None = None,
-        jd_path: str | None = None,
+        documents_path: str | None = None,
+        shared_document_path: str | None = None,
+        shared_document_name: str | None = None,
     ) -> None:
         """Initialize the ManifestOrchestrator.
 
@@ -280,8 +281,9 @@ class ManifestOrchestrator(OrchestratorBase):
             config_overrides: Optional config overrides.
             concurrency: Maximum concurrent API calls.
             progress_callback: Optional callback for progress updates.
-            resumes_path: Optional folder path to auto-discover documents (e.g., resumes).
-            jd_path: Optional path to a job description file.
+            documents_path: Optional folder path to auto-discover documents.
+            shared_document_path: Optional path to a shared document file.
+            shared_document_name: Optional reference name for the shared document.
 
         """
         super().__init__(
@@ -289,8 +291,9 @@ class ManifestOrchestrator(OrchestratorBase):
             config_overrides=config_overrides,
             concurrency=concurrency,
             progress_callback=progress_callback,
-            resumes_path=resumes_path,
-            jd_path=jd_path,
+            documents_path=documents_path,
+            shared_document_path=shared_document_path,
+            shared_document_name=shared_document_name,
         )
         self._manifest_dir = Path(manifest_dir)
         self._manifest_meta: dict[str, Any] = {}
@@ -451,7 +454,7 @@ class ManifestOrchestrator(OrchestratorBase):
                 self.has_synthesis = True
                 logger.info(f"Synthesis enabled with {len(synthesis_data)} prompts")
 
-        # Inject runtime discovery overrides (resumes_path / jd_path)
+        # Inject runtime discovery overrides (documents_path / shared_document_path)
         source_dir = str(
             Path(self._source_workbook).parent
             if self._source_workbook
