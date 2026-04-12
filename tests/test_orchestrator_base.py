@@ -26,6 +26,9 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from src.orchestrator.base.orchestrator_base import OrchestratorBase
+from src.orchestrator.planning_runner import PlanningPhaseRunner
+from src.orchestrator.synthesis_runner import SynthesisRunner
+from src.orchestrator.validation_manager import ValidationManager
 
 
 class TestRetryBackoff:
@@ -331,8 +334,6 @@ class TestDeadCodeRemoval:
 
     def test_no_get_isolated_client_method(self, temp_workbook, mock_ffmistralsmall):
         """Test that _get_isolated_client has been removed (Fix #3)."""
-        from src.orchestrator.base.orchestrator_base import OrchestratorBase
-
         assert not hasattr(OrchestratorBase, "_get_isolated_client")
 
     def test_validate_dependencies_uses_name_to_sequence(self, temp_workbook, mock_ffmistralsmall):
@@ -497,6 +498,9 @@ def _make_base(mock_ffmistralsmall):
     orch.synthesis_prompts = []
     orch._rag_client = None
     orch._executor = MagicMock()
+    orch._validation_manager = ValidationManager()
+    orch._synthesis_runner = SynthesisRunner()
+    orch._planning_runner = PlanningPhaseRunner()
     return orch
 
 
@@ -830,30 +834,8 @@ class TestExecuteWithRetryAgentMode:
 
     def test_agent_mode_no_tool_registry_falls_back(self, mock_ffmistralsmall):
         """Test agent_mode=true with no tool_registry falls back to single-shot (line 894)."""
-        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
-
-        orchestrator = ExcelOrchestrator.__new__(ExcelOrchestrator)
-        orchestrator.client = mock_ffmistralsmall
+        orchestrator = _make_base(mock_ffmistralsmall)
         orchestrator.config = {"max_retries": 1, "retry_base_delay": 0.01}
-        orchestrator.prompts = []
-        orchestrator.results = []
-        orchestrator.ffai = None
-        orchestrator.shared_prompt_attr_history = []
-        orchestrator.history_lock = threading.Lock()
-        orchestrator.batch_data = []
-        orchestrator.is_batch_mode = False
-        orchestrator.client_registry = None
-        orchestrator.has_multi_client = False
-        orchestrator.document_processor = None
-        orchestrator.document_registry = None
-        orchestrator.has_documents = False
-        orchestrator.tool_registry = None
-        orchestrator.has_tools = False
-        orchestrator._rag_client = None
-        orchestrator.concurrency = 1
-        orchestrator._executor = MagicMock()
-        orchestrator.config_overrides = {}
-        orchestrator.progress_callback = None
 
         mock_ffmistralsmall.clone = MagicMock(return_value=mock_ffmistralsmall)
         mock_ffmistralsmall.generate_response = MagicMock(return_value="single shot response")

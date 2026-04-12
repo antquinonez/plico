@@ -118,6 +118,9 @@ src/
 │
 ├── orchestrator/              # Excel workbook orchestration
 │   ├── __init__.py
+│   ├── base/                  # Base orchestrator class hierarchy
+│   │   ├── __init__.py
+│   │   └── orchestrator_base.py  # OrchestratorBase ABC (delegates to runners)
 │   ├── excel_orchestrator.py  # Main Excel orchestration engine
 │   ├── workbook_parser.py    # Excel workbook parsing/validation
 │   ├── manifest.py            # Manifest export and execution
@@ -127,8 +130,12 @@ src/
 │   ├── document_processor.py  # Document loading and caching
 │   ├── discovery.py           # Auto-discovery of documents for evaluation
 │   ├── planning.py            # Planning phase artifact parsing and validation
+│   ├── planning_runner.py     # Planning phase execution and injection
 │   ├── scoring.py             # Scoring rubric extraction and aggregation
-│   ├── synthesis.py           # Cross-row synthesis for ranking/comparison
+│   ├── synthesis.py           # Cross-row synthesis context formatting
+│   ├── synthesis_runner.py    # Post-execution scoring and synthesis orchestration
+│   ├── validation.py          # OrchestratorValidator with structured error reporting
+│   ├── validation_manager.py  # Validation lifecycle management
 │   ├── tool_registry.py       # Tool registration and execution for agent mode
 │   └── builtin_tools.py       # Built-in tool implementations
 │
@@ -626,26 +633,26 @@ Strategy-based weight overrides are configured in `config/main.yaml` under `eval
 ### Execution Order
 
 ```
-run() → _load_source() → _validate_pre_planning() → _init_client()
+run() → _load_source() → ValidationManager.validate_pre_planning() → _init_client()
 
 ─── Planning Phase (if has_planning) ──────────────
-_execute_planning_phase()
+PlanningPhaseRunner.execute()
   ├── Execute planning prompts sequentially
   ├── Parse generator artifacts (scoring_criteria, prompts)
   ├── Inject generated prompts into self.prompts
   ├── Auto-derive ScoringRubric (if no manual scoring sheet)
-  └── _validate_post_planning()
+  └── ValidationManager.validate_post_planning()
 
 ─── Execution Phase ───────────────────────────────
 batch execution (or sequential/parallel)
   → All execution-phase prompts (static + generated)
 
 ─── Post-Execution ────────────────────────────────
-_aggregate_scores() → _execute_synthesis() → _write_results()
+SynthesisRunner.aggregate_scores() → SynthesisRunner.execute_synthesis() → _write_results()
 ```
 
 When no planning prompts exist, the flow is the same as before:
-`run() → _load_source() → _validate() → _init_client() → execution → results`
+`run() → _load_source() → ValidationManager.validate() → _init_client() → execution → results`
 
 ## Resume Screening Use Case
 

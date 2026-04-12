@@ -27,8 +27,10 @@ Plico provides a declarative execution engine for AI prompt workflows. Workflows
                                ▼
 ┌─────────────────────────────────────────────────────────────────┐
 │               OrchestratorBase (ABC)                            │
-│               - run(), _validate(), _init_client()             │
+│               - run(), _init_client()                           │
 │               - shared base for both orchestrators             │
+│               - delegates to ValidationManager,                 │
+│                 PlanningPhaseRunner, SynthesisRunner            │
 │                                                                  │
 │   ┌─────────────────┐  ┌─────────────────┐                     │
 │   │ExcelOrchestrator│  │ManifestOrchestr.│                     │
@@ -49,20 +51,26 @@ Plico provides a declarative execution engine for AI prompt workflows. Workflows
 │   │  - Load documents from 'documents' sheet or documents.yaml │
 │   │  - Initialize DocumentProcessor & DocumentRegistry       │   │
 │   │  - Validate all document paths, pre-index for RAG        │   │
-│   │  - Auto-discovery via documents_path / shared_document_path     │   │
+│   │  - Auto-discovery via documents_path / shared_document_path     │
 │   └─────────────────────────────────────────────────────────┘   │
 │                                                                  │
 │   ┌─────────────────────────────────────────────────────────┐   │
-│   │              Planning Phase (if has_planning)             │   │
-│   │  - Execute planning prompts sequentially                 │   │
+│   │        PlanningPhaseRunner (delegates to)                │   │
+│   │  - Detect planning prompts, execute sequentially         │   │
 │   │  - Parse generator artifacts (scoring_criteria, prompts) │   │
 │   │  - Inject generated prompts, auto-derive ScoringRubric   │   │
 │   └─────────────────────────────────────────────────────────┘   │
 │                                                                  │
 │   ┌─────────────────────────────────────────────────────────┐   │
-│   │              Post-Execution                               │   │
+│   │        SynthesisRunner (delegates to)                    │   │
 │   │  - ScoreAggregator (extract scores, compute composites)   │   │
 │   │  - SynthesisExecutor (cross-row ranking/comparison)       │   │
+│   └─────────────────────────────────────────────────────────┘   │
+│                                                                  │
+│   ┌─────────────────────────────────────────────────────────┐   │
+│   │        ValidationManager (delegates to)                  │   │
+│   │  - Builds validator params from orchestrator state       │   │
+│   │  - OrchestratorValidator for structured error reporting   │   │
 │   └─────────────────────────────────────────────────────────┘   │
 │                                                                  │
 │   ┌─────────────────────────────────────────────────────────┐   │
@@ -249,7 +257,7 @@ Tool definitions for agent mode execution.
                 └─► Resolve {{variable}} templates per batch
 
 6. VALIDATION
-   Loaded Prompts → OrchestratorBase._validate()
+   Loaded Prompts → ValidationManager.validate()
                      └─► OrchestratorValidator: prompt fields, dependency DAG,
                          template refs, condition syntax, config values
 

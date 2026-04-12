@@ -118,7 +118,10 @@ Same manifest. Same execution engine. Same audit trail.
 **Purpose:** Orchestrate prompt execution with dependency-aware scheduling, parallel execution, and multi-modal I/O.
 
 **Key Components:**
-- `OrchestratorBase` (ABC) - Shared base class for both orchestrators with `run()`, `_validate()`, `_init_client()`
+- `OrchestratorBase` (ABC) - Shared base class for both orchestrators; delegates to `ValidationManager`, `PlanningPhaseRunner`, and `SynthesisRunner`
+- `ValidationManager` - Validation lifecycle: builds params from orchestrator state, runs `OrchestratorValidator`
+- `PlanningPhaseRunner` - Planning phase detection, execution, and artifact injection
+- `SynthesisRunner` - Post-execution score aggregation and synthesis prompt execution
 - `ExcelOrchestrator` - Workbook-based orchestration engine (extends OrchestratorBase)
 - `ManifestOrchestrator` - Manifest-based orchestration engine with parquet output (extends OrchestratorBase)
 - `Executor` - Shared execution engine for both orchestrators (sequential, parallel, batch modes)
@@ -298,11 +301,15 @@ Workbook/Manifest
        ▼
 Orchestrator.run()
        │
-       ├──► Parse and validate prompts
+       ├──► _load_source() → parse prompts, config, registries
        │
-       ├──► Resolve clients via ClientRegistry
+       ├──► ValidationManager.validate() or validate_pre_planning()
+       │    └──► OrchestratorValidator → structured error reporting
        │
-       ├──► Initialize documents via DocumentRegistry (with RAG pre-indexing)
+       ├──► [PlanningPhaseRunner.execute() if has_planning]
+       │    ├──► Execute planning prompts sequentially
+       │    ├──► Parse generator artifacts → inject generated prompts
+       │    └──► ValidationManager.validate_post_planning()
        │
        ├──► Executor.execute_parallel() or execute_batch_parallel()
        │    │
@@ -325,6 +332,10 @@ Orchestrator.run()
        │    │    └──► ResultBuilder.build() → update ExecutionState
        │    │
        │    └──► Collect results, update progress
+       │
+       ├──► SynthesisRunner.aggregate_scores() (if has_scoring)
+       │
+       ├──► SynthesisRunner.execute_synthesis() (if has_synthesis)
        │
        ▼
 Results → Parquet (Manifest) or Excel sheet (Workbook)
@@ -410,7 +421,7 @@ Plico/
 │   │   ├── __init__.py
 │   │   ├── base/                      # Base orchestrator class hierarchy
 │   │   │   ├── __init__.py
-│   │   │   └── orchestrator_base.py   #   OrchestratorBase ABC (shared run/init/validate)
+│   │   │   └── orchestrator_base.py   #   OrchestratorBase ABC (delegates to runners)
 │   │   ├── executor.py                # Shared execution engine (sequential/parallel/batch)
 │   │   ├── excel_orchestrator.py      # Workbook-based orchestration
 │   │   ├── manifest.py                # Manifest export/execution
@@ -421,9 +432,12 @@ Plico/
 │   │   ├── document_registry.py       # Document lookup and injection
 │   │   ├── condition_evaluator.py     # AST-sandboxed conditional expression evaluation
 │   │   ├── validation.py              # OrchestratorValidator, ValidationError, ValidationResult
+│   │   ├── validation_manager.py      # Validation lifecycle management (builds params, runs checks)
 │   │   ├── planning.py                # Planning phase (generator prompts, artifact parsing)
+│   │   ├── planning_runner.py         # Planning phase execution and injection
 │   │   ├── scoring.py                 # Scoring rubric extraction and weighted aggregation
-│   │   ├── synthesis.py               # Cross-row synthesis for ranking/comparison
+│   │   ├── synthesis.py               # Cross-row synthesis context formatting
+│   │   ├── synthesis_runner.py        # Post-execution scoring and synthesis orchestration
 │   │   ├── discovery.py               # Auto-discovery of documents for evaluation
 │   │   ├── tool_registry.py           # Tool registration and execution for agent mode
 │   │   ├── builtin_tools.py           # Built-in tool implementations
@@ -603,6 +617,7 @@ Plico/
 | Strategy | Client implementations | Interchangeable AI providers |
 | Template Method | `FFAzureClientBase._initialize_client()` | Allow subclasses to customize |
 | Registry | `ClientRegistry`, `ToolRegistry` | Lazy client/tool instantiation, name-to-factory mapping |
+| Delegation | `ValidationManager`, `PlanningPhaseRunner`, `SynthesisRunner` | Extract concerns from OrchestratorBase via orchestrator reference |
 | Singleton | `get_config()` | Global configuration instance |
 | Clone | All clients | Thread-safe isolated instances for parallel execution |
 
@@ -729,6 +744,9 @@ Executor (shared by both orchestrators)
 
 ExcelOrchestrator
   ├── OrchestratorBase (extends)
+  │   ├── ValidationManager (delegates to)
+  │   ├── PlanningPhaseRunner (delegates to)
+  │   └── SynthesisRunner (delegates to)
   ├── FFAI (uses)
   ├── Executor (delegates to)
   ├── WorkbookParser
@@ -740,6 +758,9 @@ ExcelOrchestrator
 
 ManifestOrchestrator
   ├── OrchestratorBase (extends)
+  │   ├── ValidationManager (delegates to)
+  │   ├── PlanningPhaseRunner (delegates to)
+  │   └── SynthesisRunner (delegates to)
   ├── FFAI (uses)
   ├── Executor (delegates to)
   ├── ClientRegistry
