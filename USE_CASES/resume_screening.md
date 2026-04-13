@@ -164,6 +164,139 @@ python scripts/create_screening_workbook.py ./screening.xlsx \
 5. `overall_assessment` (execution) — narrative summary
 6. Synthesis: rank, compare, recommend
 
+### Skills-Based Planning (Per-Skill Decomposition)
+
+Instead of generic criteria buckets, the JD is exhaustively decomposed into
+individual skill requirements. Each skill gets its own evaluation prompt and
+scoring criterion.
+
+```bash
+python scripts/create_screening_workbook.py ./screening.xlsx \
+    --resumes-path ./resumes/ \
+    --jd ./jd.md \
+    --planning --planning-prompts screening_skills_planning
+```
+
+**How it differs from standard planning:**
+
+For a data analyst JD mentioning Python, SQL, Tableau, Excel, and stakeholder
+management, the LLM would generate:
+
+| Generated Prompt | Score Key | Weight |
+|------------------|-----------|--------|
+| `evaluate_python` | `{"python": 7, "reasoning": "..."}` | 1.5 |
+| `evaluate_sql` | `{"sql": 8, "reasoning": "..."}` | 1.5 |
+| `evaluate_tableau` | `{"tableau": 5, "reasoning": "..."}` | 1.0 |
+| `evaluate_excel` | `{"excel": 9, "reasoning": "..."}` | 0.8 |
+| `evaluate_stakeholder_management` | `{"stakeholder_management": 6, "reasoning": "..."}` | 0.5 |
+
+**How it works:**
+
+1. `analyze_jd` (planning) — extracts every discrete skill (hard, soft, domain,
+   certs, methodologies), creates one prompt + one criterion per skill
+2. `refine_criteria` (planning) — deduplicates, calibrates weights, verifies
+   no skills were missed
+3. `extract_profile` (execution) — extracts structured candidate info
+4. One LLM-generated eval prompt per skill scores that skill individually
+5. `overall_assessment` (execution) — narrative summary referencing all skill scores
+6. Synthesis: rank, compare, recommend
+
+**Why use this:** Composite scores from generic criteria (e.g., "skills_match: 7")
+can mask critical gaps. Per-skill scoring surfaces exactly where a candidate
+excels or falls short — useful for technical roles with distinct must-have skills.
+
+---
+
+## Prompt Templates
+
+All prompt instructions are externalized as YAML files in `config/prompts/`.
+You can use the built-in templates, customize them, or create your own.
+
+### Available Templates
+
+| Template | File | Use With | Description |
+|----------|------|----------|-------------|
+| **screening_planning** | `screening_planning.yaml` | `--planning-prompts` | Standard planning: 4-6 generic criteria from JD |
+| **screening_skills_planning** | `screening_skills_planning.yaml` | `--planning-prompts` | Per-skill planning: one prompt per skill from JD |
+| **screening_static** | `screening_static.yaml` | `--static-prompts` | Static evaluation prompts (7 fixed criteria) |
+| **screening_synthesis** | `screening_synthesis.yaml` | `--synthesis-prompts` | Cross-candidate ranking and recommendation |
+
+### CLI Flags
+
+| Flag | Applies To | Description |
+|------|-----------|-------------|
+| `--planning-prompts <name_or_path>` | `--planning` mode only | Planning prompt template (name or file path) |
+| `--static-prompts <name_or_path>` | Default (non-planning) | Static evaluation prompt template |
+| `--synthesis-prompts <name_or_path>` | Both modes | Synthesis prompt template |
+
+All flags are optional. When omitted, hardcoded defaults are used (same prompts
+as before this feature was added). When a template name is given (e.g.,
+`screening_skills_planning`), it is resolved to `config/prompts/<name>.yaml`.
+You can also pass an explicit file path.
+
+### Usage Examples
+
+```bash
+# Default planning (hardcoded prompts, same as before)
+python scripts/create_screening_workbook.py ./out.xlsx --jd ./jd.md --planning
+
+# Skills-based planning (one prompt per skill from JD)
+python scripts/create_screening_workbook.py ./out.xlsx --jd ./jd.md \
+    --planning --planning-prompts screening_skills_planning
+
+# Standard planning with custom synthesis prompts
+python scripts/create_screening_workbook.py ./out.xlsx --jd ./jd.md \
+    --planning --planning-prompts screening_planning \
+    --synthesis-prompts screening_synthesis
+
+# Custom template from file path
+python scripts/create_screening_workbook.py ./out.xlsx --jd ./jd.md \
+    --planning --planning-prompts ./my_custom_planning.yaml
+
+# Same flags work for manifests
+python scripts/create_screening_manifest.py --jd ./jd.md \
+    --planning --planning-prompts screening_skills_planning
+```
+
+### Creating Custom Templates
+
+1. Copy an existing template from `config/prompts/`:
+
+```bash
+cp config/prompts/screening_skills_planning.yaml config/prompts/my_custom.yaml
+```
+
+2. Edit the prompt texts in the YAML file. Each prompt has:
+
+| Field | Required | Description |
+|-------|----------|-------------|
+| `sequence` | Yes | Execution order |
+| `prompt_name` | Yes | Unique identifier |
+| `prompt` | Yes | The prompt text (use `{{candidate_name}}` for runtime substitution) |
+| `references` | No | JSON list of document references (e.g., `'["job_description"]'`) |
+| `history` | No | JSON list of dependency prompt names |
+| `phase` | No | `"planning"` or omit for execution |
+| `generator` | No | `"true"` if this planning prompt returns structured JSON artifacts |
+
+3. Reference by name or path:
+
+```bash
+python scripts/create_screening_workbook.py ./out.xlsx --jd ./jd.md \
+    --planning --planning-prompts my_custom
+```
+
+### Programmatic Access
+
+```python
+from src.prompt_templates import load_prompt_template, load_synthesis_template
+
+# Load prompt specs (returns PromptSpec instances)
+prompts = load_prompt_template("screening_skills_planning")
+
+# Load synthesis with variable substitution
+synthesis = load_synthesis_template("screening_synthesis", top_n=5)
+```
+
 ---
 
 ## Command Reference
@@ -182,6 +315,9 @@ python scripts/create_screening_workbook.py <output_path> [options]
 | `--resumes-path` | No | — | Folder containing resume documents (baked in if provided) |
 | `--jd` | No | — | Path to job description file (baked in if provided) |
 | `--planning` | No | off | Auto-derive scoring from JD via LLM |
+| `--planning-prompts` | No | hardcoded | Planning prompt template (name in `config/prompts/` or file path) |
+| `--static-prompts` | No | hardcoded | Static prompt template (name or file path) |
+| `--synthesis-prompts` | No | hardcoded | Synthesis prompt template (name or file path) |
 | `--extensions` | No | `.pdf .docx .doc .txt .md` | File extensions to include |
 | `--client` | No | config default | Client type from `config/clients.yaml` |
 | `--system-instructions` | No | recruiter prompt | System instructions for AI |
@@ -198,6 +334,11 @@ python scripts/create_screening_workbook.py ./screening.xlsx \
 # Planning phase mode
 python scripts/create_screening_workbook.py ./screening.xlsx \
     --resumes-path ./resumes/ --jd ./jd.md --planning
+
+# Skills-based planning (one prompt per skill from JD)
+python scripts/create_screening_workbook.py ./screening.xlsx \
+    --resumes-path ./resumes/ --jd ./jd.md \
+    --planning --planning-prompts screening_skills_planning
 
 # Template with JD baked in (resumes injected at runtime)
 python scripts/create_screening_workbook.py ./template.xlsx \
@@ -222,6 +363,9 @@ python scripts/create_screening_manifest.py [output_dir] [options]
 | `--resumes-path` | No | — | Folder for top_n sizing (not baked in) |
 | `--jd` | No | — | Path to JD file (baked into `documents.yaml` if provided) |
 | `--planning` | No | off | Auto-derive scoring from JD via LLM |
+| `--planning-prompts` | No | hardcoded | Planning prompt template (name in `config/prompts/` or file path) |
+| `--static-prompts` | No | hardcoded | Static prompt template (name or file path) |
+| `--synthesis-prompts` | No | hardcoded | Synthesis prompt template (name or file path) |
 | `--extensions` | No | `.pdf .docx .doc .txt .md` | File extensions to include |
 | `--client` | No | config default | Client type from `config/clients.yaml` |
 | `--system-instructions` | No | recruiter prompt | System instructions for AI |
@@ -241,6 +385,10 @@ python scripts/create_screening_manifest.py
 # Planning mode with JD and resume count for top_n sizing
 python scripts/create_screening_manifest.py ./manifests/my_screening \
     --jd ./jd.md --planning --resumes-path ./resumes/
+
+# Skills-based planning (per-skill decomposition)
+python scripts/create_screening_manifest.py ./manifests/my_screening \
+    --jd ./jd.md --planning --planning-prompts screening_skills_planning
 ```
 
 ### `run_orchestrator.py` (with discovery flags)

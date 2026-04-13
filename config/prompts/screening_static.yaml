@@ -1,0 +1,72 @@
+# Screening Static Evaluation Prompts
+# ====================================
+# Static (non-planning) prompts for resume screening with predefined criteria.
+#
+# Used by: create_screening_workbook.py (default mode)
+#          create_screening_manifest.py (default mode)
+#
+# Override: Copy and modify, then pass --static-prompts <name_or_path>
+
+name: screening_static
+description: "Static evaluation prompts for resume screening (fixed criteria)"
+
+prompts:
+  - sequence: 10
+    prompt_name: extract_profile
+    prompt: |
+      Extract from {{candidate_name}}'s resume and return as structured JSON:
+      full name, contact info, education history (institution, degree, year),
+      employment history (company, title, dates, responsibilities), and
+      technical skills list.
+    references: '["job_description"]'
+
+  - sequence: 20
+    prompt_name: evaluate_skills
+    prompt: |
+      Evaluate {{candidate_name}}'s technical skills against the job description.
+      For each required skill, rate proficiency (1-10). Return JSON:
+      {"skills_match": <1-10>, "reasoning": "..."}
+    history: '["extract_profile"]'
+    references: '["job_description"]'
+
+  - sequence: 30
+    prompt_name: evaluate_education
+    prompt: |
+      Evaluate {{candidate_name}}'s education quality and relevance.
+      Consider institution reputation, degree relevance. Return JSON:
+      {"education": <1-10>, "reasoning": "..."}
+    history: '["extract_profile"]'
+    references: '["job_description"]'
+
+  - sequence: 40
+    prompt_name: evaluate_experience
+    prompt: |
+      Evaluate {{candidate_name}}'s work experience depth and relevance.
+      Consider years, progression, scope, relevance.
+      Return JSON: {"experience_depth": <1-10>, "reasoning": "..."}
+    history: '["extract_profile"]'
+    references: '["job_description"]'
+
+  - sequence: 50
+    prompt_name: evaluate_growth
+    prompt: |
+      Assess {{candidate_name}}'s growth trajectory. Look for increasing responsibility,
+      career progression, skill development, learning agility.
+      Return JSON: {"growth_trajectory": <1-10>, "evidence": ["..."], "reasoning": "..."}
+    history: '["extract_profile"]'
+
+  - sequence: 60
+    prompt_name: evaluate_employers
+    prompt: |
+      Evaluate the quality and relevance of {{candidate_name}}'s past employers.
+      Consider company reputation, industry alignment, scale, competitiveness.
+      Return JSON: {"employer_prestige": <1-10>, "reasoning": "..."}
+    history: '["extract_profile"]'
+
+  - sequence: 70
+    prompt_name: overall_assessment
+    prompt: |
+      Write a 2-3 paragraph narrative assessment of {{candidate_name}} for the role.
+      Cover strengths, concerns, and overall fit. Be specific and evidence-based,
+      referencing the evaluation scores above.
+    history: '["evaluate_skills", "evaluate_education", "evaluate_experience", "evaluate_growth", "evaluate_employers"]'

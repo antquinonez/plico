@@ -284,8 +284,34 @@ def main() -> int:
         help="Evaluation strategy (default: balanced)",
     )
     parser.add_argument("--verbose", action="store_true", help="Enable verbose output")
+    parser.add_argument(
+        "--planning-prompts",
+        default=None,
+        metavar="TEMPLATE",
+        help="Custom planning prompt template (name in config/prompts/ or file path). "
+        "Only used with --planning. Default: config/prompts/screening_planning.yaml",
+    )
+    parser.add_argument(
+        "--static-prompts",
+        default=None,
+        metavar="TEMPLATE",
+        help="Custom static prompt template (name in config/prompts/ or file path). "
+        "Default: config/prompts/screening_static.yaml",
+    )
+    parser.add_argument(
+        "--synthesis-prompts",
+        default=None,
+        metavar="TEMPLATE",
+        help="Custom synthesis prompt template (name in config/prompts/ or file path). "
+        "Default: config/prompts/screening_synthesis.yaml",
+    )
 
     args = parser.parse_args()
+
+    if args.planning_prompts and not args.planning:
+        print("Warning: --planning-prompts has no effect without --planning.\n")
+    if args.static_prompts and args.planning:
+        print("Warning: --static-prompts has no effect with --planning (use --planning-prompts).\n")
 
     if not args.resumes_path and not args.jd:
         print("Note: Neither --resumes-path nor --jd provided.")
@@ -333,8 +359,14 @@ def main() -> int:
         max(resume_count, DEFAULT_SYNTHESIS_TOP_N) if resume_count > 0 else DEFAULT_SYNTHESIS_TOP_N
     )
 
-    prompts = get_planning_screening_prompts() if args.planning else get_static_screening_prompts()
-    synthesis = get_screening_synthesis_prompts(top_n=synthesis_top_n)
+    prompts = (
+        get_planning_screening_prompts(template_path=args.planning_prompts)
+        if args.planning
+        else get_static_screening_prompts(template_path=args.static_prompts)
+    )
+    synthesis = get_screening_synthesis_prompts(
+        top_n=synthesis_top_n, template_path=args.synthesis_prompts
+    )
     batch_config = config.workbook.batch
 
     manifest_name = (
@@ -415,6 +447,15 @@ def main() -> int:
     )
     print(f"Synthesis:       {len(synthesis)} prompts")
     print(f"Client:          {client_type}")
+    if args.planning_prompts or args.static_prompts or args.synthesis_prompts:
+        sources = []
+        if args.planning and args.planning_prompts:
+            sources.append(f"planning={args.planning_prompts}")
+        if not args.planning and args.static_prompts:
+            sources.append(f"static={args.static_prompts}")
+        if args.synthesis_prompts:
+            sources.append(f"synthesis={args.synthesis_prompts}")
+        print(f"Templates:       {', '.join(sources)}")
 
     if args.jd:
         print("\nRun with:")
