@@ -19,15 +19,15 @@ from .workbook_parser import parse_history_string
 logger = logging.getLogger(__name__)
 
 
-def resolve_variables(text: str, data_row: dict[str, Any]) -> str:
+def resolve_variables(text: str | None, data_row: dict[str, Any]) -> str | None:
     """Replace {{variable}} placeholders with values from data row.
 
     Args:
-        text: Text with {{variable}} placeholders.
+        text: Text with {{variable}} placeholders, or None.
         data_row: Dictionary of variable values.
 
     Returns:
-        Text with placeholders replaced.
+        Text with placeholders replaced, or None if text was None.
 
     """
     if not text:

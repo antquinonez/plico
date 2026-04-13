@@ -26,8 +26,8 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from ...config import get_config
+from ...core.client_base import FFAIClientBase
 from ...FFAI import FFAI
-from ...FFAIClientBase import FFAIClientBase
 from ..agent_executor import AgentExecutor
 from ..client_registry import ClientRegistry
 from ..document_processor import DocumentProcessor
@@ -681,7 +681,7 @@ class OrchestratorBase(ABC):
             results_by_name=results_by_name or {},
         )
 
-    def _resolve_variables(self, text: str, data_row: dict[str, Any]) -> str:
+    def _resolve_variables(self, text: str | None, data_row: dict[str, Any]) -> str | None:
         """Replace {{variable}} placeholders with values from data row."""
         return resolve_variables(text, data_row)
 
