@@ -23,7 +23,7 @@ from collections.abc import Callable
 from datetime import datetime
 from typing import Any
 
-from ..FFAIClientBase import FFAIClientBase
+from ..core.client_base import FFAIClientBase
 from .base import OrchestratorBase
 from .scoring import ScoringCriteria, ScoringRubric
 from .workbook_parser import WorkbookParser

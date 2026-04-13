@@ -6,14 +6,24 @@ from __future__ import annotations
 
 import time
 from copy import deepcopy
+from typing import Any
 
 
 class PermanentHistory:
-    def __init__(self):
-        self.turns = []
-        self.timestamp = time.time()
+    """Append-only chronological turn history with timestamps.
 
-    def add_turn_assistant(self, content):
+    Each turn stores a ``role`` (``"user"`` or ``"assistant"``),
+    structured ``content``, and a per-turn ``timestamp``. Consecutive
+    user turns are coalesced by appending content rather than creating
+    a new entry.
+
+    """
+
+    def __init__(self) -> None:
+        self.turns: list[dict[str, Any]] = []
+        self.timestamp: float = time.time()
+
+    def add_turn_assistant(self, content: str) -> None:
         self.turns.append(
             {
                 "role": "assistant",
@@ -22,9 +32,8 @@ class PermanentHistory:
             }
         )
 
-    def add_turn_user(self, content):
+    def add_turn_user(self, content: str) -> None:
         if self.turns and self.turns[-1]["role"] == "user":
-            # If the last turn was a user, update its content instead of adding a new turn
             self.turns[-1]["content"][0]["text"] += "\n" + content
             self.turns[-1]["timestamp"] = time.time()
         else:
@@ -36,10 +45,10 @@ class PermanentHistory:
                 }
             )
 
-    def get_all_turns(self):
+    def get_all_turns(self) -> list[dict[str, Any]]:
         """Returns all turns with their timestamps."""
-        return deepcopy(self.turns)  # Return a deep copy to prevent modification
+        return deepcopy(self.turns)
 
-    def get_turns_since(self, timestamp: float):
+    def get_turns_since(self, timestamp: float) -> list[dict[str, Any]]:
         """Returns all turns that occurred after the specified timestamp."""
         return [turn for turn in self.turns if turn["timestamp"] > timestamp]

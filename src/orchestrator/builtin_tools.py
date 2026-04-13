@@ -28,7 +28,7 @@ import urllib.request
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
-from ..FFAI import extract_json_field
+from ..core.prompt_utils import extract_json_field
 
 if TYPE_CHECKING:
     from ..RAG import FFRAGClient

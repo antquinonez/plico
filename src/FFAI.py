@@ -11,133 +11,26 @@ export capabilities.
 
 from __future__ import annotations
 
-import json
 import logging
 import os
-import re
 import threading
 import time
-from collections.abc import Callable
-from functools import wraps
 from typing import Any
 
 import polars as pl
 
 from .config import get_config
-from .FFAIClientBase import FFAIClientBase
-from .OrderedPromptHistory import OrderedPromptHistory
-from .PermanentHistory import PermanentHistory
+from .core.client_base import FFAIClientBase
+from .core.history.ordered import OrderedPromptHistory
+from .core.history.permanent import PermanentHistory
+from .core.history_exporter import HistoryExporter
+from .core.prompt_builder import PromptBuilder
+from .core.prompt_utils import extract_json_field, interpolate_prompt
+from .core.response_utils import clean_response as _clean_response_impl
+from .core.response_utils import extract_json
 
-INTERPOLATION_PATTERN = re.compile(r"\{\{(\w+)\.response(?:\.([\w.]+))?\}\}")
+__all__ = ["FFAI", "extract_json_field", "interpolate_prompt"]
 
-
-def extract_json_field(data: dict | list, path: str) -> str:
-    """Extract a value from JSON using dot notation path.
-
-    Supports:
-    - Simple fields: "field_name"
-    - Nested objects: "object.field"
-    - Array indices: "array.0"
-    - Combined: "object.array.0.field"
-
-    Args:
-        data: Parsed JSON data (dict or list)
-        path: Dot-separated path to extract
-
-    Returns:
-        Extracted value as string, or empty string if not found
-
-    """
-    parts = path.split(".")
-    current: Any = data
-
-    for part in parts:
-        if isinstance(current, dict):
-            current = current.get(part)
-        elif isinstance(current, list):
-            try:
-                index = int(part)
-                current = current[index]
-            except (ValueError, IndexError):
-                return ""
-        else:
-            return ""
-
-        if current is None:
-            return ""
-
-    if isinstance(current, dict | list):
-        return json.dumps(current)
-    return str(current)
-
-
-def interpolate_prompt(
-    prompt: str,
-    history: dict[str, str],
-) -> tuple[str, set[str]]:
-    """Replace {{prompt_name.response}} patterns with actual content.
-
-    Args:
-        prompt: Template containing {{}} patterns
-        history: Dict mapping prompt_name to response text
-
-    Returns:
-        Tuple of (resolved_prompt, set_of_interpolated_prompt_names)
-
-    """
-    interpolated = set()
-    resolved = prompt
-
-    for match in INTERPOLATION_PATTERN.finditer(prompt):
-        full_match = match.group(0)
-        prompt_name = match.group(1)
-        field_path = match.group(2)
-
-        if prompt_name not in history:
-            logger.debug(
-                f"Interpolation: '{prompt_name}' not in history, replacing with empty string"
-            )
-            resolved = resolved.replace(full_match, "")
-            continue
-
-        response = history[prompt_name]
-
-        if field_path:
-            try:
-                data = json.loads(response)
-                replacement = extract_json_field(data, field_path)
-            except (json.JSONDecodeError, TypeError):
-                replacement = response
-        else:
-            replacement = response
-
-        resolved = resolved.replace(full_match, replacement)
-        interpolated.add(prompt_name)
-
-    return resolved, interpolated
-
-
-def auto_persist(method: Callable[..., pl.DataFrame]) -> Callable[..., pl.DataFrame]:
-    """Persist DataFrame after method execution if auto_persist is enabled."""
-
-    @wraps(method)
-    def wrapper(self: FFAI, *args: Any, **kwargs: Any) -> pl.DataFrame:
-        df = method(self, *args, **kwargs)
-        if self.auto_persist and self.persist_name and not df.is_empty():
-            file_path = os.path.join(
-                self.persist_dir, f"{self.persist_name}_{method.__name__}.parquet"
-            )
-            try:
-                df.write_parquet(file_path)
-                logger.info(f"Auto-persisted DataFrame to {file_path}")
-            except Exception as e:
-                logger.error(f"Failed to auto-persist DataFrame: {e!s}")
-        return df
-
-    return wrapper
-
-
-# Configure logging
 logger = logging.getLogger(__name__)
 
 
@@ -202,9 +95,18 @@ class FFAI:
 
         self.permanent_history = PermanentHistory()
         self.ordered_history = OrderedPromptHistory()
-        self.clean_ordered_history = OrderedPromptHistory()
-        self.named_prompt_ordered_history = OrderedPromptHistory()
         self.last_resolved_prompt: str | None = None
+
+        self._prompt_builder = PromptBuilder(self.prompt_attr_history)
+        self._exporter = HistoryExporter(
+            history=self.history,
+            clean_history=self.clean_history,
+            prompt_attr_history=self.prompt_attr_history,
+            ordered_history=self.ordered_history,
+            persist_dir=self.persist_dir,
+            persist_name=self.persist_name,
+            auto_persist=self.auto_persist,
+        )
 
     def set_client(self, client: FFAIClientBase) -> None:
         """Switch to a different AI client."""
@@ -213,36 +115,8 @@ class FFAI:
 
     def _extract_json(self, text: str) -> Any | None:
         """Extract JSON from text, handling markdown code blocks and JSON within first 20 chars."""
-        _MARKDOWN_PATTERN = re.compile(r"```(?:json)?\s*(?P<content>[\s\S]*?)\s*```")
+        return extract_json(text)
 
-        def _clean_text(text: str) -> str:
-            return text.strip().replace("\ufeff", "")
-
-        def _extract_from_markdown(text: str) -> str | None:
-            if match := _MARKDOWN_PATTERN.search(text):
-                return _clean_text(match.group("content"))
-            return None
-
-        # Check if JSON is within first 20 characters
-        first_20_chars = text[:20]
-        try:
-            if json.loads(first_20_chars):
-                # If JSON found in first 20 chars, try markdown first
-                markdown_content = _extract_from_markdown(text)
-                if markdown_content:
-                    try:
-                        return json.loads(markdown_content)
-                    except json.JSONDecodeError:
-                        pass
-
-                # If no valid markdown JSON, parse the entire text
-                return json.loads(_clean_text(text))
-        except json.JSONDecodeError:
-            pass
-
-        return None
-
-    # get the system instructions from the client; this is stored in self.client.system_instructions
     def get_system_instructions(self) -> str | None:
         """Get system instructions from the client."""
         if hasattr(self.client, "system_instructions"):
@@ -251,24 +125,7 @@ class FFAI:
 
     def _clean_response(self, response: Any) -> Any:
         """Process and validate the evaluation response."""
-        logger.debug(f"Cleaning response: {response}")
-
-        if not isinstance(response, str):
-            return response
-
-        response = re.sub(r"<think[\s\S]*?</think\s*>", "", response)
-        logger.debug(f"Response after removing think tags: {response}")
-
-        cleaned_json = self._extract_json(response)
-        logger.debug(f"cleaned_json: {cleaned_json}")
-
-        if cleaned_json is not None:
-            if isinstance(cleaned_json, dict):
-                for key, value in cleaned_json.items():
-                    if isinstance(value, str):
-                        cleaned_json[key] = re.sub(r"<think[\s\S]*?</think\s*>", "", value)
-            return cleaned_json
-        return response
+        return _clean_response_impl(response)
 
     def _build_prompt(
         self,
@@ -276,112 +133,12 @@ class FFAI:
         history: list[str] | None = None,
         dependencies: dict | None = None,
     ) -> tuple[str, set[str]]:
-        """Build the final prompt with history and variable interpolation.
-
-        Args:
-            prompt: The prompt template (may contain {{}} interpolation patterns)
-            history: List of prompt names to include in conversation history
-            dependencies: Additional dependencies (unused but kept for compatibility)
-
-        Returns:
-            Tuple of (final_prompt, set_of_interpolated_prompt_names)
-
-        """
-        if not history:
-            logger.debug("No history provided, checking for interpolation only")
-            history = []
-
-        logger.info(f"Building prompt with history references: {history}")
-        logger.info(f"Current history size: {len(self.prompt_attr_history)}")
-
-        for idx, entry in enumerate(self.prompt_attr_history):
-            logger.debug("==================================================================")
-            logger.debug(f"History entry {idx}:")
-            logger.debug("==================================================================")
-            logger.debug(f"  Prompt name: {entry.get('prompt_name')}")
-            logger.debug("------------------------------------------------------------------")
-            logger.debug(f"  Prompt: {entry.get('prompt')}")
-            logger.debug("------------------------------------------------------------------")
-            logger.debug(f"  Response: {entry.get('response')}")
-
-        history_dict: dict[str, str] = {}
-        for entry in self.prompt_attr_history:
-            prompt_name = entry.get("prompt_name")
-            if prompt_name:
-                response = entry.get("response")
-                if isinstance(response, dict):
-                    response = json.dumps(response)
-                elif response is not None:
-                    response = str(response)
-                else:
-                    response = ""
-                history_dict[prompt_name] = response
-
-        resolved_prompt, interpolated_names = interpolate_prompt(prompt, history_dict)
-
-        if interpolated_names:
-            logger.info(f"Interpolated {len(interpolated_names)} prompt(s): {interpolated_names}")
-
-        history_entries = []
-        for prompt_name in history:
-            logger.debug(
-                "==================================================================================="
-            )
-            logger.debug(f"Looking for stored named interactions with prompt_name: {prompt_name}")
-            matching_entries = [
-                entry
-                for entry in self.prompt_attr_history
-                if entry.get("prompt_name") == prompt_name
-            ]
-
-            if len(matching_entries) == 0:
-                logger.warning(f"-- No matching entries for requested prompt_name: {prompt_name}")
-            else:
-                logger.debug(f"-- Found {len(matching_entries)} matching entries")
-
-            if matching_entries:
-                latest = matching_entries[-1]
-                stored_prompt = latest["prompt"]
-                resolved_history_prompt, _ = interpolate_prompt(stored_prompt, history_dict)
-                history_entries.append(
-                    {
-                        "prompt_name": latest.get("prompt_name"),
-                        "prompt": resolved_history_prompt,
-                        "response": latest["response"],
-                    }
-                )
-                logger.debug(
-                    f"Added entry for {prompt_name}: {latest['prompt']} -> {latest['response']}"
-                )
-
-        filtered_history = [
-            entry for entry in history_entries if entry.get("prompt_name") not in interpolated_names
-        ]
-
-        formatted_history = []
-        for entry in filtered_history:
-            formatted_entry = (
-                f"<interaction prompt_name='{entry['prompt_name']}'>\n"
-                f"USER: {entry['prompt']}\n"
-                f"SYSTEM: {entry['response']}\n"
-                f"</interaction>"
-            )
-            formatted_history.append(formatted_entry)
-
-        if formatted_history:
-            final_prompt = (
-                "<conversation_history>\n"
-                + "\n".join(formatted_history)
-                + "\n</conversation_history>\n"
-                + "===\n"
-                + "Based on the conversation history above, please answer: "
-                + resolved_prompt
-            )
-        else:
-            final_prompt = resolved_prompt
-
-        logger.info(f"Final constructed prompt:\n{final_prompt}")
-        return final_prompt, interpolated_names
+        """Build the final prompt with history and variable interpolation."""
+        self._prompt_builder._prompt_attr_history = (
+            self.prompt_attr_history
+        )  # sync in case list reference changed
+        result, interpolated = self._prompt_builder.build_prompt(prompt, history, dependencies)
+        return result, interpolated
 
     def generate_response(
         self,
@@ -410,26 +167,21 @@ class FFAI:
         used_model = model if model else self.client.model
         logger.debug(f"Using model: {used_model}")
 
-        # Initialize cleaned_response as None
         cleaned_response = None
 
         try:
-            # Dedupe dependencies
             if dependencies:
                 dependencies_set = set(dependencies)
                 dependencies = list(dependencies_set)
 
-            # Build prompt with history (returns tuple: final_prompt, interpolated_names)
             final_prompt, interpolated_names = self._build_prompt(prompt, history, dependencies)
             self.last_resolved_prompt = final_prompt
             logger.debug(f"final_prompt built: {final_prompt}")
             logger.debug(f"interpolated_names: {interpolated_names}")
 
-            # Ensure system_instructions is included in kwargs if provided
             if system_instructions is not None:
                 kwargs["system_instructions"] = system_instructions
 
-            # Suspend client conversation history when using declarative context
             saved_client_history = None
             should_suspend_client_history = history is not None
 
@@ -451,15 +203,12 @@ class FFAI:
 
             logger.debug(f"Generated response: {response}")
 
-            # Clean the response
             cleaned_response = self._clean_response(response)
             logger.debug(f"cleaned_response: {cleaned_response}")
 
-            # Add to permanent history
             self.permanent_history.add_turn_user(prompt)
             self.permanent_history.add_turn_assistant(cleaned_response)
 
-            # Record interaction
             logger.debug(f"""Adding interaction:
                             model: {used_model}
                             prompt: {prompt}
@@ -468,7 +217,6 @@ class FFAI:
                             history: {history}
             """)
 
-            # Store interaction in histories
             interaction = {
                 "prompt": prompt,
                 "response": cleaned_response,
@@ -481,11 +229,9 @@ class FFAI:
             self.history.append(interaction)
             logger.debug(f"Added new interaction to self.history: {interaction}")
 
-            # Store cleaned interaction
             self.clean_history.append(interaction)
             logger.debug(f"Added new interaction to self.clean_history: {interaction}")
 
-            # Store in prompt_attr_history (thread-safe if lock provided)
             if isinstance(cleaned_response, dict):
                 logger.debug("Response was JSON.")
                 for attr, value in cleaned_response.items():
@@ -519,7 +265,6 @@ class FFAI:
                 )
                 logger.debug(f"Added new interaction to self.prompt_attr_history: {interaction}")
 
-            # Store in ordered history
             self.ordered_history.add_interaction(
                 model=used_model,
                 prompt=prompt,
@@ -545,6 +290,10 @@ class FFAI:
         """Clear conversation in client but retain history."""
         self.client.clear_conversation()
 
+    # ===========================================================================
+    # History accessors
+    # ===========================================================================
+
     def get_interaction_history(self) -> list[dict[str, Any]]:
         """Get complete history."""
         return self.history
@@ -566,7 +315,6 @@ class FFAI:
         matching = [e for e in self.history if e.get("prompt_name") == prompt_name]
         return matching[-1] if matching else None
 
-    # ===========================================================================
     def get_last_n_interactions(self, n: int) -> list[dict[str, Any]]:
         """Get the last n interactions as dictionaries."""
         all_interactions = self.ordered_history.get_all_interactions()
@@ -616,58 +364,25 @@ class FFAI:
         return self.ordered_history.get_prompt_name_usage_stats()
 
     def get_prompt_dict(self) -> dict[str, list[dict[str, Any]]]:
-        """Get the complete history as an ordered dictionary keyed by prompts.
-
-        Returns:
-            Dict[str, List[Dict[str, Any]]]: OrderedDict where:
-                - keys are prompt names (or prompts if no name was provided)
-                - values are lists of interaction dictionaries for that prompt.
-
-        """
+        """Get the complete history as an ordered dictionary keyed by prompts."""
         return self.ordered_history.to_dict()
 
     def get_latest_responses_by_prompt_names(
         self, prompt_names: list[str]
     ) -> dict[str, dict[str, str]]:
-        """Get the latest prompt and response for each specified prompt name.
-
-        Args:
-            prompt_names: List of prompt names to retrieve
-
-        Returns:
-            Dictionary with prompt names as keys and dictionaries containing
-            'prompt' and 'response' as values
-
-        """
+        """Get the latest prompt and response for each specified prompt name."""
         return self.ordered_history.get_latest_responses_by_prompt_names(prompt_names)
 
     def get_formatted_responses(self, prompt_names: list[str]) -> str:
-        """Get formatted string output of latest prompts and responses.
-
-        Args:
-            prompt_names: List of prompt names to include
-
-        Returns:
-            Formatted string in the format:
-            <prompt:[prompt text]>[response]</prompt:[prompt text]>
-
-        """
+        """Get formatted string output of latest prompts and responses."""
         return self.ordered_history.get_formatted_responses(prompt_names)
 
     # ===========================================================================
-    # RAW CONVERSATION HISTORY ACCESS
+    # Client conversation history access
     # ===========================================================================
 
     def get_client_conversation_history(self) -> list[dict[str, str]]:
-        """Get the raw conversation history from the underlying client.
-
-        This provides direct access to the format used by the model client.
-
-        Returns:
-            The raw conversation history as a list of message dictionaries.
-            Format typically includes role (user/assistant/system) and content.
-
-        """
+        """Get the raw conversation history from the underlying client."""
         logger.info("Retrieving raw conversation history from client")
         try:
             if hasattr(self.client, "get_conversation_history"):
@@ -682,18 +397,7 @@ class FFAI:
             return []
 
     def set_client_conversation_history(self, history: list[dict[str, str]]) -> bool:
-        """Set the raw conversation history in the underlying client.
-
-        This allows direct manipulation of the conversation state.
-
-        Args:
-            history: List of message dictionaries in the format expected by the client.
-                    Typically includes 'role' and 'content' keys.
-
-        Returns:
-            True if successful, False otherwise.
-
-        """
+        """Set the raw conversation history in the underlying client."""
         logger.info(f"Setting raw conversation history in client: {history}")
         try:
             if hasattr(self.client, "set_conversation_history"):
@@ -708,220 +412,42 @@ class FFAI:
             return False
 
     def add_client_message(self, role: str, content: str, **kwargs: Any) -> bool:
-        """Add a single message to the client's conversation history.
-
-        Args:
-            role: The role of the message sender (e.g., 'user', 'assistant', 'system')
-            content: The message content
-            **kwargs: Additional message attributes (e.g., tool_call_id for tool messages)
-
-        Returns:
-            True if successful, False otherwise
-
-        """
+        """Add a single message to the client's conversation history."""
         logger.info(
             f"Adding message to client conversation history: role={role}, content={content}"
         )
         try:
-            # Get current history
             history = self.get_client_conversation_history()
-
-            # Create new message
             message = {"role": role, "content": content, **kwargs}
-
-            # Add message to history
             history.append(message)
-
-            # Set updated history
             return self.set_client_conversation_history(history)
         except Exception as e:
             logger.error(f"Error adding message to conversation history: {e!s}")
             return False
 
+    # ===========================================================================
+    # DataFrame export (delegated to HistoryExporter)
+    # ===========================================================================
+
     def _convert_unix_seconds_to_datetime(self, df: pl.DataFrame) -> pl.DataFrame:
-        """Convert Unix timestamps in seconds to datetime.
+        """Convert Unix timestamps in seconds to datetime."""
+        return self._exporter._convert_unix_seconds_to_datetime(df)
 
-        Works with older versions of polars.
-
-        Args:
-            df: Polars DataFrame with a 'timestamp' column.
-
-        Returns:
-            DataFrame with added 'datetime' column.
-
-        """
-        if "timestamp" not in df.columns:
-            return df
-
-        try:
-            # For older polars versions, we need to convert manually
-            # Multiply seconds by 1,000,000 to get microseconds
-            df = df.with_columns(
-                (pl.col("timestamp") * 1_000_000).cast(pl.Int64).alias("timestamp_us")
-            )
-
-            # Now convert microseconds to datetime
-            df = df.with_columns(pl.col("timestamp_us").cast(pl.Datetime).alias("datetime"))
-
-            # Drop the temporary column
-            df = df.drop("timestamp_us")
-
-            return df
-        except Exception as e:
-            logger.error(f"Error converting timestamp to datetime: {e!s}")
-            return df
-
-    @auto_persist
     def history_to_dataframe(self) -> pl.DataFrame:
-        """Convert the full interaction history to a polars DataFrame.
+        """Convert the full interaction history to a polars DataFrame."""
+        return self._exporter.history_to_dataframe()
 
-        Returns:
-            pl.DataFrame: A dataframe with all interaction data
-
-        """
-        logger.info("Converting history to polars DataFrame")
-
-        if not self.history:
-            logger.warning("History is empty, returning empty DataFrame")
-            return pl.DataFrame()
-
-        try:
-            # Handle the case where responses might be JSON objects
-            cleaned_history = []
-            for item in self.history:
-                entry = item.copy()
-                if isinstance(entry["response"], dict):
-                    entry["response"] = str(entry["response"])
-                cleaned_history.append(entry)
-
-            # Convert to DataFrame
-            df = pl.from_dicts(cleaned_history)
-
-            # Convert timestamp to datetime using compatible method
-            df = self._convert_unix_seconds_to_datetime(df)
-
-            logger.info(f"Successfully created DataFrame with {len(df)} rows")
-            return df
-
-        except Exception as e:
-            logger.error(f"Error converting history to DataFrame: {e!s}")
-            return pl.DataFrame()
-
-    @auto_persist
     def clean_history_to_dataframe(self) -> pl.DataFrame:
-        """Convert the clean interaction history to a polars DataFrame.
+        """Convert the clean interaction history to a polars DataFrame."""
+        return self._exporter.clean_history_to_dataframe()
 
-        Returns:
-            pl.DataFrame: A dataframe with clean interaction data
-
-        """
-        logger.info("Converting clean history to polars DataFrame")
-
-        if not self.clean_history:
-            logger.warning("Clean history is empty, returning empty DataFrame")
-            return pl.DataFrame()
-
-        try:
-            # Handle the case where responses might be JSON objects
-            cleaned_history = []
-            for item in self.clean_history:
-                entry = item.copy()
-                if isinstance(entry["response"], dict):
-                    entry["response"] = str(entry["response"])
-                cleaned_history.append(entry)
-
-            # Convert to DataFrame
-            df = pl.from_dicts(cleaned_history)
-
-            # Convert timestamp to datetime
-            df = self._convert_unix_seconds_to_datetime(df)
-
-            logger.info(f"Successfully created DataFrame with {len(df)} rows")
-            return df
-
-        except Exception as e:
-            logger.error(f"Error converting clean history to DataFrame: {e!s}")
-            return pl.DataFrame()
-
-    @auto_persist
     def prompt_attr_history_to_dataframe(self) -> pl.DataFrame:
-        """Convert the prompt attribute history to a polars DataFrame.
+        """Convert the prompt attribute history to a polars DataFrame."""
+        return self._exporter.prompt_attr_history_to_dataframe()
 
-        Returns:
-            pl.DataFrame: A dataframe with prompt attribute history data
-
-        """
-        logger.info("Converting prompt attribute history to polars DataFrame")
-
-        if not self.prompt_attr_history:
-            logger.warning("Prompt attribute history is empty, returning empty DataFrame")
-            return pl.DataFrame()
-
-        try:
-            # Handle the case where responses might be JSON objects
-            cleaned_history = []
-            for item in self.prompt_attr_history:
-                entry = item.copy()
-                if isinstance(entry["response"], dict):
-                    entry["response"] = str(entry["response"])
-                cleaned_history.append(entry)
-
-            # Convert to DataFrame
-            df = pl.from_dicts(cleaned_history)
-
-            # Convert timestamp to datetime
-            df = self._convert_unix_seconds_to_datetime(df)
-
-            logger.info(f"Successfully created DataFrame with {len(df)} rows")
-            return df
-
-        except Exception as e:
-            logger.error(f"Error converting prompt attribute history to DataFrame: {e!s}")
-            return pl.DataFrame()
-
-    @auto_persist
     def ordered_history_to_dataframe(self) -> pl.DataFrame:
-        """Convert the ordered interaction history to a polars DataFrame.
-
-        Returns:
-            pl.DataFrame: A dataframe with ordered interaction data
-
-        """
-        logger.info("Converting ordered history to polars DataFrame")
-
-        all_interactions = self.ordered_history.get_all_interactions()
-
-        if not all_interactions:
-            logger.warning("Ordered history is empty, returning empty DataFrame")
-            return pl.DataFrame()
-
-        try:
-            # Convert Interaction objects to dictionaries
-            interactions_dicts = [interaction.to_dict() for interaction in all_interactions]
-
-            # Handle the case where responses might be JSON objects
-            cleaned_interactions = []
-            for item in interactions_dicts:
-                entry = item.copy()
-                if isinstance(entry["response"], dict):
-                    entry["response"] = str(entry["response"])
-                cleaned_interactions.append(entry)
-
-            # Convert to DataFrame
-            df = pl.from_dicts(cleaned_interactions)
-
-            # Convert to DataFrame
-            # df = pl.from_dicts(cleaned_history)
-
-            # Convert timestamp to datetime
-            df = self._convert_unix_seconds_to_datetime(df)
-
-            logger.info(f"Successfully created DataFrame with {len(df)} rows")
-            return df
-
-        except Exception as e:
-            logger.error(f"Error converting ordered history to DataFrame: {e!s}")
-            return pl.DataFrame()
+        """Convert the ordered interaction history to a polars DataFrame."""
+        return self._exporter.ordered_history_to_dataframe()
 
     def search_history(
         self,
@@ -931,153 +457,31 @@ class FFAI:
         start_time: float | None = None,
         end_time: float | None = None,
     ) -> pl.DataFrame:
-        """Search interaction history with flexible filtering options.
-
-        Args:
-            text: Text to search for in prompts and responses
-            prompt_name: Filter by prompt name
-            model: Filter by model name
-            start_time: Filter by timestamp (start time in epoch seconds)
-            end_time: Filter by timestamp (end time in epoch seconds)
-
-        Returns:
-            pl.DataFrame: Filtered dataframe of interactions
-
-        """
-        logger.info(
-            f"Searching history with filters: text={text}, prompt_name={prompt_name}, model={model}"
+        """Search interaction history with flexible filtering options."""
+        return self._exporter.search_history(
+            text=text,
+            prompt_name=prompt_name,
+            model=model,
+            start_time=start_time,
+            end_time=end_time,
         )
-
-        # Get the complete dataframe
-        df = self.history_to_dataframe()
-
-        if df.is_empty():
-            return df
-
-        # Apply filters
-        if text is not None:
-            text_lower = text.lower()
-            df = df.filter(
-                pl.col("prompt").str.contains(text_lower, literal=True)
-                | pl.col("response").str.contains(text_lower, literal=True)
-            )
-
-        if prompt_name is not None:
-            df = df.filter(pl.col("prompt_name") == prompt_name)
-
-        if model is not None:
-            df = df.filter(pl.col("model") == model)
-
-        if start_time is not None:
-            df = df.filter(pl.col("timestamp") >= start_time)
-
-        if end_time is not None:
-            df = df.filter(pl.col("timestamp") <= end_time)
-
-        logger.info(f"Search returned {len(df)} results")
-        return df
 
     def get_model_stats_df(self) -> pl.DataFrame:
-        """Get statistics on model usage as a DataFrame.
-
-        Returns:
-            pl.DataFrame: DataFrame with model usage statistics
-
-        """
-        stats = self.get_model_usage_stats()
-        return pl.DataFrame({"model": list(stats.keys()), "count": list(stats.values())})
+        """Get statistics on model usage as a DataFrame."""
+        return self._exporter.get_model_stats_df(self.get_model_usage_stats())
 
     def get_prompt_name_stats_df(self) -> pl.DataFrame:
-        """Get statistics on prompt name usage as a DataFrame.
-
-        Returns:
-            pl.DataFrame: DataFrame with prompt name usage statistics
-
-        """
-        stats = self.get_prompt_name_usage_stats()
-        return pl.DataFrame({"prompt_name": list(stats.keys()), "count": list(stats.values())})
+        """Get statistics on prompt name usage as a DataFrame."""
+        return self._exporter.get_prompt_name_stats_df(self.get_prompt_name_usage_stats())
 
     def get_response_length_stats(self) -> pl.DataFrame:
-        """Get statistics on response lengths by prompt name.
-
-        Returns:
-            pl.DataFrame: DataFrame with response length statistics by prompt name
-
-        """
-        df = self.history_to_dataframe()
-
-        if df.is_empty():
-            return pl.DataFrame()
-
-        try:
-            pd_df = df.to_pandas()
-            pd_df["response_length"] = pd_df["response"].str.len()
-
-            grouped = (
-                pd_df.groupby("prompt_name")
-                .agg({"response_length": ["mean", "min", "max", "count"]})
-                .reset_index()
-            )
-
-            grouped.columns = [
-                "prompt_name",
-                "mean_length",
-                "min_length",
-                "max_length",
-                "count",
-            ]
-
-            grouped = grouped.sort_values("mean_length", ascending=False)
-            result_df = pl.from_pandas(grouped)
-
-            return result_df
-
-        except Exception as e:
-            logger.error(f"Error calculating response length statistics: {e!s}")
-            return pl.DataFrame()
+        """Get statistics on response lengths by prompt name."""
+        return self._exporter.get_response_length_stats()
 
     def interaction_counts_by_date(self) -> pl.DataFrame:
-        """Get counts of interactions grouped by date.
+        """Get counts of interactions grouped by date."""
+        return self._exporter.interaction_counts_by_date()
 
-        Returns:
-            pl.DataFrame: DataFrame with interaction counts by date
-
-        """
-        df = self.history_to_dataframe()
-
-        if df.is_empty() or "timestamp" not in df.columns:
-            return pl.DataFrame({"date": [], "len": []})
-
-        return (
-            df.with_columns(
-                pl.col("timestamp").cast(pl.Float64).cast(pl.Datetime).dt.date().alias("date")
-            )
-            .group_by("date")
-            .len()
-            .sort("date")
-        )
-
-    # =============================
-    # Batch Persistence Method
-    # =============================
     def persist_all_histories(self) -> bool:
         """Persist all histories to Parquet files in the configured directory."""
-        if not self.persist_name:
-            logger.warning("Persistence name not set. Skipping persistence.")
-            return False
-        try:
-            file_map = {
-                "history": self.history_to_dataframe(),
-                "clean_history": self.clean_history_to_dataframe(),
-                "prompt_attr": self.prompt_attr_history_to_dataframe(),
-                "ordered": self.ordered_history_to_dataframe(),
-            }
-            for key, df in file_map.items():
-                if not df.is_empty():
-                    file_path = os.path.join(self.persist_dir, f"{self.persist_name}_{key}.parquet")
-                    df.write_parquet(file_path)
-                    logger.info(f"Persisted {key} to {file_path}")
-            return True
-        except Exception as e:
-            logger.error(f"Error persisting histories: {e!s}")
-            return False
+        return self._exporter.persist_all_histories()

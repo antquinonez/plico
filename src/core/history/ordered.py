@@ -164,27 +164,21 @@ class OrderedPromptHistory:
             The created Interaction object
 
         """
-        logger.info("***************************************************************")
-        logger.info("Running: add_interaction()")
-        logger.info("***************************************************************")
-        logger.info(f"prompt: {prompt} | type: {type(prompt)}")
-        logger.info(f"prompt_name: {prompt_name} | type: {type(prompt_name)}")
-        logger.info(f"history: {history} | type: {type(history)}")
-        logger.info(f"model: {model} | type: {type(model)}")
-        logger.info("***************************************************************")
-
-        logger.info(f"response: {response} | type: {type(response)}")
+        logger.debug(
+            "add_interaction(prompt_name=%s, model=%s, history=%s)",
+            prompt_name,
+            model,
+            history,
+        )
 
         self._current_sequence += 1
 
-        # Clean prompt and response before storing
         cleaned_prompt = self._clean_text(prompt)
         cleaned_response = self._clean_text(response)
-        logger.debug(f"cleaned_response: {cleaned_response}")
+        logger.debug("cleaned_response: %s", cleaned_response)
 
-        # GET PROMPT NAME
         effective_prompt_name = self.get_effective_prompt_name(prompt_name) or cleaned_prompt
-        logger.debug(f"effective_prompt_name: {effective_prompt_name}")
+        logger.debug("effective_prompt_name: %s", effective_prompt_name)
 
         interaction = Interaction(
             sequence_number=self._current_sequence,

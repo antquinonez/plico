@@ -11,9 +11,9 @@ from typing import Any
 from anthropic import Anthropic
 from dotenv import load_dotenv
 
-from ..ConversationHistory import ConversationHistory
-from ..OrderedPromptHistory import OrderedPromptHistory
-from ..PermanentHistory import PermanentHistory
+from ..core.history.conversation import ConversationHistory
+from ..core.history.ordered import OrderedPromptHistory
+from ..core.history.permanent import PermanentHistory
 
 load_dotenv()
 

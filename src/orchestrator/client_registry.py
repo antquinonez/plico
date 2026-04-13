@@ -15,7 +15,7 @@ import logging
 from typing import Any
 
 from ..config import get_config
-from ..FFAIClientBase import FFAIClientBase
+from ..core.client_base import FFAIClientBase
 
 logger = logging.getLogger(__name__)
 

@@ -12,7 +12,7 @@ from typing import Any
 from dotenv import load_dotenv
 from mistralai import Mistral
 
-from ..FFAIClientBase import FFAIClientBase
+from ..core.client_base import FFAIClientBase
 
 load_dotenv()
 

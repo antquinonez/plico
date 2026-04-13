@@ -38,7 +38,7 @@ class FFAIClientBase(ABC):
 
         """
         try:
-            from .config import get_config
+            from ..config import get_config
 
             app_config = get_config()
             retry_settings = getattr(app_config, "retry", None)
