@@ -14,7 +14,7 @@ from typing import Any
 import google.auth
 from openai import AsyncOpenAI
 
-from ..FFAIClientBase import FFAIClientBase
+from ..core.client_base import FFAIClientBase
 from ..retry_utils import (
     create_rate_limit_error,
     get_retry_decorator,

@@ -23,7 +23,7 @@ from typing import Any
 import litellm
 from litellm import completion
 
-from ..FFAIClientBase import FFAIClientBase
+from ..core.client_base import FFAIClientBase
 from ..retry_utils import (
     extract_retry_after,
     should_retry_exception,

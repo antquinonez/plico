@@ -20,7 +20,7 @@ from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from typing import Any
 
-from ..FFAIClientBase import FFAIClientBase
+from ..core.client_base import FFAIClientBase
 from ..orchestrator.tool_registry import ToolRegistry
 from .agent_result import AgentResult, ToolCallRecord
 

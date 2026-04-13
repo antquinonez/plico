@@ -2,11 +2,11 @@
 # SPDX-License-Identifier: MIT
 # Contact: antquinonez@farfiner.com
 
-from .ConversationHistory import ConversationHistory
+from .core.client_base import FFAIClientBase
+from .core.history.conversation import ConversationHistory
+from .core.history.ordered import OrderedPromptHistory
+from .core.history.permanent import PermanentHistory
 from .FFAI import FFAI
-from .FFAIClientBase import FFAIClientBase
-from .OrderedPromptHistory import OrderedPromptHistory
-from .PermanentHistory import PermanentHistory
 
 __all__ = [
     "FFAI",

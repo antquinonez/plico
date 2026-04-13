@@ -19,7 +19,6 @@ from __future__ import annotations
 import json
 import logging
 import os
-import re
 import threading
 import time
 from abc import ABC, abstractmethod
@@ -27,35 +26,27 @@ from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
 from ...config import get_config
+from ...core.client_base import FFAIClientBase
 from ...FFAI import FFAI
-from ...FFAIClientBase import FFAIClientBase
+from ..agent_executor import AgentExecutor
 from ..client_registry import ClientRegistry
-from ..condition_evaluator import ConditionEvaluator
 from ..document_processor import DocumentProcessor
 from ..document_registry import DocumentRegistry
 from ..executor import Executor
-from ..planning import PlanningArtifactParser
+from ..graph import build_execution_graph, evaluate_condition, get_ready_prompts
+from ..planning_runner import PlanningPhaseRunner
 from ..results import ResultBuilder
-from ..scoring import ScoreAggregator, ScoringRubric
+from ..scoring import ScoringRubric
 from ..state import ExecutionState, PromptNode
-from ..synthesis import SynthesisExecutor, build_entry_results_map
+from ..synthesis_runner import SynthesisRunner
+from ..templating import resolve_batch_name, resolve_prompt_variables, resolve_variables
 from ..tool_registry import ToolDefinition, ToolRegistry
-from ..validation import OrchestratorValidator
-from ..workbook_parser import parse_history_string
+from ..validation_manager import ValidationManager
 
 if TYPE_CHECKING:
     from ...RAG import FFRAGClient
 
 logger = logging.getLogger(__name__)
-
-
-def _build_validation_prompt(validation_prompt: str, response: str) -> str:
-    return (
-        "You are a response validator. Evaluate the response against the criteria below.\n"
-        'Reply with exactly "PASS" if acceptable, or "FAIL: <reason>" if not.\n\n'
-        f"Criteria: {validation_prompt}\n\n"
-        f"Response to evaluate:\n{response}"
-    )
 
 
 class OrchestratorBase(ABC):
@@ -151,6 +142,9 @@ class OrchestratorBase(ABC):
         self.synthesis_prompts: list[dict[str, Any]] = []
         self._rag_client: FFRAGClient | None = None
         self._executor = Executor()
+        self._validation_manager = ValidationManager()
+        self._synthesis_runner = SynthesisRunner()
+        self._planning_runner = PlanningPhaseRunner()
 
         # Planning phase state
         self.planning_results: list[dict[str, Any]] = []
@@ -348,17 +342,7 @@ class OrchestratorBase(ABC):
         prompt: dict[str, Any],
         response: str | None,
     ) -> None:
-        """Record successful agent responses for downstream interpolation.
-
-        Agent-mode execution bypasses `FFAI.generate_response()`, so it does not
-        automatically populate `shared_prompt_attr_history`. Downstream prompts
-        that reference `{{prompt_name.response}}` rely on that shared history.
-
-        Args:
-            prompt: Prompt definition for the completed step.
-            response: Final agent response to record.
-
-        """
+        """Record successful agent responses for downstream interpolation."""
         if response is None:
             return
 
@@ -377,102 +361,6 @@ class OrchestratorBase(ABC):
         else:
             self.shared_prompt_attr_history.append(interaction)
 
-    def _build_validator_params(self) -> dict[str, Any]:
-        """Build common parameters for OrchestratorValidator.
-
-        Returns:
-            Dict of keyword arguments for OrchestratorValidator.__init__().
-
-        """
-        client_names = self.client_registry.get_registered_names() if self.client_registry else []
-
-        batch_keys: list[str] = []
-        row_docs: dict[int, list[str]] = {}
-        if self.is_batch_mode and self.batch_data:
-            batch_keys = OrchestratorValidator.extract_batch_keys(self.batch_data)
-            for idx, row in enumerate(self.batch_data):
-                raw = row.get("_documents")
-                if raw:
-                    parsed = parse_history_string(raw)
-                    if parsed:
-                        row_docs[idx] = parsed
-
-        doc_refs: list[str] = []
-        if self.document_registry:
-            doc_refs = list(self.document_registry.get_reference_names())
-
-        tool_names: list[str] = []
-        if self.tool_registry:
-            tool_names = self.tool_registry.get_registered_names()
-
-        available_types: list[str] = []
-        try:
-            available_types = get_config().get_available_client_types()
-        except Exception:
-            logger.debug("Could not load available client types for validation", exc_info=True)
-
-        scoring_criteria: list[dict[str, Any]] = []
-        available_strategies: list[str] = []
-        if self.has_scoring and self.scoring_rubric:
-            from dataclasses import asdict
-
-            scoring_criteria = [asdict(c) for c in self.scoring_rubric.criteria]
-        try:
-            eval_config = get_config().evaluation
-            available_strategies = list(eval_config.strategies.keys()) if eval_config else []
-        except Exception:
-            pass
-
-        return {
-            "prompts": self.prompts,
-            "config": self.config,
-            "manifest_meta": getattr(self, "_manifest_meta", None),
-            "client_names": client_names,
-            "batch_data_keys": batch_keys,
-            "doc_ref_names": doc_refs,
-            "available_client_types": available_types,
-            "tool_names": tool_names,
-            "row_doc_refs": row_docs,
-            "scoring_criteria": scoring_criteria,
-            "available_strategies": available_strategies,
-            "synthesis_prompts": self.synthesis_prompts if self.has_synthesis else None,
-        }
-
-    def _run_validator(
-        self,
-        label: str,
-        **overrides: Any,
-    ) -> None:
-        """Build validator, run checks, and handle results.
-
-        Args:
-            label: Human-readable label for log messages (e.g., "Validation").
-            **overrides: Extra keyword arguments passed to OrchestratorValidator,
-                         overriding values from _build_validator_params().
-
-        Raises:
-            ValueError: If validation finds errors.
-
-        """
-        params = self._build_validator_params()
-        params.update(overrides)
-        validator = OrchestratorValidator(**params)
-        result = validator.validate()
-
-        for warning in result.errors:
-            if warning.severity == "warning":
-                logger.warning(str(warning))
-
-        if result.has_errors:
-            for error in result.errors:
-                if error.severity == "error":
-                    logger.error(str(error))
-            result.raise_on_error()
-        elif result.warning_count > 0:
-            logger.info(f"{label} passed with {result.warning_count} warning(s)")
-        else:
-            logger.info(f"{label} passed")
-
     def _validate(self) -> None:
         """Run comprehensive validation on prompts, config, and dependencies.
 
@@ -480,7 +368,7 @@ class OrchestratorBase(ABC):
         template references, condition syntax, client assignments, config values,
         and more. Raises ValueError if any errors are found.
         """
-        self._run_validator("Validation")
+        self._validation_manager.validate(self)
 
     def _inject_references(self, prompt: dict[str, Any]) -> str:
         """Inject document references or semantic search results into a prompt.
@@ -571,97 +459,19 @@ class OrchestratorBase(ABC):
             ValueError: If a dependency cycle is detected.
 
         """
-        nodes: dict[int, PromptNode] = {}
-        prompt_by_name: dict[str, int] = {}
-
-        for prompt in self.prompts:
-            seq = prompt["sequence"]
-            nodes[seq] = PromptNode(sequence=seq, prompt=prompt)
-            name = prompt.get("prompt_name")
-            if name:
-                prompt_by_name[name] = seq
-
-        for prompt in self.prompts:
-            seq = prompt["sequence"]
-            history = prompt.get("history") or []
-            for dep_name in history:
-                if dep_name in prompt_by_name:
-                    nodes[seq].dependencies.add(prompt_by_name[dep_name])
-
-            condition = prompt.get("condition") or ""
-            for dep_name, _ in ConditionEvaluator.extract_referenced_names(condition):
-                if dep_name in prompt_by_name:
-                    nodes[seq].dependencies.add(prompt_by_name[dep_name])
-
-        # Memoization cache for computed levels
-        level_cache: dict[int, int] = {}
-
-        def assign_levels(seq: int, path: set[int]) -> int:
-            if seq in level_cache:
-                return level_cache[seq]
-            if seq in path:
-                cycle_seqs = sorted(path | {seq})
-                raise ValueError(f"Dependency cycle detected involving sequences: {cycle_seqs}")
-            path.add(seq)
-            if not nodes[seq].dependencies:
-                nodes[seq].level = 0
-                level_cache[seq] = 0
-                return 0
-            max_dep_level = max(assign_levels(dep, path) for dep in nodes[seq].dependencies)
-            nodes[seq].level = max_dep_level + 1
-            level_cache[seq] = nodes[seq].level
-            path.discard(seq)
-            return nodes[seq].level
-
-        for seq in nodes:
-            assign_levels(seq, set())
-
-        return nodes
+        return build_execution_graph(self.prompts)
 
     def _get_ready_prompts(
         self, state: ExecutionState, nodes: dict[int, PromptNode]
     ) -> list[PromptNode]:
-        """Get prompts ready for execution (all dependencies completed).
-
-        Args:
-            state: Current execution state.
-            nodes: Execution graph nodes.
-
-        Returns:
-            List of PromptNodes ready for execution, sorted by level and sequence.
-
-        """
-        ready: list[PromptNode] = []
-        for seq, node in nodes.items():
-            if seq in state.completed or seq in state.in_progress:
-                continue
-            if node.dependencies.issubset(state.completed):
-                ready.append(node)
-        ready.sort(key=lambda n: (n.level, n.sequence))
-        return ready
+        """Get prompts ready for execution (all dependencies completed)."""
+        return get_ready_prompts(state, nodes)
 
     def _evaluate_condition(
         self, prompt: dict[str, Any], results_by_name: dict[str, dict[str, Any]]
     ) -> tuple[bool, str | None, str | None]:
-        """Evaluate a prompt's condition.
-
-        Args:
-            prompt: Prompt dictionary with optional condition.
-            results_by_name: Results indexed by prompt_name.
-
-        Returns:
-            Tuple of (should_execute, condition_result, condition_error).
-
-        """
-        condition = prompt.get("condition")
-
-        if not condition or not str(condition).strip():
-            return True, None, None
-
-        evaluator = ConditionEvaluator(results_by_name)
-        result, error = evaluator.evaluate(str(condition))
-
-        return result, result, error
+        """Evaluate a prompt's condition."""
+        return evaluate_condition(prompt, results_by_name)
 
     def _execute_agent_mode(
         self,
@@ -672,6 +482,9 @@ class OrchestratorBase(ABC):
     ) -> dict[str, Any]:
         """Execute a prompt using the agentic tool-call loop.
 
+        Delegates to AgentExecutor with callbacks for orchestrator-specific
+        operations (history recording, reference injection, client isolation).
+
         Args:
             prompt: Prompt dictionary with agent_mode=True.
             ffai: FFAI instance for the execution.
@@ -679,235 +492,21 @@ class OrchestratorBase(ABC):
             seq_label: Label for logging (e.g. "Sequence 10").
 
         Returns:
-            Result dictionary with tool call records.
+            Result dictionary with tool call records, or None for fallback.
 
         """
-        from ...agent.agent_loop import AgentLoop
-
-        tool_names = prompt.get("tools") or []
-        max_rounds = prompt.get("max_tool_rounds") or get_config().agent.max_tool_rounds
-
-        agent_config = get_config().agent
-        client = ffai.client
-
-        if client.__class__.__name__ == "FFOpenAIAssistant":
-            logger.warning(
-                f"{seq_label}: agent_mode is not supported with FFOpenAIAssistant "
-                "(Assistants API). Falling back to single-shot execution."
-            )
-            return None
-
-        injected_prompt = self._inject_references(prompt)
-        resolved_prompt, _ = ffai._build_prompt(
-            injected_prompt,
-            prompt.get("history"),
-            None,
-        )
-        ffai.last_resolved_prompt = resolved_prompt
-
-        logger.info(f"{seq_label} agent mode: {len(tool_names)} tool(s), max_rounds={max_rounds}")
-
-        agent_loop = AgentLoop(
-            client=ffai.client,
+        agent_executor = AgentExecutor(
             tool_registry=self.tool_registry,
-            max_rounds=max_rounds,
-            tool_timeout=agent_config.tool_timeout,
-            continue_on_tool_error=agent_config.continue_on_tool_error,
+            config=self.config,
+            record_history_fn=self._record_agent_result_in_shared_history,
         )
-
-        validation_prompt = prompt.get("validation_prompt")
-        max_val_retries = (
-            prompt.get("max_validation_retries") or agent_config.validation.max_retries
-        )
-
-        try:
-            agent_result = agent_loop.execute(
-                prompt=resolved_prompt,
-                tools=tool_names,
-                tool_choice="auto",
-                prompt_name=prompt.get("prompt_name"),
-                history=prompt.get("history"),
-                model=self.config.get("model"),
-                temperature=self.config.get("temperature"),
-                max_tokens=self.config.get("max_tokens"),
-            )
-
-            builder.with_agent_result(agent_result)
-            builder.with_resolved_prompt(resolved_prompt)
-            builder.with_attempts(1)
-
-            if agent_result.status == "failed":
-                logger.error(f"{seq_label} agent mode failed")
-            elif agent_result.status == "max_rounds_exceeded":
-                logger.warning(f"{seq_label} agent mode max rounds ({agent_result.total_rounds})")
-            else:
-                logger.info(
-                    f"{seq_label} agent mode succeeded: "
-                    f"{agent_result.tool_calls_count} tool call(s), "
-                    f"{agent_result.total_rounds} round(s)"
-                )
-
-            if agent_result.status == "success" and agent_result.response:
-                self._record_agent_result_in_shared_history(prompt, agent_result.response)
-
-            if validation_prompt and agent_config.validation.enabled and agent_result.response:
-                self._validate_agent_response(
-                    prompt=prompt,
-                    builder=builder,
-                    agent_result=agent_result,
-                    tool_names=tool_names,
-                    validation_prompt=validation_prompt,
-                    max_val_retries=max_val_retries,
-                    seq_label=seq_label,
-                    original_prompt=resolved_prompt,
-                    max_rounds=max_rounds,
-                    tool_timeout=agent_config.tool_timeout,
-                    continue_on_tool_error=agent_config.continue_on_tool_error,
-                )
-
-        except Exception as e:
-            builder.with_error(str(e), 1)
-            logger.error(f"{seq_label} agent mode error: {e}")
-
-        return builder.build_dict()
-
-    def _validate_agent_response(
-        self,
-        prompt: dict[str, Any],
-        builder: Any,
-        agent_result: Any,
-        tool_names: list[str],
-        validation_prompt: str,
-        max_val_retries: int,
-        seq_label: str,
-        original_prompt: str,
-        max_rounds: int,
-        tool_timeout: float,
-        continue_on_tool_error: bool,
-    ) -> None:
-        """Validate agent response and optionally re-execute on failure.
-
-        Args:
-            prompt: Original prompt dictionary.
-            builder: ResultBuilder to populate with validation results.
-            agent_result: The initial AgentResult to validate.
-            tool_names: Tool names available for re-execution.
-            validation_prompt: Criteria to validate against.
-            max_val_retries: Maximum validation retry attempts.
-            seq_label: Label for logging.
-            original_prompt: The fully resolved original prompt text.
-            max_rounds: Max agent tool rounds for retry execution.
-            tool_timeout: Timeout for each tool execution.
-            continue_on_tool_error: Whether tool errors should continue the loop.
-
-        """
-        from ...agent.agent_loop import AgentLoop
-
-        response = agent_result.response or ""
-        validation_prompt_text = _build_validation_prompt(
-            validation_prompt,
-            response,
-        )
-
-        best_agent_result = agent_result
-        last_critique = None
-
-        for attempt in range(1, max_val_retries + 2):
-            try:
-                val_client = self._get_isolated_ffai(prompt.get("client"))
-                val_response = val_client.generate_response(
-                    validation_prompt_text,
-                    prompt_name=f"{prompt.get('prompt_name', '')}_validation",
-                    model=self.config.get("model"),
-                    temperature=0.1,
-                )
-            except Exception as e:
-                logger.warning(f"{seq_label} validation LLM call failed: {e}")
-                last_critique = f"Validation call failed: {e}"
-                if attempt > max_val_retries:
-                    builder.with_validation_result(
-                        passed=None,
-                        attempts=attempt,
-                        critique=last_critique,
-                    )
-                    return
-                continue
-
-            val_response = val_response.strip()
-
-            if re.match(r"^PASS\s*$", val_response, re.IGNORECASE):
-                logger.info(
-                    f"{seq_label} validation passed on attempt {attempt}/{max_val_retries + 1}"
-                )
-                builder.with_validation_result(
-                    passed=True,
-                    attempts=attempt,
-                )
-                return
-
-            fail_match = re.match(r"FAIL\s*:\s*(.+)", val_response, re.IGNORECASE | re.DOTALL)
-            last_critique = fail_match.group(1).strip() if fail_match else val_response
-
-            logger.info(
-                f"{seq_label} validation failed on attempt {attempt}/{max_val_retries + 1}: "
-                f"{last_critique[:100]}"
-            )
-
-            if attempt > max_val_retries:
-                break
-
-            augmented_prompt = (
-                f"{original_prompt}\n\n"
-                f"[Previous attempt produced this response, which was rejected:]\n"
-                f"{best_agent_result.response}\n\n"
-                f"[Rejection reason:]\n"
-                f"{last_critique}\n\n"
-                f"Please try again, addressing the rejection reason."
-            )
-
-            retry_ffai = self._get_isolated_ffai(prompt.get("client"))
-            retry_loop = AgentLoop(
-                client=retry_ffai.client,
-                tool_registry=self.tool_registry,
-                max_rounds=max_rounds,
-                tool_timeout=tool_timeout,
-                continue_on_tool_error=continue_on_tool_error,
-            )
-
-            try:
-                builder.increment_attempts()
-                retry_result = retry_loop.execute(
-                    prompt=augmented_prompt,
-                    tools=tool_names,
-                    tool_choice="auto",
-                    prompt_name=prompt.get("prompt_name"),
-                    history=prompt.get("history"),
-                    model=self.config.get("model"),
-                    temperature=self.config.get("temperature"),
-                    max_tokens=self.config.get("max_tokens"),
-                )
-
-                if retry_result.status == "success" or retry_result.status == "max_rounds_exceeded":
-                    best_agent_result = retry_result
-                    builder.with_agent_result(retry_result)
-                    if retry_result.status == "success" and retry_result.response:
-                        self._record_agent_result_in_shared_history(prompt, retry_result.response)
-
-                response = retry_result.response or ""
-                validation_prompt_text = _build_validation_prompt(
-                    validation_prompt,
-                    response,
-                )
-
-            except Exception as e:
-                logger.warning(f"{seq_label} validation retry execution failed: {e}")
-                continue
-
-        logger.warning(f"{seq_label} validation failed after {max_val_retries + 1} attempt(s)")
-        builder.with_validation_result(
-            passed=False,
-            attempts=max_val_retries + 1,
-            critique=last_critique,
+        return agent_executor.execute(
+            prompt=prompt,
+            ffai=ffai,
+            builder=builder,
+            seq_label=seq_label,
+            inject_references_fn=self._inject_references,
+            get_isolated_ffai_fn=self._get_isolated_ffai,
         )
 
     def _execute_with_retry(
@@ -1082,73 +681,19 @@ class OrchestratorBase(ABC):
             results_by_name=results_by_name or {},
         )
 
-    def _resolve_variables(self, text: str, data_row: dict[str, Any]) -> str:
-        """Replace {{variable}} placeholders with values from data row.
-
-        Args:
-            text: Text with {{variable}} placeholders.
-            data_row: Dictionary of variable values.
-
-        Returns:
-            Text with placeholders replaced.
-
-        """
-        if not text:
-            return text
-
-        pattern = r"\{\{(\w+)\}\}"
-
-        def replacer(match: re.Match[str]) -> str:
-            var_name = match.group(1)
-            if var_name in data_row and data_row[var_name] is not None:
-                return str(data_row[var_name])
-            logger.warning(f"Variable '{var_name}' not found in data row")
-            return match.group(0)
-
-        return re.sub(pattern, replacer, text)
+    def _resolve_variables(self, text: str | None, data_row: dict[str, Any]) -> str | None:
+        """Replace {{variable}} placeholders with values from data row."""
+        return resolve_variables(text, data_row)
 
     def _resolve_prompt_variables(
         self, prompt: dict[str, Any], data_row: dict[str, Any]
     ) -> dict[str, Any]:
-        """Resolve all {{variable}} placeholders in a prompt.
-
-        Args:
-            prompt: Prompt dictionary.
-            data_row: Dictionary of variable values.
-
-        Returns:
-            Prompt dictionary with resolved placeholders.
-
-        """
-        resolved = dict(prompt)
-        resolved["prompt"] = self._resolve_variables(prompt.get("prompt", ""), data_row)
-        if prompt.get("prompt_name"):
-            resolved["prompt_name"] = self._resolve_variables(prompt["prompt_name"], data_row)
-
-        row_docs = data_row.get("_documents")
-        if row_docs:
-            doc_refs = parse_history_string(row_docs)
-            if doc_refs:
-                existing_refs = resolved.get("references") or []
-                resolved["references"] = list(existing_refs) + doc_refs
-
-        return resolved
+        """Resolve all {{variable}} placeholders in a prompt."""
+        return resolve_prompt_variables(prompt, data_row)
 
     def _resolve_batch_name(self, data_row: dict[str, Any], batch_id: int) -> str:
-        """Generate batch name from data row or default.
-
-        Args:
-            data_row: Dictionary with optional batch_name field.
-            batch_id: Default batch ID number.
-
-        Returns:
-            Batch name string.
-
-        """
-        if data_row.get("batch_name"):
-            name = self._resolve_variables(str(data_row["batch_name"]), data_row)
-            return re.sub(r"[^\w\-]", "_", name)[:50]
-        return f"batch_{batch_id}"
+        """Generate batch name from data row or default."""
+        return resolve_batch_name(data_row, batch_id)
 
     def _execute_single_batch(
         self, batch_id: int, data_row: dict[str, Any], batch_name: str
@@ -1254,240 +799,15 @@ class OrchestratorBase(ABC):
         3. Hardcoded fallback: 'balanced'
 
         """
-        config_strategy = self.config.get("evaluation_strategy", "").strip()
-        try:
-            eval_config = get_config().evaluation
-            available = eval_config.strategies if eval_config else {}
-            if config_strategy and config_strategy in available:
-                return config_strategy
-            if eval_config and eval_config.default_strategy:
-                return eval_config.default_strategy
-        except Exception:
-            logger.debug("Could not load evaluation config", exc_info=True)
-        return "balanced"
+        return self._synthesis_runner.resolve_evaluation_strategy(self)
 
     def _aggregate_scores(self) -> None:
         """Extract scores from batch results and compute composites."""
-        if not self.scoring_rubric or not self.is_batch_mode:
-            return
-
-        try:
-            eval_config = get_config().evaluation
-            failure_threshold = eval_config.scoring_failure_threshold if eval_config else 0.5
-            strategy_overrides = {}
-            if eval_config and self.evaluation_strategy in eval_config.strategies:
-                strategy_overrides = eval_config.strategies[
-                    self.evaluation_strategy
-                ].criteria_overrides
-        except Exception:
-            failure_threshold = 0.5
-            strategy_overrides = {}
-            logger.debug("Could not load evaluation config for scoring", exc_info=True)
-
-        aggregator = ScoreAggregator(
-            rubric=self.scoring_rubric,
-            strategy=self.evaluation_strategy,
-            strategy_overrides=strategy_overrides,
-            failure_threshold=failure_threshold,
-        )
-
-        grouped: dict[int, list[dict[str, Any]]] = {}
-        for r in self.results:
-            batch_id = r.get("batch_id")
-            if batch_id is None:
-                continue  # Skip planning results (batch_id=None)
-            if batch_id not in grouped:
-                grouped[batch_id] = []
-            grouped[batch_id].append(r)
-
-        for batch_id, batch_results in grouped.items():
-            results_by_name = {r["prompt_name"]: r for r in batch_results}
-            batch_name = (
-                batch_results[0].get("batch_name", f"batch_{batch_id}") if batch_results else ""
-            )
-            scoring_result = aggregator.aggregate_entry(results_by_name, batch_name)
-
-            for r in batch_results:
-                r["scores"] = scoring_result["scores"]
-                r["composite_score"] = scoring_result["composite_score"]
-                r["scoring_status"] = scoring_result["scoring_status"]
-                r["strategy"] = scoring_result["strategy"]
-                r["result_type"] = "batch"
+        self._synthesis_runner.aggregate_scores(self)
 
     def _execute_synthesis(self) -> None:
         """Execute synthesis prompts with cross-row batch context."""
-        if not self.synthesis_prompts or not self.is_batch_mode:
-            return
-
-        try:
-            eval_config = get_config().evaluation
-            max_context = eval_config.max_synthesis_context_chars if eval_config else 30000
-        except Exception:
-            max_context = 30000
-            logger.debug("Could not load evaluation config for synthesis", exc_info=True)
-
-        executor = SynthesisExecutor(max_context_chars=max_context)
-
-        grouped: dict[int, list[dict[str, Any]]] = {}
-        for r in self.results:
-            batch_id = r.get("batch_id", 0)
-            if batch_id not in grouped:
-                grouped[batch_id] = []
-            grouped[batch_id].append(r)
-
-        sorted_batch_ids = sorted(grouped.keys())
-        batch_results_list = [grouped[bid] for bid in sorted_batch_ids]
-
-        entry_results_map = build_entry_results_map(batch_results_list)
-
-        criteria_list: list[dict[str, Any]] = []
-        if self.scoring_rubric:
-            criteria_list = [
-                {"criteria_name": c.criteria_name} for c in self.scoring_rubric.criteria
-            ]
-
-        sorted_entries = executor.sort_entries(
-            batch_results_list,
-            scoring_criteria=criteria_list,
-            has_scoring=self.has_scoring,
-        )
-
-        for entry in sorted_entries:
-            bid = entry.get("batch_id", 0)
-            entry["_all_results"] = entry_results_map.get(bid, {})
-
-        self.shared_prompt_attr_history = []
-        synthesis_results: list[dict[str, Any]] = []
-        results_by_name: dict[str, dict[str, Any]] = {}
-
-        for synth_prompt in self.synthesis_prompts:
-            try:
-                source_scope = synth_prompt.get("source_scope", "all")
-                source_prompts = synth_prompt.get("source_prompts", [])
-                include_scores = synth_prompt.get("include_scores", True)
-
-                entries = executor.resolve_source_scope(source_scope, sorted_entries)
-
-                scale_max = 10
-                if self.scoring_rubric and self.scoring_rubric.criteria:
-                    scale_max = self.scoring_rubric.criteria[0].scale_max
-
-                context = executor.format_entry_context(
-                    entries,
-                    source_prompts,
-                    include_scores,
-                    strategy=self.evaluation_strategy if self.has_scoring else "",
-                    scale_max=scale_max,
-                )
-
-                resolved_history = ""
-                history_deps = synth_prompt.get("history") or []
-                for dep_name in history_deps:
-                    dep_result = results_by_name.get(dep_name)
-                    if dep_result and dep_result.get("status") == "failed":
-                        logger.warning(
-                            f"Synthesis prompt '{synth_prompt.get('prompt_name')}' "
-                            f"references failed prompt '{dep_name}', "
-                            f"which returned empty response"
-                        )
-                    dep_response = dep_result.get("response", "") if dep_result else ""
-                    resolved_history += f"--- {dep_name} ---\n{dep_response}\n\n"
-                    if dep_result:
-                        self.shared_prompt_attr_history.append(dep_result)
-
-                prompt_parts = [context]
-                if resolved_history.strip():
-                    prompt_parts.append(resolved_history.strip())
-                prompt_parts.append(synth_prompt["prompt"])
-                full_prompt = "\n\n===\n\n".join(prompt_parts)
-
-                ffai = self._get_isolated_ffai(synth_prompt.get("client"))
-                response = ffai.generate_response(
-                    prompt=full_prompt,
-                    prompt_name=synth_prompt.get("prompt_name"),
-                )
-
-                result = {
-                    "sequence": synth_prompt["sequence"],
-                    "prompt_name": synth_prompt.get("prompt_name"),
-                    "prompt": synth_prompt["prompt"],
-                    "resolved_prompt": full_prompt,
-                    "response": response,
-                    "status": "success",
-                    "attempts": 1,
-                    "batch_id": -1,
-                    "batch_name": "",
-                    "history": synth_prompt.get("history"),
-                    "condition": synth_prompt.get("condition"),
-                    "condition_result": None,
-                    "condition_error": None,
-                    "error": None,
-                    "references": None,
-                    "result_type": "synthesis",
-                    "scores": None,
-                    "composite_score": None,
-                    "scoring_status": "",
-                    "strategy": self.evaluation_strategy if self.has_scoring else None,
-                    "client": synth_prompt.get("client"),
-                    "agent_mode": False,
-                    "tool_calls": None,
-                    "total_rounds": None,
-                    "total_llm_calls": None,
-                    "validation_passed": None,
-                    "validation_attempts": None,
-                    "validation_critique": None,
-                    "semantic_query": None,
-                    "semantic_filter": None,
-                    "query_expansion": None,
-                    "rerank": None,
-                }
-
-            except Exception as e:
-                logger.error(
-                    f"Synthesis prompt '{synth_prompt.get('prompt_name')}' failed: {e}",
-                    exc_info=True,
-                )
-                result = {
-                    "sequence": synth_prompt["sequence"],
-                    "prompt_name": synth_prompt.get("prompt_name"),
-                    "prompt": synth_prompt["prompt"],
-                    "resolved_prompt": "",
-                    "response": "",
-                    "status": "failed",
-                    "attempts": 1,
-                    "error": str(e),
-                    "batch_id": -1,
-                    "batch_name": "",
-                    "history": synth_prompt.get("history"),
-                    "condition": synth_prompt.get("condition"),
-                    "condition_result": None,
-                    "condition_error": None,
-                    "references": None,
-                    "result_type": "synthesis",
-                    "scores": None,
-                    "composite_score": None,
-                    "scoring_status": "",
-                    "strategy": self.evaluation_strategy if self.has_scoring else None,
-                    "client": synth_prompt.get("client"),
-                    "agent_mode": False,
-                    "tool_calls": None,
-                    "total_rounds": None,
-                    "total_llm_calls": None,
-                    "validation_passed": None,
-                    "validation_attempts": None,
-                    "validation_critique": None,
-                    "semantic_query": None,
-                    "semantic_filter": None,
-                    "query_expansion": None,
-                    "rerank": None,
-                }
-
-            synthesis_results.append(result)
-            if result.get("prompt_name"):
-                results_by_name[result["prompt_name"]] = result
-
-        self.results.extend(synthesis_results)
-        logger.info(f"Synthesis complete: {len(synthesis_results)} prompts executed")
+        self._synthesis_runner.execute_synthesis(self)
 
     def _detect_planning_prompts(self) -> None:
         """Detect and separate planning-phase prompts from execution prompts.
@@ -1496,20 +816,7 @@ class OrchestratorBase(ABC):
         Splits self.prompts into self.planning_prompts (phase=planning) and
         self.prompts (phase=execution only).
         """
-        planning = [p for p in self.prompts if p.get("phase") == "planning"]
-        if planning:
-            self.has_planning = True
-            self.planning_prompts = sorted(planning, key=lambda x: x.get("sequence", 0))
-            self.prompts = [p for p in self.prompts if p.get("phase") != "planning"]
-            logger.info(
-                f"Planning phase enabled: {len(self.planning_prompts)} planning prompts, "
-                f"{len(self.prompts)} execution prompts"
-            )
-            if not self.is_batch_mode:
-                logger.warning(
-                    "Planning prompts detected but no batch data sheet. "
-                    "Scoring and synthesis will be skipped."
-                )
+        self._planning_runner.detect(self)
 
     @staticmethod
     def _resolve_shared_document(
@@ -1619,196 +926,16 @@ class OrchestratorBase(ABC):
         For generator prompts, parses structured JSON artifacts and injects
         scoring criteria and/or execution prompts into the pipeline.
         """
-        logger.info(f"Executing planning phase with {len(self.planning_prompts)} prompts")
-        results_by_name: dict[str, dict[str, Any]] = {}
-        planning_config = get_config().planning
-
-        generator_artifacts: list = []
-        parser = PlanningArtifactParser()
-
-        for prompt in self.planning_prompts:
-            prompt_name = prompt.get("prompt_name", "(unnamed)")
-
-            if self.progress_callback:
-                self.progress_callback(
-                    completed=len(self.planning_results),
-                    total=len(self.planning_prompts),
-                    success=len([r for r in self.planning_results if r.get("status") == "success"]),
-                    failed=len([r for r in self.planning_results if r.get("status") == "failed"]),
-                    current_name=f"[planning] {prompt_name}",
-                )
-
-            result = self._execute_prompt(prompt, results_by_name=results_by_name)
-
-            # Tag as planning result
-            result["result_type"] = "planning"
-            result["batch_id"] = None
-            result["batch_name"] = None
-            self.planning_results.append(result)
-
-            if result.get("prompt_name"):
-                results_by_name[result["prompt_name"]] = result
-
-            # For generator prompts: manually record in shared history with original
-            # prompt_name (FFAI flattens dict responses by key, losing the original name)
-            if prompt.get("generator") and result.get("status") == "success":
-                response = result.get("response", "")
-                with self.history_lock:
-                    self.shared_prompt_attr_history.append(
-                        {
-                            "prompt": prompt.get("prompt", ""),
-                            "response": response,
-                            "prompt_name": prompt.get("prompt_name"),
-                            "timestamp": time.time(),
-                            "model": self.config.get("model"),
-                            "history": prompt.get("history"),
-                        }
-                    )
-
-                # Parse generator artifacts
-                try:
-                    artifact = parser.parse(response, prompt_name)
-                    generator_artifacts.append(artifact)
-                except ValueError as e:
-                    logger.error(f"Planning generator '{prompt_name}' artifact parse failed: {e}")
-                    if not planning_config.continue_on_parse_error:
-                        raise
-
-            logger.info(f"Planning prompt '{prompt_name}' completed: {result.get('status')}")
-
-        # Parse and inject generated artifacts
-        if generator_artifacts:
-            self._parse_generated_artifacts(generator_artifacts, parser, planning_config)
-
-        logger.info(f"Planning phase complete: {len(self.planning_results)} prompts executed")
+        self._planning_runner.execute(self)
 
     def _parse_generated_artifacts(
         self,
         artifacts: list,
-        parser: PlanningArtifactParser,
+        parser: Any,
         planning_config: Any,
     ) -> None:
-        """Parse, validate, and inject generated artifacts from planning phase.
-
-        Handles:
-        - Merging artifacts from multiple generators
-        - Validating and injecting generated prompts into self.prompts
-        - Auto-deriving scoring rubric if no manual scoring sheet exists
-
-        Args:
-            artifacts: List of GeneratedArtifact instances.
-            parser: PlanningArtifactParser instance.
-            planning_config: PlanningConfig instance.
-
-        """
-        merged_criteria, merged_prompts = parser.merge_artifacts(artifacts)
-
-        # Validate and inject generated prompts
-        if merged_prompts:
-            existing_names = {p["prompt_name"] for p in self.prompts if p.get("prompt_name")}
-            doc_refs: set[str] = set()
-            if self.document_registry:
-                doc_refs = set(self.document_registry.get_reference_names())
-            batch_keys: set[str] = set()
-            if self.is_batch_mode and self.batch_data:
-                batch_keys = set(OrchestratorValidator.extract_batch_keys(self.batch_data))
-
-            prompt_errors = parser.validate_prompts(
-                merged_prompts, existing_names, doc_refs, batch_keys
-            )
-            if prompt_errors:
-                for err in prompt_errors:
-                    logger.error(f"Generated prompt validation error: {err}")
-                if not planning_config.continue_on_parse_error:
-                    raise ValueError(
-                        f"Generated prompt validation failed with {len(prompt_errors)} errors"
-                    )
-                # Filter out prompts with missing required fields
-                merged_prompts = [
-                    p for p in merged_prompts if p.get("prompt_name") and p.get("prompt")
-                ]
-
-            # Assign sequence numbers
-            existing_seqs = {p["sequence"] for p in self.prompts if p.get("sequence")}
-            parser.assign_sequences(
-                merged_prompts,
-                existing_seqs,
-                base=planning_config.generated_sequence_base,
-                step=planning_config.generated_sequence_step,
-            )
-
-            # Tag and inject generated prompts
-            for p in merged_prompts:
-                p["_generated"] = True
-                # Use reversed() so the last generator wins (refinement pattern)
-                p["_generated_by"] = next(
-                    (
-                        a.source
-                        for a in reversed(artifacts)
-                        if any(
-                            gp.get("prompt_name") == p.get("prompt_name")
-                            for gp in a.generated_prompts
-                        )
-                    ),
-                    "",
-                )
-                p.setdefault("phase", "execution")
-                p.setdefault("generator", False)
-                p.setdefault("history", None)
-                p.setdefault("notes", None)
-                p.setdefault("client", None)
-                p.setdefault("condition", None)
-                p.setdefault("agent_mode", False)
-                p.setdefault("tools", None)
-                p.setdefault("max_tool_rounds", None)
-                p.setdefault("validation_prompt", None)
-                p.setdefault("max_validation_retries", None)
-                p.setdefault("semantic_query", None)
-                p.setdefault("semantic_filter", None)
-                p.setdefault("query_expansion", None)
-                p.setdefault("rerank", None)
-
-            self.prompts.extend(merged_prompts)
-            self.prompts.sort(key=lambda x: x.get("sequence", 0))
-            logger.info(f"Injected {len(merged_prompts)} generated prompts into execution pipeline")
-
-        # Auto-derive scoring rubric
-        if merged_criteria:
-            if self.has_scoring:
-                logger.warning(
-                    "Both scoring sheet and generated criteria present. Using scoring sheet."
-                )
-            else:
-                # Validate source_prompt mapping against final prompt list
-                all_prompt_names = {p["prompt_name"] for p in self.prompts if p.get("prompt_name")}
-                criteria_errors = parser.validate_criteria(merged_criteria, all_prompt_names)
-                if criteria_errors:
-                    for err in criteria_errors:
-                        logger.error(f"Generated criteria validation error: {err}")
-
-                # Filter to valid criteria only
-                valid_criteria = [
-                    c
-                    for c in merged_criteria
-                    if c.get("criteria_name")
-                    and (not c.get("source_prompt") or c["source_prompt"] in all_prompt_names)
-                ]
-
-                if valid_criteria:
-                    scoring_criteria_objs = parser.build_scoring_criteria(valid_criteria)
-                    self.scoring_rubric = ScoringRubric(scoring_criteria_objs)
-                    self.has_scoring = True
-                    self.evaluation_strategy = self._resolve_evaluation_strategy()
-                    logger.info(
-                        f"Scoring rubric auto-derived from planning phase with "
-                        f"{len(valid_criteria)} criteria, "
-                        f"strategy='{self.evaluation_strategy}'"
-                    )
-                else:
-                    logger.warning(
-                        "All generated scoring criteria failed validation. "
-                        "Proceeding without scoring."
-                    )
+        """Parse, validate, and inject generated artifacts from planning phase."""
+        self._planning_runner.parse_and_inject(self, artifacts, parser, planning_config)
 
     def _validate_pre_planning(self) -> None:
         """Run validation checks that can be performed before planning phase.
@@ -1816,12 +943,7 @@ class OrchestratorBase(ABC):
         Skips scoring source_prompt checks and synthesis source_prompts checks
         since generated prompts don't exist yet.
         """
-        self._run_validator(
-            "Pre-planning validation",
-            skip_scoring_source_check=True,
-            skip_synthesis_source_check=True,
-            planning_prompts=self.planning_prompts,
-        )
+        self._validation_manager.validate_pre_planning(self)
 
     def _validate_post_planning(self) -> None:
         """Run validation checks after planning phase, including generated artifacts.
@@ -1829,11 +951,7 @@ class OrchestratorBase(ABC):
         Validates scoring source_prompt mappings and synthesis source_prompts
         now that generated prompts are available.
         """
-        self._run_validator(
-            "Post-planning validation",
-            skip_scoring_source_check=False,
-            skip_synthesis_source_check=False,
-        )
+        self._validation_manager.validate_post_planning(self)
 
     def run(self) -> str:
         """Initialize, validate, execute prompts, and write results.

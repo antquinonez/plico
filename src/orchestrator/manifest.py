@@ -27,7 +27,7 @@ import polars as pl
 import yaml
 
 from ..config import get_config
-from ..FFAIClientBase import FFAIClientBase
+from ..core.client_base import FFAIClientBase
 from .base import OrchestratorBase
 from .workbook_parser import WorkbookParser, _serialize_result_value
 
