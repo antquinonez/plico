@@ -135,6 +135,7 @@ def build_config_yaml(
     batch_mode: str,
     batch_output: str,
     on_batch_error: str,
+    planning: bool = False,
 ) -> dict[str, Any]:
     """Build config.yaml data.
 
@@ -153,13 +154,18 @@ def build_config_yaml(
     config = get_config()
     sample = config.sample
 
+    PLANNING_MAX_TOKENS = 16000
+    default_max_tokens = sample.default_max_tokens
+    if planning:
+        default_max_tokens = PLANNING_MAX_TOKENS
+
     return {
         "name": "screening",
         "client_type": client_type,
         "model": sample.default_model,
         "max_retries": sample.default_retries,
         "temperature": sample.default_temperature,
-        "max_tokens": sample.default_max_tokens,
+        "max_tokens": default_max_tokens,
         "system_instructions": system_instructions,
         "evaluation_strategy": evaluation_strategy,
         "batch_mode": batch_mode,
@@ -392,6 +398,7 @@ def main() -> int:
             batch_mode=batch_config.mode,
             batch_output=batch_config.output,
             on_batch_error=batch_config.on_error,
+            planning=args.planning,
         ),
     )
     write_yaml(
