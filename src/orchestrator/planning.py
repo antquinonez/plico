@@ -392,13 +392,28 @@ class PlanningArtifactParser:
         """
         result: list[ScoringCriteria] = []
         for c in criteria_dicts:
+            raw_weight = c.get("weight", 1.0)
+            raw_min = c.get("scale_min", 1)
+            raw_max = c.get("scale_max", 10)
+            try:
+                weight = float(raw_weight) if raw_weight not in (None, "") else 1.0
+            except (ValueError, TypeError):
+                weight = 1.0
+            try:
+                scale_min = int(raw_min) if raw_min not in (None, "") else 1
+            except (ValueError, TypeError):
+                scale_min = 1
+            try:
+                scale_max = int(raw_max) if raw_max not in (None, "") else 10
+            except (ValueError, TypeError):
+                scale_max = 10
             result.append(
                 ScoringCriteria(
                     criteria_name=c["criteria_name"],
                     description=c.get("description", ""),
-                    scale_min=int(c.get("scale_min", 1)),
-                    scale_max=int(c.get("scale_max", 10)),
-                    weight=float(c.get("weight", 1.0)),
+                    scale_min=scale_min,
+                    scale_max=scale_max,
+                    weight=weight,
                     source_prompt=c.get("source_prompt", ""),
                     score_type=c.get("score_type", "normalized_score"),
                 )

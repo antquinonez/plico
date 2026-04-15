@@ -246,6 +246,7 @@ class PlanningPhaseRunner:
                     for c in merged_criteria
                     if c.get("criteria_name")
                     and (not c.get("source_prompt") or c["source_prompt"] in all_prompt_names)
+                    and c.get("weight") not in (None, "")
                 ]
 
                 if valid_criteria:

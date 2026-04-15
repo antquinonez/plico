@@ -75,6 +75,26 @@ class TestExtractScore:
         assert extract_score(response, "score") == 7.0
         assert isinstance(extract_score(response, "score"), float)
 
+    def test_nested_score_object(self):
+        response = '{"python": {"score": 9, "reasoning": "Expert level"}}'
+        assert extract_score(response, "python") == 9.0
+
+    def test_nested_value_key(self):
+        response = '{"python": {"value": 8, "reasoning": "Strong"}}'
+        assert extract_score(response, "python") == 8.0
+
+    def test_nested_rating_key(self):
+        response = '{"python": {"rating": 7, "reasoning": "Good"}}'
+        assert extract_score(response, "python") == 7.0
+
+    def test_nested_score_object_in_scores_key(self):
+        response = '{"scores": {"python": {"score": 6, "reasoning": "OK"}}}'
+        assert extract_score(response, "python") == 6.0
+
+    def test_flat_value_takes_priority_over_nested(self):
+        response = '{"python": 9}'
+        assert extract_score(response, "python") == 9.0
+
 
 class TestScoringRubric:
     def test_extract_scores_all_ok(self):

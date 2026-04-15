@@ -558,7 +558,7 @@ Generator prompts (`generator=true`) return JSON with optional `scoring_criteria
 ### Phase Rules
 
 - Planning prompts execute **sequentially** (never parallel), regardless of concurrency.
-- Planning prompts **cannot** use `{{variable}}` batch references (validated as error).
+- Planning prompts **cannot** use `{{variable}}` batch references (validated as error), except generator prompts (`generator=true`) which may reference batch variables in instructions to the LLM for generated prompt templates.
 - Planning prompts **can** use `references` for document injection and `history` for chaining.
 - Execution prompts **can** use `{{planning_prompt.response}}` to interpolate planning results.
 - If a manual scoring sheet exists, it takes priority over auto-derived criteria (logged as warning).
@@ -578,6 +578,10 @@ planning:
   generated_sequence_step: 10
   continue_on_parse_error: true
 ```
+
+Generator prompts produce large JSON outputs (scoring criteria + evaluation prompts).
+When using `--planning` mode, `create_screening_workbook.py` sets `max_tokens=16000`
+to avoid response truncation. For non-planning workbooks, the default (4096) is used.
 
 ## Evaluation Module (Scoring and Synthesis)
 

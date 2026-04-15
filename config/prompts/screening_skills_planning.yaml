@@ -48,8 +48,10 @@ prompts:
          - References the job description: references must be '["job_description"]'
          - Depends on extract_profile: history must be '["extract_profile"]'
          - Asks the LLM to evaluate ONLY this one specific skill/requirement
-         - Returns ONLY a JSON object with the criteria_name as top-level key
-           containing an integer 1-10 score, plus a "reasoning" key
+         - Returns ONLY a JSON object in this exact format:
+             {"<criteria_name>": <integer 1-10>, "reasoning": "<brief explanation>"}
+           Example for a "python" criterion:
+             {"python": 8, "reasoning": "7 years experience with async/await and type hints"}
          - Instructs the LLM to consider both explicit mentions and inferable
            skill level from related experience
 
@@ -68,7 +70,9 @@ prompts:
       CRITICAL RULES:
       - One skill per criterion. Never combine multiple skills into one.
       - Each source_prompt must exactly match a prompt_name in the prompts array.
-      - Each prompt must return JSON with the criteria_name as the top-level score key.
+      - Each prompt must return JSON where the criteria_name maps directly to an
+        integer score (not a nested object). Example: {"python": 8, "reasoning": "..."}
+        NOT {"python": {"score": 8, "reasoning": "..."}}.
       - The prompt text for each skill must be specific about what evidence to look for
         (e.g., for "python": look for projects, years used, libraries, complexity of work).
     references: '["job_description"]'

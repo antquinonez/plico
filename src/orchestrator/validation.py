@@ -717,9 +717,12 @@ class OrchestratorValidator:
         for prompt in self.planning_prompts:
             name = prompt.get("prompt_name", "(unnamed)")
             seq = prompt.get("sequence")
+            is_generator = prompt.get("generator", False)
 
-            # Planning prompts cannot use actual batch variables
-            if batch_key_set:
+            # Generator prompts produce prompts that will later use batch variables,
+            # so mentioning {{variable}} in instructions to the LLM is legitimate.
+            # Only non-generator planning prompts cannot use batch variables.
+            if batch_key_set and not is_generator:
                 prompt_text = prompt.get("prompt", "")
                 if prompt_text:
                     for match in BATCH_VAR_PATTERN.finditer(prompt_text):

@@ -18,7 +18,7 @@ workbook:
     api_key_env: "MISTRALSMALL_KEY"
     max_retries: 3
     temperature: 0.8
-    max_tokens: 4096
+    max_tokens: 32000
     system_instructions: "You are a helpful assistant. Respond accurately to user queries."
   batch:
     mode: "per_row"

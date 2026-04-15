@@ -515,8 +515,9 @@ After running, the workbook contains a timestamped results sheet with:
 - **Scoring summary**: Composite scores with weighted aggregation
 - **Synthesis**: Cross-candidate ranking, comparison, and hiring recommendation
 
-For static scoring mode, a `scores_pivot` sheet provides a summary table
-with all criteria across all candidates.
+For both static and planning scoring modes, a `scores_pivot` sheet provides a
+summary table with all criteria across all candidates (one row per
+candidate-criterion pair, with normalized scores, scale bounds, and descriptions).
 
 ---
 

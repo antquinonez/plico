@@ -226,12 +226,18 @@ def main() -> int:
 
     batch_config = config.workbook.batch
 
+    PLANNING_MAX_TOKENS = 16000
+    max_tokens_override = PLANNING_MAX_TOKENS if args.planning else None
+
     builder = WorkbookBuilder(args.output)
+    config_overrides = {
+        "client_type": client_type,
+        "system_instructions": args.system_instructions,
+    }
+    if max_tokens_override is not None:
+        config_overrides["max_tokens"] = str(max_tokens_override)
     builder.add_config_sheet(
-        overrides={
-            "client_type": client_type,
-            "system_instructions": args.system_instructions,
-        },
+        overrides=config_overrides,
         extra_fields=[
             (
                 "evaluation_strategy",

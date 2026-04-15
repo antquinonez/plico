@@ -572,6 +572,34 @@ class TestPlanningValidation:
         ]
         assert planning_errors == []
 
+    def test_generator_prompt_with_batch_variable_ok(self):
+        """Test generator prompt mentioning batch variable is allowed.
+
+        Generator prompts produce prompts that will later use batch variables,
+        so {{candidate_name}} in instructions to the LLM is legitimate.
+        """
+        from src.orchestrator.validation import OrchestratorValidator
+
+        planning_prompts = [
+            {
+                "sequence": 10,
+                "prompt_name": "analyze_jd",
+                "prompt": "Create prompts that include {{candidate_name}} for each skill.",
+                "phase": "planning",
+                "generator": True,
+            }
+        ]
+
+        validator = OrchestratorValidator(
+            prompts=[],
+            config={},
+            planning_prompts=planning_prompts,
+            batch_data_keys=["candidate_name"],
+        )
+        result = validator.validate()
+        error_codes = [e.code for e in result.errors if e.severity == "error"]
+        assert "PLANNING_HAS_VARIABLES" not in error_codes
+
 
 class TestBackwardCompatibility:
     """Tests for backward compatibility with existing workbooks."""
