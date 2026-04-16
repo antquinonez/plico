@@ -7,19 +7,48 @@
 Reusable prompt specs, scoring criteria, and synthesis prompts for
 screening workbooks and manifests. Both create_screening_workbook.py
 and create_screening_manifest.py import from this module.
+
+Each prompt function accepts an optional ``template_path`` argument. When
+provided, prompts are loaded from the specified YAML file (or a named
+template in ``config/prompts/``). When omitted, the hardcoded defaults
+are used, preserving backward compatibility.
 """
 
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from typing import Any
 
 from .base import PromptSpec
 
+logger = logging.getLogger(__name__)
 
-def get_static_screening_prompts() -> list[PromptSpec]:
-    """Return evaluation prompts for static scoring mode."""
+
+def get_static_screening_prompts(
+    template_path: str | None = None,
+) -> list[PromptSpec]:
+    """Return evaluation prompts for static scoring mode.
+
+    Args:
+        template_path: Optional path to a YAML template file (name in
+            ``config/prompts/`` or explicit file path). If None, returns
+            the hardcoded defaults.
+
+    Returns:
+        List of PromptSpec instances.
+
+    """
+    if template_path is not None:
+        loaded = _load_from_template(template_path)
+        if loaded is not None:
+            return loaded
+        logger.info(
+            "Template not found (%s), falling back to hardcoded static prompts",
+            template_path,
+        )
+
     prompts = []
 
     prompts.append(
@@ -101,8 +130,29 @@ def get_static_screening_prompts() -> list[PromptSpec]:
     return prompts
 
 
-def get_planning_screening_prompts() -> list[PromptSpec]:
-    """Return prompts for planning phase mode (auto-derived scoring)."""
+def get_planning_screening_prompts(
+    template_path: str | None = None,
+) -> list[PromptSpec]:
+    """Return prompts for planning phase mode (auto-derived scoring).
+
+    Args:
+        template_path: Optional path to a YAML template file (name in
+            ``config/prompts/`` or explicit file path). If None, returns
+            the hardcoded defaults.
+
+    Returns:
+        List of PromptSpec instances.
+
+    """
+    if template_path is not None:
+        loaded = _load_from_template(template_path)
+        if loaded is not None:
+            return loaded
+        logger.info(
+            "Template not found (%s), falling back to hardcoded planning prompts",
+            template_path,
+        )
+
     prompts = []
 
     prompts.append(
@@ -194,6 +244,21 @@ def get_planning_screening_prompts() -> list[PromptSpec]:
     return prompts
 
 
+def _load_from_template(template_path: str) -> list[PromptSpec] | None:
+    """Load prompt specs from a YAML template file.
+
+    Args:
+        template_path: Template name or file path.
+
+    Returns:
+        List of PromptSpec instances, or None if file not found.
+
+    """
+    from src.prompt_templates import load_prompt_template
+
+    return load_prompt_template(template_path)
+
+
 def get_screening_scoring_criteria() -> list[dict[str, Any]]:
     """Return scoring criteria for static mode."""
     return [
@@ -245,13 +310,30 @@ def get_screening_scoring_criteria() -> list[dict[str, Any]]:
     ]
 
 
-def get_screening_synthesis_prompts(top_n: int = 5) -> list[dict[str, Any]]:
+def get_screening_synthesis_prompts(
+    top_n: int = 5,
+    template_path: str | None = None,
+) -> list[dict[str, Any]]:
     """Return synthesis prompts.
 
     Args:
         top_n: Number of candidates for the top scope. Clamped to min(top_n, actual).
+        template_path: Optional path to a YAML template file (name in
+            ``config/prompts/`` or explicit file path). If None, returns
+            the hardcoded defaults.
 
     """
+    if template_path is not None:
+        from src.prompt_templates import load_synthesis_template
+
+        loaded = load_synthesis_template(template_path, top_n=top_n)
+        if loaded is not None:
+            return loaded
+        logger.info(
+            "Template not found (%s), falling back to hardcoded synthesis prompts",
+            template_path,
+        )
+
     return [
         {
             "sequence": 100,

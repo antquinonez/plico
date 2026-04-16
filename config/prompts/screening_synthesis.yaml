@@ -1,0 +1,54 @@
+# Screening Synthesis Prompts
+# ============================
+# Post-batch synthesis prompts for cross-candidate comparison and ranking.
+#
+# Used by: create_screening_workbook.py
+#          create_screening_manifest.py
+#
+# Override: Copy and modify, then pass --synthesis-prompts <name_or_path>
+#
+# Note: source_scope uses a top_n value that is dynamically sized at
+# workbook creation time. The {{top_n}} placeholder is replaced with
+# the actual value when prompts are loaded.
+
+name: screening_synthesis
+description: "Synthesis prompts for cross-candidate ranking and recommendation"
+
+prompts:
+  - sequence: 100
+    prompt_name: rank_summary
+    source_scope: "top:{{top_n}}"
+    source_prompts: '["extract_profile", "overall_assessment"]'
+    include_scores: true
+    history: ""
+    condition: ""
+    prompt: |
+      Based on the evaluations below, rank all candidates from strongest
+      to weakest overall fit for this role. For each candidate, provide a one-sentence
+      justification. End with a summary table showing rank, name, composite score,
+      and key strength.
+
+  - sequence: 110
+    prompt_name: comparison
+    source_scope: "top:{{comparison_n}}"
+    source_prompts: '["extract_profile", "overall_assessment"]'
+    include_scores: true
+    history: ""
+    condition: ""
+    prompt: |
+      Compare the top 3 candidates side by side across all evaluation
+      criteria. Highlight where each candidate excels and where they have gaps
+      relative to each other. Identify which candidate is the strongest hire and why.
+
+  - sequence: 120
+    prompt_name: recommendation
+    source_scope: "top:1"
+    source_prompts: '["extract_profile", "overall_assessment"]'
+    include_scores: true
+    history: '["rank_summary"]'
+    condition: ""
+    prompt: |
+      Write a final hiring recommendation for the top candidate. Include:
+      recommended decision (hire/pass/hold), key qualifications, potential concerns,
+      suggested follow-up questions for the interview, and overall confidence level
+      (high/medium/low).

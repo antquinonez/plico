@@ -8,11 +8,14 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from typing import Any
 
 from .prompt_utils import interpolate_prompt
 
 logger = logging.getLogger(__name__)
+
+REFERENCES_PATTERN = re.compile(r"<REFERENCES>.*?</REFERENCES>\s*", re.DOTALL)
 
 
 class PromptBuilder:
@@ -104,6 +107,9 @@ class PromptBuilder:
                 latest = matching_entries[-1]
                 stored_prompt = latest["prompt"]
                 resolved_history_prompt, _ = interpolate_prompt(stored_prompt, history_dict)
+                resolved_history_prompt = REFERENCES_PATTERN.sub(
+                    "", resolved_history_prompt
+                ).strip()
                 history_entries.append(
                     {
                         "prompt_name": latest.get("prompt_name"),

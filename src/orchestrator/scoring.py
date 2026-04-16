@@ -58,6 +58,10 @@ def extract_score(response: str, criteria_name: str) -> float | None:
             val = data[criteria_name]
             if isinstance(val, int | float):
                 return float(val)
+            if isinstance(val, dict):
+                for score_key in ("score", "value", "rating"):
+                    if score_key in val and isinstance(val[score_key], int | float):
+                        return float(val[score_key])
 
         if "scores" in data and isinstance(data["scores"], dict):
             nested = data["scores"]
@@ -65,6 +69,10 @@ def extract_score(response: str, criteria_name: str) -> float | None:
                 val = nested[criteria_name]
                 if isinstance(val, int | float):
                     return float(val)
+                if isinstance(val, dict):
+                    for score_key in ("score", "value", "rating"):
+                        if score_key in val and isinstance(val[score_key], int | float):
+                            return float(val[score_key])
     except (ValueError, TypeError):
         pass
     return None

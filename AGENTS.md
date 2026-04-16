@@ -91,6 +91,7 @@ src/
 ├── FFAI.py                    # Main wrapper class for AI clients
 ├── FFAIClientBase.py          # Abstract base class for clients
 ├── config.py                  # Pydantic-based configuration management
+├── prompt_templates.py        # YAML prompt template loader (config/prompts/)
 ├── OrderedPromptHistory.py    # Ordered prompt-response history tracking
 ├── PermanentHistory.py        # Chronological turn history
 ├── ConversationHistory.py     # Conversation management
@@ -221,7 +222,12 @@ config/
 ├── clients.yaml.example       # Example client config (safe to commit)
 ├── model_defaults.yaml        # Default model parameters
 ├── logging.yaml               # Logging configuration
-└── sample_workbook.yaml       # Sample workbook test config
+├── sample_workbook.yaml       # Sample workbook test config
+└── prompts/                   # Externalized prompt templates
+    ├── screening_planning.yaml  # Planning-phase screening prompts
+    ├── screening_skills_planning.yaml  # Per-skill planning prompts (exhaustive JD decomposition)
+    ├── screening_static.yaml    # Static evaluation screening prompts
+    └── screening_synthesis.yaml # Synthesis/ranking screening prompts
 
 scripts/
 ├── run_orchestrator.py        # Run Excel orchestrator
@@ -552,7 +558,7 @@ Generator prompts (`generator=true`) return JSON with optional `scoring_criteria
 ### Phase Rules
 
 - Planning prompts execute **sequentially** (never parallel), regardless of concurrency.
-- Planning prompts **cannot** use `{{variable}}` batch references (validated as error).
+- Planning prompts **cannot** use `{{variable}}` batch references (validated as error), except generator prompts (`generator=true`) which may reference batch variables in instructions to the LLM for generated prompt templates.
 - Planning prompts **can** use `references` for document injection and `history` for chaining.
 - Execution prompts **can** use `{{planning_prompt.response}}` to interpolate planning results.
 - If a manual scoring sheet exists, it takes priority over auto-derived criteria (logged as warning).
@@ -572,6 +578,10 @@ planning:
   generated_sequence_step: 10
   continue_on_parse_error: true
 ```
+
+Generator prompts produce large JSON outputs (scoring criteria + evaluation prompts).
+When using `--planning` mode, `create_screening_workbook.py` sets `max_tokens=16000`
+to avoid response truncation. For non-planning workbooks, the default (4096) is used.
 
 ## Evaluation Module (Scoring and Synthesis)
 
@@ -901,6 +911,7 @@ When creating a new workbook type:
 | Agent | Agentic tool-call loop | Opt-in agent mode with built-in tools, multi-round execution |
 | Screening | Document evaluation pipeline | Per-row documents, scoring rubric, synthesis ranking |
 | Screening v002 | Planning phase screening | Auto-derived scoring from LLM, generator prompts, refinement pattern |
+| Screening skills | Per-skill planning | Exhaustive JD decomposition into individual skill prompts, `--planning-prompts screening_skills_planning` |
 
 ### Workflow
 
@@ -1071,6 +1082,67 @@ Default parameters for each model (temperature, max_tokens, etc.).
 ### config/logging.yaml
 
 Logging configuration: log directory, file rotation, format.
+
+### config/prompts/
+
+Externalized prompt templates stored as YAML files. Each file defines a set of prompts for a specific use case (e.g., resume screening). When a template is provided via CLI flags, it overrides the hardcoded defaults in `scripts/sample_workbooks/screening.py`.
+
+| File | Description | CLI Flag |
+|------|-------------|----------|
+| `screening_planning.yaml` | Planning-phase prompts (analyze JD, generate criteria) | `--planning-prompts` |
+| `screening_skills_planning.yaml` | Per-skill planning prompts (exhaustive JD decomposition) | `--planning-prompts` |
+| `screening_static.yaml` | Static evaluation prompts (fixed criteria) | `--static-prompts` |
+| `screening_synthesis.yaml` | Cross-candidate synthesis and ranking | `--synthesis-prompts` |
+
+**Usage:**
+
+```bash
+# Use default (hardcoded) prompts
+python scripts/create_screening_workbook.py ./out.xlsx --jd ./jd.md --planning
+
+# Use named template from config/prompts/
+python scripts/create_screening_workbook.py ./out.xlsx --jd ./jd.md \
+    --planning --planning-prompts screening_planning
+
+# Use skills-based planning (one prompt per skill from JD)
+python scripts/create_screening_workbook.py ./out.xlsx --jd ./jd.md \
+    --planning --planning-prompts screening_skills_planning
+
+# Use custom file path
+python scripts/create_screening_workbook.py ./out.xlsx --jd ./jd.md \
+    --planning --planning-prompts ./my_custom_planning.yaml
+```
+
+**Template YAML format:**
+
+```yaml
+name: my_template
+description: "What this template does"
+prompts:
+  - sequence: 10
+    prompt_name: analyze_jd
+    prompt: |
+      Analyze the job description...
+    references: '["job_description"]'
+    phase: planning
+    generator: "true"
+```
+
+**Fallback behavior:** If a template file is not found, the hardcoded defaults are used with a log message. No error is raised.
+
+**Loading API:**
+
+```python
+from src.prompt_templates import load_prompt_template, load_synthesis_template
+
+# Load prompt specs by name or path
+prompts = load_prompt_template("screening_planning")
+
+# Load synthesis with variable substitution
+synthesis = load_synthesis_template("screening_synthesis", top_n=5)
+```
+
+**Creating new templates:** Copy an existing template YAML from `config/prompts/`, modify the prompt texts, and reference via the CLI flag. Template names correspond to filenames (e.g., `screening_planning` → `config/prompts/screening_planning.yaml`).
 
 ## Dependencies
 

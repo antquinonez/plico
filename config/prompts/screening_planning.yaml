@@ -1,0 +1,87 @@
+# Screening Planning Prompts
+# =========================
+# Planning-phase prompts for resume screening. The LLM reads the job
+# description and auto-derives evaluation criteria and prompts.
+#
+# Used by: create_screening_workbook.py --planning
+#          create_screening_manifest.py --planning
+#
+# Override: Copy and modify, then pass --planning-prompts <name_or_path>
+
+name: screening_planning
+description: "Planning-phase prompts for resume screening (auto-derive criteria from JD)"
+
+prompts:
+  - sequence: 10
+    prompt_name: analyze_jd
+    prompt: |
+      Analyze the job description provided below. Your task is to:
+
+      1. Identify 4-6 key evaluation criteria for screening candidates.
+         For each criterion, provide: criteria_name (snake_case), description,
+         scale_min (always 1), scale_max (always 10), weight (0.5-2.0 based on
+         importance), and source_prompt (the prompt_name that will extract this score).
+
+      2. Create an evaluation prompt template for each criterion. Each prompt must:
+         - Include the template variable candidate_name wrapped in double curly
+           braces (the orchestrator will substitute the actual candidate name at runtime)
+         - Reference the job description via references: ["job_description"]
+         - Depend on an extract_profile prompt via history: ["extract_profile"]
+         - Instruct the LLM to return ONLY a JSON object where the top-level key
+           is the criteria_name (matching exactly) with an integer score 1-10, plus a
+           'reasoning' key. Example for a criterion named 'skills_match':
+           {"skills_match": 8, "reasoning": "..."}
+
+      Return your response as JSON with exactly two keys:
+      - "scoring_criteria": array of criteria objects
+      - "prompts": array of prompt objects, each with prompt_name, prompt,
+        references, and history
+
+      Critical rules:
+      - Each criterion's source_prompt must exactly match a prompt_name
+        in the prompts array.
+      - Each evaluation prompt must instruct the LLM to return a JSON object
+        with the criteria_name as a top-level key containing the numeric score.
+    references: '["job_description"]'
+    notes: "Master generator: derives criteria and evaluation prompts from JD"
+    phase: planning
+    generator: "true"
+
+  - sequence: 20
+    prompt_name: refine_criteria
+    prompt: |
+      Review the scoring criteria and evaluation prompts below.
+      Refine them for:
+      - Clarity: each prompt should be unambiguous about what to evaluate
+      - Consistency: all prompts should use the same scoring scale and JSON format
+      - Reliability: prompts should elicit scores that are reproducible
+      - Completeness: ensure all important aspects of the JD are covered
+      - Weight balance: weights should reflect the JD's priorities
+
+      Return the updated JSON with the same schema (scoring_criteria + prompts).
+      You may add, remove, or modify criteria and prompts.
+      Maintain the source_prompt <-> prompt_name mapping.
+    history: '["analyze_jd"]'
+    notes: "Refinement pass: improves criteria/prompts from analyze_jd"
+    phase: planning
+    generator: "true"
+
+  - sequence: 100
+    prompt_name: extract_profile
+    prompt: |
+      Extract from {{candidate_name}}'s resume and return as structured JSON:
+      full name, contact info, education history (institution, degree, year),
+      employment history (company, title, dates, responsibilities), and
+      technical skills list.
+    references: '["job_description"]'
+    notes: "Static prompt: extracts structured profile for downstream evaluation"
+
+  - sequence: 200
+    prompt_name: overall_assessment
+    prompt: |
+      Write a 2-3 paragraph narrative assessment of {{candidate_name}} for
+      the role described in the job description. Cover strengths, concerns,
+      and overall fit. Be specific and evidence-based, referencing the
+      evaluation scores from earlier prompts.
+    history: '["extract_profile"]'
+    notes: "Static prompt: narrative assessment using all prior evaluations"

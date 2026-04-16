@@ -199,9 +199,17 @@ class Executor:
 
         for batch_idx, data_row in enumerate(orchestrator.batch_data, start=1):
             batch_name = orchestrator._resolve_batch_name(data_row, batch_idx)
+            batch_history: list[dict[str, Any]] = list(orchestrator.shared_prompt_attr_history)
+            batch_history_lock = threading.Lock()
             logger.info(f"Starting batch {batch_idx}/{total_batches}: {batch_name}")
 
-            batch_results = orchestrator._execute_single_batch(batch_idx, data_row, batch_name)
+            batch_results = orchestrator._execute_single_batch(
+                batch_idx,
+                data_row,
+                batch_name,
+                batch_history=batch_history,
+                batch_history_lock=batch_history_lock,
+            )
             results.extend(batch_results)
 
             batch_failed = sum(1 for r in batch_results if r["status"] == "failed")
@@ -243,18 +251,26 @@ class Executor:
         results_lock = threading.Lock()
         all_results: list[dict[str, Any]] = []
         failed_batches: list[int] = []
+        base_history_snapshot: list[dict[str, Any]] = list(orchestrator.shared_prompt_attr_history)
 
         def execute_single_batch(batch_idx: int, data_row: dict[str, Any]) -> list[dict[str, Any]]:
             """Execute all prompts for a single batch (runs in thread)."""
             batch_name = orchestrator._resolve_batch_name(data_row, batch_idx)
             batch_results: list[dict[str, Any]] = []
             batch_results_by_name: dict[str, dict[str, Any]] = {}
+            batch_history: list[dict[str, Any]] = list(base_history_snapshot)
+            batch_history_lock = threading.Lock()
 
             for prompt in orchestrator.prompts:
                 resolved_prompt = orchestrator._resolve_prompt_variables(prompt, data_row)
 
                 result = orchestrator._execute_prompt_with_batch(
-                    resolved_prompt, batch_idx, batch_name, batch_results_by_name
+                    resolved_prompt,
+                    batch_idx,
+                    batch_name,
+                    batch_results_by_name,
+                    batch_history=batch_history,
+                    batch_history_lock=batch_history_lock,
                 )
                 batch_results.append(result)
 

@@ -1,0 +1,181 @@
+# Screening Skills-Based Planning Prompts
+# ==========================================
+# Planning-phase prompts that exhaustively decompose a job description
+# into individual per-skill evaluation prompts. Each discrete skill,
+# technology, soft skill, and experience requirement gets its own prompt
+# and scoring criterion.
+#
+# Used by: create_screening_workbook.py --planning --planning-prompts screening_skills_planning
+#          create_screening_manifest.py --planning --planning-prompts screening_skills_planning
+#
+# Override: Copy and modify, then pass --planning-prompts <name_or_path>
+
+name: screening_skills_planning
+description: >
+  Skills-based planning prompts: exhaustively extracts every skill and
+  requirement from a JD, creating one evaluation prompt per skill.
+
+prompts:
+  - sequence: 10
+    prompt_name: analyze_jd
+    prompt: |
+      Analyze the job description below. Your task is to exhaustively
+      decompose it into individual, atomic skill and experience requirements.
+
+      EXTRACT EVERY DISCRETE REQUIREMENT including:
+      - Hard skills and technologies (e.g., Python, SQL, Tableau, Excel, AWS)
+      - Soft skills (e.g., communication, leadership, collaboration, problem-solving)
+      - Domain expertise (e.g., healthcare, finance, e-commerce)
+      - Certifications and education requirements (e.g., CPA, MBA, AWS certification)
+      - Experience requirements (e.g., "5+ years managing teams", "B2B sales experience")
+      - Methodologies and frameworks (e.g., Agile, Scrum, ITIL, Six Sigma)
+
+      Do NOT group skills together. "Python and SQL" must become TWO separate
+      criteria, not one. However, if the JD mentions "Python (pandas, Flask)",
+      treat Python as a single criterion that encompasses its ecosystem.
+
+      Return a SINGLE JSON object with exactly two keys:
+      - "scoring_criteria": array of criteria objects
+      - "prompts": array of prompt objects
+
+      IMPORTANT: The scoring system extracts scores by matching criteria_name
+      as the JSON key in the evaluation prompt response. You MUST ensure the
+      criteria_name is a simple, short identifier and that each generated
+      prompt EXPLICITLY instructs the evaluator to use that exact key.
+
+      Here is a COMPLETE example output for two skills. Your output must
+      follow this exact structure:
+
+      ```json
+      {
+        "scoring_criteria": [
+          {
+            "criteria_name": "python",
+            "description": "Evaluate Python proficiency including years of experience, async/await, type hints, testing, packaging, and complexity of production systems built.",
+            "scale_min": 1,
+            "scale_max": 10,
+            "weight": 2.0,
+            "source_prompt": "evaluate_python"
+          },
+          {
+            "criteria_name": "docker",
+            "description": "Evaluate Docker expertise including containerization, image optimization, multi-stage builds, and production deployment.",
+            "scale_min": 1,
+            "scale_max": 10,
+            "weight": 1.5,
+            "source_prompt": "evaluate_docker"
+          }
+        ],
+        "prompts": [
+          {
+            "prompt_name": "evaluate_python",
+            "prompt": "Evaluate {{candidate_name}}'s Python proficiency. Consider years of experience, use of async/await, type hints, testing, and packaging. Look for evidence of complex production systems built in Python.\n\nYou MUST respond with ONLY this JSON format:\n{\"python\": <integer 1-10>, \"reasoning\": \"<brief explanation>\"}\n\nThe key MUST be \"python\" (exactly this string). Do NOT use any other key name.",
+            "references": ["job_description"],
+            "history": ["extract_profile"]
+          },
+          {
+            "prompt_name": "evaluate_docker",
+            "prompt": "Evaluate {{candidate_name}}'s Docker expertise. Consider containerization experience, image optimization, multi-stage builds, and production deployment workflows.\n\nYou MUST respond with ONLY this JSON format:\n{\"docker\": <integer 1-10>, \"reasoning\": \"<brief explanation>\"}\n\nThe key MUST be \"docker\" (exactly this string). Do NOT use any other key name.",
+            "references": ["job_description"],
+            "history": ["extract_profile"]
+          }
+        ]
+      }
+      ```
+
+      Notice how in the example above:
+      - criteria_name "python" matches the JSON key "python" in the prompt instruction
+      - criteria_name "docker" matches the JSON key "docker" in the prompt instruction
+      - source_prompt "evaluate_python" matches prompt_name "evaluate_python"
+      - Every criterion has ALL fields including weight
+
+      WEIGHT GUIDANCE:
+      - 2.0: Core requirement mentioned multiple times or emphasized as critical
+      - 1.5: Required skill, central to the role
+      - 1.0: Required skill, standard importance
+      - 0.7: Preferred but not required
+      - 0.3: Nice-to-have, mentioned in passing
+
+      CRITICAL RULES:
+      - One skill per criterion. Never combine multiple skills into one.
+      - Every criterion MUST include weight as a float between 0.3 and 2.0.
+      - Each source_prompt must exactly match a prompt_name in the prompts array.
+      - Each prompt text MUST explicitly state the exact JSON key the evaluator
+        must use, matching criteria_name exactly. This is the most important rule.
+      - The JSON key in the response must be the criteria_name string directly,
+        NOT a nested object. Correct: {"python": 8}. Wrong: {"python": {"score": 8}}.
+      - The prompt text for each skill must be specific about what evidence to
+        look for (e.g., for "python": look for projects, years used, libraries).
+    references: '["job_description"]'
+    notes: >
+      Master generator: exhaustively extracts every skill/requirement from JD,
+      creating one prompt per skill
+    phase: planning
+    generator: "true"
+
+  - sequence: 20
+    prompt_name: refine_criteria
+    prompt: |
+      Review the per-skill scoring criteria and evaluation prompts below.
+
+      Refine them for:
+      - Deduplication: merge truly synonymous skills (e.g., "js" and "javascript")
+        but keep distinct skills separate (e.g., "python" and "django" are separate
+        unless the JD treats them as one)
+      - Clarity: each prompt should precisely define what evidence demonstrates
+        proficiency at each score level (1-10)
+      - Weight calibration: EVERY criterion MUST have a weight field (float
+        0.3–2.0). Weights should reflect the JD's actual emphasis. Skills
+        mentioned in the first paragraph or in a "Required" section should be
+        weighted higher than those in "Preferred" or "Nice to have". If a
+        criterion is missing its weight, assign one based on JD emphasis.
+      - KEY NAMING: Every prompt MUST explicitly instruct the evaluator to use
+        the exact criteria_name as the JSON response key. For example, if
+        criteria_name is "python", the prompt text must say:
+        "You MUST respond with ONLY this JSON format:
+        {\"python\": <integer 1-10>, \"reasoning\": \"<brief explanation>\"}
+        The key MUST be \"python\" (exactly this string). Do NOT use any other key name."
+        Verify every prompt follows this pattern. Fix any that do not.
+      - Completeness: verify no skills or requirements from the JD were missed
+      - Consistency: all prompts should use the same JSON format and scoring scale
+      - Reliability: prompts should be specific enough to produce reproducible scores
+      - Granularity: ensure atomic skills remain separate; do not recombine them
+
+      Return the updated JSON with the same schema (scoring_criteria + prompts).
+      You may add missing skills, remove duplicates, adjust weights, and improve
+      prompt text. Maintain the source_prompt <-> prompt_name mapping.
+    history: '["analyze_jd"]'
+    notes: >
+      Refinement pass: deduplicates, calibrates weights, and ensures
+      no skills were missed
+    phase: planning
+    generator: "true"
+
+  - sequence: 100
+    prompt_name: extract_profile
+    prompt: |
+      Extract from {{candidate_name}}'s resume and return as structured JSON:
+      full name, contact info, education history (institution, degree, year),
+      employment history (company, title, dates, responsibilities), and
+      a comprehensive skills list organized by category (technical, soft skills,
+      domain knowledge, certifications, methodologies).
+    references: '["job_description"]'
+    notes: "Static prompt: extracts structured profile for downstream per-skill evaluation"
+
+  - sequence: 200
+    prompt_name: overall_assessment
+    prompt: |
+      Write a 2-3 paragraph narrative assessment of {{candidate_name}} for
+      the role described in the job description. Cover:
+      - Top strengths: which required skills does the candidate demonstrate strongest?
+      - Key gaps: which required skills are missing or weak?
+      - Overall fit: would you recommend this candidate for the role?
+
+      Be specific and evidence-based. Reference individual skill scores from
+      the evaluation prompts. Mention concrete examples from the resume where
+      possible. If the candidate is strong in most areas but weak in one critical
+      skill, highlight that tension explicitly.
+    history: '["extract_profile"]'
+    notes: >
+      Static prompt: narrative assessment synthesizing all per-skill
+      evaluation scores

@@ -317,11 +317,18 @@ class OrchestratorBase(ABC):
             f"({', '.join(enabled_names) if enabled_names else 'none'})"
         )
 
-    def _get_isolated_ffai(self, client_name: str | None = None) -> FFAI:
-        """Create an FFAI instance with isolated client but shared history.
+    def _get_isolated_ffai(
+        self,
+        client_name: str | None = None,
+        batch_history: list[dict[str, Any]] | None = None,
+        batch_history_lock: threading.Lock | None = None,
+    ) -> FFAI:
+        """Create an FFAI instance with isolated client and scoped history.
 
         Args:
             client_name: Optional name of client from registry.
+            batch_history: Optional per-batch history list (isolates from shared history).
+            batch_history_lock: Optional lock for the per-batch history.
 
         Returns:
             FFAI instance with isolated client.
@@ -331,18 +338,30 @@ class OrchestratorBase(ABC):
             client = self.client_registry.clone(client_name)
         else:
             client = self.client.clone()
+        history = batch_history if batch_history is not None else self.shared_prompt_attr_history
+        lock = batch_history_lock if batch_history_lock is not None else self.history_lock
         return FFAI(
             client,
-            shared_prompt_attr_history=self.shared_prompt_attr_history,
-            history_lock=self.history_lock,
+            shared_prompt_attr_history=history,
+            history_lock=lock,
         )
 
-    def _record_agent_result_in_shared_history(
+    def _record_to_history(
         self,
+        history: list[dict[str, Any]],
+        lock: threading.Lock | None,
         prompt: dict[str, Any],
         response: str | None,
     ) -> None:
-        """Record successful agent responses for downstream interpolation."""
+        """Record an interaction to a specific history list.
+
+        Args:
+            history: The history list to append to.
+            lock: Optional lock for thread-safe access.
+            prompt: Prompt dictionary.
+            response: The response text.
+
+        """
         if response is None:
             return
 
@@ -355,11 +374,11 @@ class OrchestratorBase(ABC):
             "history": prompt.get("history"),
         }
 
-        if self.history_lock:
-            with self.history_lock:
-                self.shared_prompt_attr_history.append(interaction)
+        if lock:
+            with lock:
+                history.append(interaction)
         else:
-            self.shared_prompt_attr_history.append(interaction)
+            history.append(interaction)
 
     def _validate(self) -> None:
         """Run comprehensive validation on prompts, config, and dependencies.
@@ -479,6 +498,8 @@ class OrchestratorBase(ABC):
         ffai: FFAI,
         builder: Any,
         seq_label: str,
+        batch_history: list[dict[str, Any]] | None = None,
+        batch_history_lock: threading.Lock | None = None,
     ) -> dict[str, Any]:
         """Execute a prompt using the agentic tool-call loop.
 
@@ -490,15 +511,23 @@ class OrchestratorBase(ABC):
             ffai: FFAI instance for the execution.
             builder: ResultBuilder already configured with prompt metadata.
             seq_label: Label for logging (e.g. "Sequence 10").
+            batch_history: Optional per-batch history list.
+            batch_history_lock: Optional lock for the per-batch history.
 
         Returns:
             Result dictionary with tool call records, or None for fallback.
 
         """
+        history = batch_history if batch_history is not None else self.shared_prompt_attr_history
+        lock = batch_history_lock if batch_history_lock is not None else self.history_lock
+
+        def _record_to_batch_history(prompt_dict: dict[str, Any], response: str | None) -> None:
+            self._record_to_history(history, lock, prompt_dict, response)
+
         agent_executor = AgentExecutor(
             tool_registry=self.tool_registry,
             config=self.config,
-            record_history_fn=self._record_agent_result_in_shared_history,
+            record_history_fn=_record_to_batch_history,
         )
         return agent_executor.execute(
             prompt=prompt,
@@ -506,7 +535,11 @@ class OrchestratorBase(ABC):
             builder=builder,
             seq_label=seq_label,
             inject_references_fn=self._inject_references,
-            get_isolated_ffai_fn=self._get_isolated_ffai,
+            get_isolated_ffai_fn=lambda client_name=None: self._get_isolated_ffai(
+                client_name,
+                batch_history=batch_history,
+                batch_history_lock=batch_history_lock,
+            ),
         )
 
     def _execute_with_retry(
@@ -516,6 +549,8 @@ class OrchestratorBase(ABC):
         results_lock: threading.Lock | None = None,
         batch_id: int | None = None,
         batch_name: str | None = None,
+        batch_history: list[dict[str, Any]] | None = None,
+        batch_history_lock: threading.Lock | None = None,
     ) -> dict[str, Any]:
         """Execute a prompt with retry logic, supporting both regular and batch execution.
 
@@ -528,6 +563,8 @@ class OrchestratorBase(ABC):
             results_lock: Optional lock for thread-safe condition evaluation (parallel mode).
             batch_id: Optional batch identifier.
             batch_name: Optional batch name.
+            batch_history: Optional per-batch history list (isolates from shared history).
+            batch_history_lock: Optional lock for the per-batch history.
 
         Returns:
             Result dictionary.
@@ -564,10 +601,21 @@ class OrchestratorBase(ABC):
             logger.info(f"{seq_label} skipped: condition evaluated to False")
             return builder.build_dict()
 
-        ffai = self._get_isolated_ffai(client_name)
+        ffai = self._get_isolated_ffai(
+            client_name,
+            batch_history=batch_history,
+            batch_history_lock=batch_history_lock,
+        )
 
         if prompt.get("agent_mode") and self.tool_registry:
-            agent_result = self._execute_agent_mode(prompt, ffai, builder, seq_label)
+            agent_result = self._execute_agent_mode(
+                prompt,
+                ffai,
+                builder,
+                seq_label,
+                batch_history=batch_history,
+                batch_history_lock=batch_history_lock,
+            )
             if agent_result is not None:
                 return agent_result
 
@@ -696,7 +744,12 @@ class OrchestratorBase(ABC):
         return resolve_batch_name(data_row, batch_id)
 
     def _execute_single_batch(
-        self, batch_id: int, data_row: dict[str, Any], batch_name: str
+        self,
+        batch_id: int,
+        data_row: dict[str, Any],
+        batch_name: str,
+        batch_history: list[dict[str, Any]] | None = None,
+        batch_history_lock: threading.Lock | None = None,
     ) -> list[dict[str, Any]]:
         """Execute all prompts for a single batch with resolved variables.
 
@@ -704,6 +757,8 @@ class OrchestratorBase(ABC):
             batch_id: Batch ID number.
             data_row: Variable values for this batch.
             batch_name: Name for this batch.
+            batch_history: Optional per-batch history list.
+            batch_history_lock: Optional lock for the per-batch history.
 
         Returns:
             List of result dictionaries.
@@ -716,7 +771,12 @@ class OrchestratorBase(ABC):
             resolved_prompt = self._resolve_prompt_variables(prompt, data_row)
 
             result = self._execute_prompt_with_batch(
-                resolved_prompt, batch_id, batch_name, results_by_name
+                resolved_prompt,
+                batch_id,
+                batch_name,
+                results_by_name,
+                batch_history=batch_history,
+                batch_history_lock=batch_history_lock,
             )
             results.append(result)
 
@@ -737,6 +797,8 @@ class OrchestratorBase(ABC):
         batch_id: int,
         batch_name: str,
         results_by_name: dict[str, dict[str, Any]] | None = None,
+        batch_history: list[dict[str, Any]] | None = None,
+        batch_history_lock: threading.Lock | None = None,
     ) -> dict[str, Any]:
         """Execute a single prompt and tag with batch info.
 
@@ -745,13 +807,20 @@ class OrchestratorBase(ABC):
             batch_id: Batch ID number.
             batch_name: Batch name.
             results_by_name: Optional results indexed by prompt_name.
+            batch_history: Optional per-batch history list.
+            batch_history_lock: Optional lock for the per-batch history.
 
         Returns:
             Result dictionary with batch info.
 
         """
         return self._execute_with_retry(
-            prompt, results_by_name or {}, batch_id=batch_id, batch_name=batch_name
+            prompt,
+            results_by_name or {},
+            batch_id=batch_id,
+            batch_name=batch_name,
+            batch_history=batch_history,
+            batch_history_lock=batch_history_lock,
         )
 
     def execute(self) -> list[dict[str, Any]]:
