@@ -85,6 +85,36 @@ def get_retry_decorator(
     )
 
 
+def get_configured_retry_decorator():
+    """Get retry decorator configured from global config, with fallback to defaults.
+
+    Reads retry settings from the application config (``config/main.yaml``).
+    Falls back to ``get_retry_decorator()`` defaults when config is unavailable.
+
+    Returns:
+        Configured retry decorator
+
+    """
+    from .config import get_config
+
+    try:
+        app_config = get_config()
+        retry_settings = getattr(app_config, "retry", None)
+
+        if retry_settings:
+            return get_retry_decorator(
+                max_attempts=getattr(retry_settings, "max_attempts", 3),
+                min_wait=getattr(retry_settings, "min_wait_seconds", 1),
+                max_wait=getattr(retry_settings, "max_wait_seconds", 60),
+                exponential_base=getattr(retry_settings, "exponential_base", 2),
+                jitter=getattr(retry_settings, "exponential_jitter", True),
+            )
+    except Exception as e:
+        logger.debug(f"Could not load retry config: {e}")
+
+    return get_retry_decorator()
+
+
 def should_retry_exception(exception: Exception) -> bool:
     """Determine if an exception should trigger a retry.
 

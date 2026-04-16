@@ -10,6 +10,7 @@ from src.retry_utils import (
     ServiceUnavailableError,
     create_rate_limit_error,
     extract_retry_after,
+    get_configured_retry_decorator,
     get_retry_decorator,
     retry_with_backoff,
     should_retry_exception,
@@ -246,3 +247,78 @@ class TestRetryableExceptions:
 
     def test_is_tuple(self):
         assert isinstance(RETRYABLE_EXCEPTIONS, tuple)
+
+
+class TestGetConfiguredRetryDecorator:
+    def test_returns_callable(self):
+        decorator = get_configured_retry_decorator()
+        assert callable(decorator)
+
+    def test_falls_back_to_defaults_without_config(self):
+        call_count = 0
+
+        @get_configured_retry_decorator()
+        def flaky():
+            nonlocal call_count
+            call_count += 1
+            if call_count < 3:
+                raise RateLimitError("try again")
+            return "success"
+
+        result = flaky()
+        assert result == "success"
+        assert call_count == 3
+
+    def test_uses_config_values(self):
+        from unittest.mock import MagicMock, patch
+
+        mock_retry = MagicMock()
+        mock_retry.max_attempts = 2
+        mock_retry.min_wait_seconds = 0.01
+        mock_retry.max_wait_seconds = 0.01
+        mock_retry.exponential_base = 2
+        mock_retry.exponential_jitter = True
+
+        mock_config = MagicMock()
+        mock_config.retry = mock_retry
+
+        with patch("src.config.get_config", return_value=mock_config):
+            call_count = 0
+
+            @get_configured_retry_decorator()
+            def flaky():
+                nonlocal call_count
+                call_count += 1
+                if call_count < 2:
+                    raise RateLimitError("try again")
+                return "success"
+
+            result = flaky()
+            assert result == "success"
+            assert call_count == 2
+
+    def test_reraises_non_retryable(self):
+        @get_configured_retry_decorator()
+        def fail():
+            raise ValueError("not retryable")
+
+        with pytest.raises(ValueError, match="not retryable"):
+            fail()
+
+    def test_handles_config_import_error(self):
+        from unittest.mock import patch
+
+        with patch("src.config.get_config", side_effect=Exception("no config")):
+            call_count = 0
+
+            @get_configured_retry_decorator()
+            def flaky():
+                nonlocal call_count
+                call_count += 1
+                if call_count < 2:
+                    raise RateLimitError("try again")
+                return "ok"
+
+            result = flaky()
+            assert result == "ok"
+            assert call_count == 2
