@@ -1201,12 +1201,14 @@ class TestWorkbookParserWriteScoresPivot:
             "batch_name",
             "criteria_name",
             "normalized_score",
+            "weight",
+            "weighted_score",
             "scale_min",
             "scale_max",
             "description",
         ]
 
-        assert ws.max_row == 5
+        assert ws.max_row == 7
 
         rows_data = []
         for row in range(2, ws.max_row + 1):
@@ -1215,17 +1217,34 @@ class TestWorkbookParserWriteScoresPivot:
                     "batch_name": ws.cell(row=row, column=1).value,
                     "criteria_name": ws.cell(row=row, column=2).value,
                     "normalized_score": ws.cell(row=row, column=3).value,
+                    "weight": ws.cell(row=row, column=4).value,
+                    "weighted_score": ws.cell(row=row, column=5).value,
                 }
             )
 
         assert rows_data[0]["batch_name"] == "alice_chen"
         assert rows_data[0]["criteria_name"] == "skills_match"
         assert rows_data[0]["normalized_score"] == 8.0
+        assert rows_data[0]["weight"] == 1.0
+        assert rows_data[0]["weighted_score"] == 8.0
         assert rows_data[1]["batch_name"] == "alice_chen"
         assert rows_data[1]["criteria_name"] == "education"
         assert rows_data[1]["normalized_score"] == 7.0
+        assert rows_data[1]["weight"] == 0.8
+        assert rows_data[1]["weighted_score"] == pytest.approx(5.6)
         assert rows_data[2]["batch_name"] == "bob_martinez"
+        assert rows_data[2]["criteria_name"] == "skills_match"
         assert rows_data[2]["normalized_score"] == 5.0
+        assert rows_data[2]["weight"] == 1.0
+        assert rows_data[2]["weighted_score"] == 5.0
+        assert rows_data[3]["batch_name"] == "bob_martinez"
+        assert rows_data[3]["criteria_name"] == "education"
+        assert rows_data[4]["batch_name"] == "alice_chen"
+        assert rows_data[4]["criteria_name"] == "_composite"
+        assert rows_data[4]["weighted_score"] == 7.5
+        assert rows_data[5]["batch_name"] == "bob_martinez"
+        assert rows_data[5]["criteria_name"] == "_composite"
+        assert rows_data[5]["weighted_score"] == 5.5
 
     def test_pivot_returns_none_when_no_normalized_criteria(self, temp_workbook_with_data):
         from src.orchestrator.workbook_parser import WorkbookParser
@@ -1290,6 +1309,7 @@ class TestWorkbookParserWriteScoresPivot:
             {
                 "batch_name": "alice",
                 "scores": {"skills_match": 8.0, "raw_years": 12.0},
+                "composite_score": 8.0,
             }
         ]
 
@@ -1319,8 +1339,10 @@ class TestWorkbookParserWriteScoresPivot:
 
         wb = load_workbook(temp_workbook_with_data)
         ws = wb[sheet_name]
-        assert ws.max_row == 2
+        assert ws.max_row == 3
         assert ws.cell(row=2, column=2).value == "skills_match"
+        assert ws.cell(row=3, column=2).value == "_composite"
+        assert ws.cell(row=3, column=5).value == 8.0
 
     def test_pivot_deduplicates_per_batch(self, temp_workbook_with_data):
         from src.orchestrator.workbook_parser import WorkbookParser
@@ -1331,10 +1353,12 @@ class TestWorkbookParserWriteScoresPivot:
             {
                 "batch_name": "alice",
                 "scores": {"skills_match": 8.0},
+                "composite_score": 8.0,
             },
             {
                 "batch_name": "alice",
                 "scores": {"skills_match": 8.0},
+                "composite_score": 8.0,
             },
         ]
 
@@ -1355,4 +1379,6 @@ class TestWorkbookParserWriteScoresPivot:
 
         wb = load_workbook(temp_workbook_with_data)
         ws = wb[sheet_name]
-        assert ws.max_row == 2
+        assert ws.max_row == 3
+        assert ws.cell(row=2, column=2).value == "skills_match"
+        assert ws.cell(row=3, column=2).value == "_composite"

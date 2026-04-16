@@ -1084,6 +1084,8 @@ class WorkbookParser:
         "batch_name",
         "criteria_name",
         "normalized_score",
+        "weight",
+        "weighted_score",
         "scale_min",
         "scale_max",
         "description",
@@ -1099,7 +1101,9 @@ class WorkbookParser:
 
         Only criteria with score_type='normalized_score' are included.
         Each row contains one (batch_name, criteria_name) pair with the
-        extracted numeric score, scale bounds, and human description.
+        extracted numeric score, weight, weighted score, scale bounds, and
+        human description. A ``_composite`` summary row is appended per
+        batch_name carrying the weighted composite score.
 
         Args:
             results: List of result dictionaries (must include batch_name, scores).
@@ -1118,11 +1122,14 @@ class WorkbookParser:
 
         rows: list[dict[str, Any]] = []
         seen = set()
+        composites: dict[str, float | None] = {}
+
         for r in results:
             batch_name = r.get("batch_name")
             scores = r.get("scores")
             if not batch_name or not isinstance(scores, dict):
                 continue
+
             for criteria_name, value in scores.items():
                 if criteria_name not in criteria_map:
                     continue
@@ -1130,12 +1137,18 @@ class WorkbookParser:
                 if key in seen:
                     continue
                 seen.add(key)
+                composites.setdefault(batch_name, r.get("composite_score"))
                 crit = criteria_map[criteria_name]
+                weight = crit.get("weight", 1.0)
                 rows.append(
                     {
                         "batch_name": batch_name,
                         "criteria_name": criteria_name,
                         "normalized_score": value if isinstance(value, int | float) else "",
+                        "weight": weight,
+                        "weighted_score": (value * weight)
+                        if isinstance(value, int | float)
+                        else "",
                         "scale_min": crit.get("scale_min", 1),
                         "scale_max": crit.get("scale_max", 10),
                         "description": crit.get("description", ""),
@@ -1144,6 +1157,20 @@ class WorkbookParser:
 
         if not rows:
             return None
+
+        for batch_name, composite in composites.items():
+            rows.append(
+                {
+                    "batch_name": batch_name,
+                    "criteria_name": "_composite",
+                    "normalized_score": "",
+                    "weight": "",
+                    "weighted_score": composite if isinstance(composite, int | float) else "",
+                    "scale_min": "",
+                    "scale_max": "",
+                    "description": "Weighted composite score (sum of weighted scores / sum of weights)",
+                }
+            )
 
         wb = load_workbook(self.workbook_path)
 
