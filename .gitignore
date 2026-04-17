@@ -18,3 +18,4 @@ outputs/*
 .opencode/plans/*
 working_docs/*
 .coverage
+.opencode/package-lock.json

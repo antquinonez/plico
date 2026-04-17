@@ -15,7 +15,7 @@ from mistralai import Mistral
 from ..core.client_base import FFAIClientBase
 from ..retry_utils import (
     create_rate_limit_error,
-    get_retry_decorator,
+    get_configured_retry_decorator,
     should_retry_exception,
 )
 
@@ -130,29 +130,7 @@ class FFMistralSmall(FFAIClientBase):
 
         return messages
 
-    @staticmethod
-    def _get_retry_decorator():
-        """Get retry decorator configured from global config."""
-        from ..config import get_config
-
-        try:
-            app_config = get_config()
-            retry_settings = getattr(app_config, "retry", None)
-
-            if retry_settings:
-                return get_retry_decorator(
-                    max_attempts=getattr(retry_settings, "max_attempts", 3),
-                    min_wait=getattr(retry_settings, "min_wait_seconds", 1),
-                    max_wait=getattr(retry_settings, "max_wait_seconds", 60),
-                    exponential_base=getattr(retry_settings, "exponential_base", 2),
-                    jitter=getattr(retry_settings, "exponential_jitter", True),
-                )
-        except Exception as e:
-            logger.debug(f"Could not load retry config: {e}")
-
-        return get_retry_decorator()
-
-    @_get_retry_decorator()
+    @get_configured_retry_decorator()
     def generate_response(
         self,
         prompt: str,

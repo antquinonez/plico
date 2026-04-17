@@ -1203,6 +1203,8 @@ class TestWorkbookParserWriteScoresPivot:
             "normalized_score",
             "weight",
             "weighted_score",
+            "rank",
+            "percentile",
             "scale_min",
             "scale_max",
             "description",
@@ -1219,6 +1221,8 @@ class TestWorkbookParserWriteScoresPivot:
                     "normalized_score": ws.cell(row=row, column=3).value,
                     "weight": ws.cell(row=row, column=4).value,
                     "weighted_score": ws.cell(row=row, column=5).value,
+                    "rank": ws.cell(row=row, column=6).value,
+                    "percentile": ws.cell(row=row, column=7).value,
                 }
             )
 
@@ -1227,24 +1231,36 @@ class TestWorkbookParserWriteScoresPivot:
         assert rows_data[0]["normalized_score"] == 8.0
         assert rows_data[0]["weight"] == 1.0
         assert rows_data[0]["weighted_score"] == 8.0
+        assert rows_data[0]["rank"] == 1
+        assert rows_data[0]["percentile"] == 100
         assert rows_data[1]["batch_name"] == "alice_chen"
         assert rows_data[1]["criteria_name"] == "education"
         assert rows_data[1]["normalized_score"] == 7.0
         assert rows_data[1]["weight"] == 0.8
         assert rows_data[1]["weighted_score"] == pytest.approx(5.6)
+        assert rows_data[1]["rank"] == 1
+        assert rows_data[1]["percentile"] == 100
         assert rows_data[2]["batch_name"] == "bob_martinez"
         assert rows_data[2]["criteria_name"] == "skills_match"
         assert rows_data[2]["normalized_score"] == 5.0
         assert rows_data[2]["weight"] == 1.0
         assert rows_data[2]["weighted_score"] == 5.0
+        assert rows_data[2]["rank"] == 2
+        assert rows_data[2]["percentile"] == 0
         assert rows_data[3]["batch_name"] == "bob_martinez"
         assert rows_data[3]["criteria_name"] == "education"
+        assert rows_data[3]["rank"] == 2
+        assert rows_data[3]["percentile"] == 0
         assert rows_data[4]["batch_name"] == "alice_chen"
         assert rows_data[4]["criteria_name"] == "_composite"
         assert rows_data[4]["weighted_score"] == 7.5
+        assert rows_data[4]["rank"] == 1
+        assert rows_data[4]["percentile"] == 100
         assert rows_data[5]["batch_name"] == "bob_martinez"
         assert rows_data[5]["criteria_name"] == "_composite"
         assert rows_data[5]["weighted_score"] == 5.5
+        assert rows_data[5]["rank"] == 2
+        assert rows_data[5]["percentile"] == 0
 
     def test_pivot_returns_none_when_no_normalized_criteria(self, temp_workbook_with_data):
         from src.orchestrator.workbook_parser import WorkbookParser
@@ -1341,8 +1357,96 @@ class TestWorkbookParserWriteScoresPivot:
         ws = wb[sheet_name]
         assert ws.max_row == 3
         assert ws.cell(row=2, column=2).value == "skills_match"
+        assert ws.cell(row=2, column=6).value == 1
+        assert ws.cell(row=2, column=7).value == 100
         assert ws.cell(row=3, column=2).value == "_composite"
         assert ws.cell(row=3, column=5).value == 8.0
+        assert ws.cell(row=3, column=6).value == 1
+        assert ws.cell(row=3, column=7).value == 100
+
+    def test_pivot_per_criteria_ranking(self, temp_workbook_with_data):
+        from src.orchestrator.workbook_parser import WorkbookParser
+
+        builder = WorkbookParser(temp_workbook_with_data)
+
+        results = [
+            {
+                "batch_id": 1,
+                "batch_name": "alice",
+                "scores": {"python": 9.0, "docker": 5.0},
+                "composite_score": 7.0,
+            },
+            {
+                "batch_id": 2,
+                "batch_name": "bob",
+                "scores": {"python": 6.0, "docker": 8.0},
+                "composite_score": 7.0,
+            },
+            {
+                "batch_id": 3,
+                "batch_name": "carol",
+                "scores": {"python": 6.0, "docker": 5.0},
+                "composite_score": 5.5,
+            },
+        ]
+
+        scoring_criteria = [
+            {
+                "criteria_name": "python",
+                "description": "Python",
+                "scale_min": 1,
+                "scale_max": 10,
+                "weight": 1.0,
+                "source_prompt": "eval",
+                "score_type": "normalized_score",
+            },
+            {
+                "criteria_name": "docker",
+                "description": "Docker",
+                "scale_min": 1,
+                "scale_max": 10,
+                "weight": 1.0,
+                "source_prompt": "eval",
+                "score_type": "normalized_score",
+            },
+        ]
+
+        sheet_name = builder.write_scores_pivot(results, scoring_criteria)
+        assert sheet_name is not None
+
+        wb = load_workbook(temp_workbook_with_data)
+        ws = wb[sheet_name]
+
+        rows_by_key = {}
+        for row in range(2, ws.max_row + 1):
+            bn = ws.cell(row=row, column=1).value
+            cn = ws.cell(row=row, column=2).value
+            rows_by_key[(bn, cn)] = {
+                "normalized_score": ws.cell(row=row, column=3).value,
+                "rank": ws.cell(row=row, column=6).value,
+                "percentile": ws.cell(row=row, column=7).value,
+            }
+
+        assert rows_by_key[("alice", "python")]["rank"] == 1
+        assert rows_by_key[("alice", "python")]["percentile"] == 100
+        assert rows_by_key[("bob", "python")]["rank"] == 2
+        assert rows_by_key[("bob", "python")]["percentile"] == 50
+        assert rows_by_key[("carol", "python")]["rank"] == 2
+        assert rows_by_key[("carol", "python")]["percentile"] == 50
+
+        assert rows_by_key[("bob", "docker")]["rank"] == 1
+        assert rows_by_key[("bob", "docker")]["percentile"] == 100
+        assert rows_by_key[("alice", "docker")]["rank"] == 2
+        assert rows_by_key[("alice", "docker")]["percentile"] == 50
+        assert rows_by_key[("carol", "docker")]["rank"] == 2
+        assert rows_by_key[("carol", "docker")]["percentile"] == 50
+
+        assert rows_by_key[("alice", "_composite")]["rank"] == 1
+        assert rows_by_key[("alice", "_composite")]["percentile"] == 100
+        assert rows_by_key[("bob", "_composite")]["rank"] == 1
+        assert rows_by_key[("bob", "_composite")]["percentile"] == 100
+        assert rows_by_key[("carol", "_composite")]["rank"] == 2
+        assert rows_by_key[("carol", "_composite")]["percentile"] == 50
 
     def test_pivot_deduplicates_per_batch(self, temp_workbook_with_data):
         from src.orchestrator.workbook_parser import WorkbookParser
@@ -1381,4 +1485,8 @@ class TestWorkbookParserWriteScoresPivot:
         ws = wb[sheet_name]
         assert ws.max_row == 3
         assert ws.cell(row=2, column=2).value == "skills_match"
+        assert ws.cell(row=2, column=6).value == 1
+        assert ws.cell(row=2, column=7).value == 100
         assert ws.cell(row=3, column=2).value == "_composite"
+        assert ws.cell(row=3, column=6).value == 1
+        assert ws.cell(row=3, column=7).value == 100
