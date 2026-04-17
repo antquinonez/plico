@@ -24,6 +24,32 @@ That's it. Two arguments: a folder and a file.
 
 ---
 
+## Full Walkthrough
+
+Quick Start uses invoke tasks. Here's the equivalent using the scripts directly,
+with skills-based planning and synthesis:
+
+```bash
+# 1. Create the workbook with planning mode
+#    The LLM reads the JD, generates per-skill evaluation prompts and scoring criteria
+python scripts/create_screening_workbook.py ./screening.xlsx \
+    --jd ./jd.md \
+    --resumes-path ./resumes/ \
+    --planning \
+    --planning-prompts screening_skills_planning \
+    --synthesis-prompts screening_synthesis
+
+# 2. Run the batch evaluation
+python scripts/run_orchestrator.py ./screening.xlsx -c 3
+
+# 3. Inspect results
+#    - Timestamped results sheet: per-candidate scores and assessments
+#    - scores_pivot sheet: ranked criteria breakdown with composite scores
+#    - Synthesis sheet: cross-candidate comparison and recommendation
+```
+
+---
+
 ## Creation Modes
 
 Both creation scripts support optional `--resumes-path` and `--jd` arguments,
@@ -192,7 +218,7 @@ management, the LLM would generate:
 
 **How it works:**
 
-1. `analyze_jd` (planning) — extracts every discrete skill (hard, soft, domain,
+1. `analyze_jd` (planning) — extracts every discrete skill (hard, domain,
    certs, methodologies), creates one prompt + one criterion per skill
 2. `refine_criteria` (planning) — deduplicates, calibrates weights, verifies
    no skills were missed
@@ -516,8 +542,11 @@ After running, the workbook contains a timestamped results sheet with:
 - **Synthesis**: Cross-candidate ranking, comparison, and hiring recommendation
 
 For both static and planning scoring modes, a `scores_pivot` sheet provides a
-summary table with all criteria across all candidates (one row per
-candidate-criterion pair, with normalized scores, scale bounds, and descriptions).
+summary table with all criteria across all candidates. Each row is a
+candidate-criterion pair with columns: `normalized_score`, `weight`,
+`weighted_score`, `rank`, `percentile` (dense-ranked against peers on the same
+criterion), scale bounds, and description. A `_composite` summary row per
+candidate shows the weighted aggregate score and its rank/percentile.
 
 ---
 
