@@ -77,6 +77,17 @@ workbook:
         semantic_filter: 50
         query_expansion: 18
         rerank: 12
+      scoring:
+        batch_name: 18
+        criteria_name: 22
+        normalized_score: 16
+        weight: 10
+        weighted_score: 15
+        rank: 8
+        percentile: 12
+        scale_min: 10
+        scale_max: 10
+        description: 50
     word_wrap:
       enabled: true
       columns:

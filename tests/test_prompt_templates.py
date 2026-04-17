@@ -377,7 +377,7 @@ class TestScreeningSkillsPlanningTemplate:
         result = load_prompt_template("screening_skills_planning")
         profile = next(p for p in result if p.name == "extract_profile")
         assert profile.phase is None or profile.phase != "planning"
-        assert profile.references == '["job_description"]'
+        assert profile.references is None
 
     def test_skills_planning_overall_assessment_references_profile(self):
         from src.prompt_templates import load_prompt_template

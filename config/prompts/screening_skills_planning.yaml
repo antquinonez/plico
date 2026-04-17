@@ -24,7 +24,6 @@ prompts:
 
       EXTRACT EVERY DISCRETE REQUIREMENT including:
       - Hard skills and technologies (e.g., Python, SQL, Tableau, Excel, AWS)
-      - Soft skills (e.g., communication, leadership, collaboration, problem-solving)
       - Domain expertise (e.g., healthcare, finance, e-commerce)
       - Certifications and education requirements (e.g., CPA, MBA, AWS certification)
       - Experience requirements (e.g., "5+ years managing teams", "B2B sales experience")
@@ -70,14 +69,12 @@ prompts:
           {
             "prompt_name": "evaluate_python",
             "prompt": "Evaluate {{candidate_name}}'s Python proficiency. Consider years of experience, use of async/await, type hints, testing, and packaging. Look for evidence of complex production systems built in Python.\n\nYou MUST respond with ONLY this JSON format:\n{\"python\": <integer 1-10>, \"reasoning\": \"<brief explanation>\"}\n\nThe key MUST be \"python\" (exactly this string). Do NOT use any other key name.",
-            "references": ["job_description"],
-            "history": ["extract_profile"]
+            "references": ["job_description"]
           },
           {
             "prompt_name": "evaluate_docker",
             "prompt": "Evaluate {{candidate_name}}'s Docker expertise. Consider containerization experience, image optimization, multi-stage builds, and production deployment workflows.\n\nYou MUST respond with ONLY this JSON format:\n{\"docker\": <integer 1-10>, \"reasoning\": \"<brief explanation>\"}\n\nThe key MUST be \"docker\" (exactly this string). Do NOT use any other key name.",
-            "references": ["job_description"],
-            "history": ["extract_profile"]
+            "references": ["job_description"]
           }
         ]
       }
@@ -159,7 +156,6 @@ prompts:
       employment history (company, title, dates, responsibilities), and
       a comprehensive skills list organized by category (technical, soft skills,
       domain knowledge, certifications, methodologies).
-    references: '["job_description"]'
     notes: "Static prompt: extracts structured profile for downstream per-skill evaluation"
 
   - sequence: 200

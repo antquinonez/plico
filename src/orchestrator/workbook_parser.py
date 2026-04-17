@@ -1086,10 +1086,85 @@ class WorkbookParser:
         "normalized_score",
         "weight",
         "weighted_score",
+        "rank",
+        "percentile",
         "scale_min",
         "scale_max",
         "description",
     ]
+
+    @staticmethod
+    def _compute_per_criteria_ranks(
+        rows: list[dict[str, Any]],
+    ) -> dict[tuple[str, str], tuple[int, int]]:
+        """Compute per-criteria dense rank and percentile for each row.
+
+        Rows are grouped by criteria_name. Within each group, candidates are
+        ranked by normalized_score. The key is (batch_name, criteria_name)
+        and the value is (rank, percentile).
+
+        Rows with non-numeric normalized_score are excluded from ranking.
+
+        Args:
+            rows: List of row dicts with batch_name, criteria_name, normalized_score.
+
+        Returns:
+            Mapping of (batch_name, criteria_name) to (rank, percentile).
+
+        """
+        groups: dict[str, list[tuple[str, float]]] = {}
+        for row in rows:
+            score = row.get("normalized_score")
+            if not isinstance(score, int | float):
+                continue
+            cname = row["criteria_name"]
+            groups.setdefault(cname, []).append((row["batch_name"], score))
+
+        result: dict[tuple[str, str], tuple[int, int]] = {}
+        for cname, entries in groups.items():
+            total = len(entries)
+            if total == 0:
+                continue
+            sorted_scores = sorted({s for _, s in entries}, reverse=True)
+            score_to_rank = {s: i + 1 for i, s in enumerate(sorted_scores)}
+            for batch_name, score in entries:
+                rank = score_to_rank[score]
+                percentile = 100 if total == 1 else round((total - rank) / (total - 1) * 100)
+                result[(batch_name, cname)] = (rank, percentile)
+
+        return result
+
+    @staticmethod
+    def _compute_composite_ranks(
+        composites: dict[str, float | None],
+    ) -> dict[str, tuple[int, int]]:
+        """Compute dense rank and percentile from composite scores.
+
+        Args:
+            composites: Mapping of batch_name to composite_score (may be None).
+
+        Returns:
+            Mapping of batch_name to (rank, percentile).
+
+        """
+        scored = {
+            name: score for name, score in composites.items() if isinstance(score, int | float)
+        }
+        total = len(scored)
+
+        if total == 0:
+            return {}
+
+        sorted_scores = sorted(set(scored.values()), reverse=True)
+        score_to_rank = {score: i + 1 for i, score in enumerate(sorted_scores)}
+
+        result: dict[str, tuple[int, int]] = {}
+        for name, score in scored.items():
+            rank = score_to_rank[score]
+            percentile = 100 if total == 1 else round((total - rank) / (total - 1) * 100)
+            result[name] = (rank, percentile)
+
+        return result
 
     def write_scores_pivot(
         self,
@@ -1158,7 +1233,17 @@ class WorkbookParser:
         if not rows:
             return None
 
+        criteria_ranks = self._compute_per_criteria_ranks(rows)
+        composite_ranks = self._compute_composite_ranks(composites)
+
+        for row in rows:
+            key = (row["batch_name"], row["criteria_name"])
+            rank, percentile = criteria_ranks.get(key, (0, 0))
+            row["rank"] = rank
+            row["percentile"] = percentile
+
         for batch_name, composite in composites.items():
+            rank, percentile = composite_ranks.get(batch_name, (0, 0))
             rows.append(
                 {
                     "batch_name": batch_name,
@@ -1166,6 +1251,8 @@ class WorkbookParser:
                     "normalized_score": "",
                     "weight": "",
                     "weighted_score": composite if isinstance(composite, int | float) else "",
+                    "rank": rank,
+                    "percentile": percentile,
                     "scale_min": "",
                     "scale_max": "",
                     "description": "Weighted composite score (sum of weighted scores / sum of weights)",
