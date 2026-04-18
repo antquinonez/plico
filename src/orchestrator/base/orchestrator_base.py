@@ -27,6 +27,7 @@ from typing import TYPE_CHECKING, Any
 
 from ...config import get_config
 from ...core.client_base import FFAIClientBase
+from ...core.response_context import ResponseContext
 from ...FFAI import FFAI
 from ...observability import get_telemetry_manager
 from ..agent_executor import AgentExecutor
@@ -126,6 +127,10 @@ class OrchestratorBase(ABC):
 
         self.shared_prompt_attr_history: list[dict[str, Any]] = []
         self.history_lock = threading.Lock()
+        self._response_context = ResponseContext(
+            shared_prompt_attr_history=self.shared_prompt_attr_history,
+            history_lock=self.history_lock,
+        )
 
         self.batch_data: list[dict[str, Any]] = []
         self.is_batch_mode: bool = False
@@ -339,7 +344,11 @@ class OrchestratorBase(ABC):
             client = self.client_registry.clone(client_name)
         else:
             client = self.client.clone()
-        history = batch_history if batch_history is not None else self.shared_prompt_attr_history
+        history = (
+            batch_history
+            if batch_history is not None
+            else self._response_context.prompt_attr_history
+        )
         lock = batch_history_lock if batch_history_lock is not None else self.history_lock
         return FFAI(
             client,
@@ -661,7 +670,7 @@ class OrchestratorBase(ABC):
                     injected_prompt = self._inject_references(prompt)
 
                     call_start = time.monotonic()
-                    response = ffai.generate_response(
+                    result = ffai.generate_response(
                         prompt=injected_prompt,
                         prompt_name=prompt.get("prompt_name"),
                         history=prompt.get("history"),
@@ -671,21 +680,23 @@ class OrchestratorBase(ABC):
                     )
                     call_duration_ms = (time.monotonic() - call_start) * 1000
 
-                    builder.with_resolved_prompt(ffai.last_resolved_prompt or injected_prompt)
-                    builder.with_response(response)
+                    builder.with_resolved_prompt(result.resolved_prompt or injected_prompt)
+                    builder.with_response(result.response)
                     builder.with_duration(call_duration_ms)
 
-                    usage = getattr(ffai, "last_usage", None)
-                    if usage:
+                    if result.usage:
                         builder.with_usage(
-                            usage.input_tokens, usage.output_tokens, usage.total_tokens
+                            result.usage.input_tokens,
+                            result.usage.output_tokens,
+                            result.usage.total_tokens,
                         )
-                        prompt_span.set_attribute("prompt.input_tokens", usage.input_tokens)
-                        prompt_span.set_attribute("prompt.output_tokens", usage.output_tokens)
-                        prompt_span.set_attribute("prompt.total_tokens", usage.total_tokens)
-                    cost_usd = getattr(ffai, "last_cost_usd", 0.0)
-                    builder.with_cost(cost_usd)
-                    prompt_span.set_attribute("prompt.cost_usd", cost_usd)
+                        prompt_span.set_attribute("prompt.input_tokens", result.usage.input_tokens)
+                        prompt_span.set_attribute(
+                            "prompt.output_tokens", result.usage.output_tokens
+                        )
+                        prompt_span.set_attribute("prompt.total_tokens", result.usage.total_tokens)
+                    builder.with_cost(result.cost_usd)
+                    prompt_span.set_attribute("prompt.cost_usd", result.cost_usd)
                     prompt_span.set_attribute("prompt.duration_ms", call_duration_ms)
                     prompt_span.set_attribute("prompt.status", "success")
                     prompt_span.set_attribute("prompt.attempts", attempt)

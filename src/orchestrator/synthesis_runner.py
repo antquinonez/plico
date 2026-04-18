@@ -238,7 +238,7 @@ class SynthesisRunner:
             bid = entry.get("batch_id", 0)
             entry["_all_results"] = entry_results_map.get(bid, {})
 
-        orchestrator.shared_prompt_attr_history = []
+        orchestrator._response_context.clear()
         synthesis_results: list[dict[str, Any]] = []
         results_by_name: dict[str, dict[str, Any]] = {}
 
@@ -275,7 +275,7 @@ class SynthesisRunner:
                     dep_response = dep_result.get("response", "") if dep_result else ""
                     resolved_history += f"--- {dep_name} ---\n{dep_response}\n\n"
                     if dep_result:
-                        orchestrator.shared_prompt_attr_history.append(dep_result)
+                        orchestrator._response_context.record_raw(dep_result)
 
                 prompt_parts = [context]
                 if resolved_history.strip():
@@ -285,24 +285,23 @@ class SynthesisRunner:
 
                 ffai = orchestrator._get_isolated_ffai(synth_prompt.get("client"))
                 call_start = time.monotonic()
-                response = ffai.generate_response(
+                synth_result = ffai.generate_response(
                     prompt=full_prompt,
                     prompt_name=synth_prompt.get("prompt_name"),
                 )
                 call_duration_ms = (time.monotonic() - call_start) * 1000
 
-                usage = getattr(ffai, "last_usage", None)
-                input_tokens = usage.input_tokens if usage else 0
-                output_tokens = usage.output_tokens if usage else 0
-                total_tokens = usage.total_tokens if usage else 0
-                cost_usd = getattr(ffai, "last_cost_usd", 0.0)
+                input_tokens = synth_result.usage.input_tokens if synth_result.usage else 0
+                output_tokens = synth_result.usage.output_tokens if synth_result.usage else 0
+                total_tokens = synth_result.usage.total_tokens if synth_result.usage else 0
+                cost_usd = synth_result.cost_usd
 
                 result = _build_synthesis_result(
                     synth_prompt,
                     status="success",
                     evaluation_strategy=orchestrator.evaluation_strategy,
                     has_scoring=orchestrator.has_scoring,
-                    response=response,
+                    response=synth_result.response,
                     resolved_prompt=full_prompt,
                     input_tokens=input_tokens,
                     output_tokens=output_tokens,

@@ -117,8 +117,7 @@ class TestAgentExecutorExecute:
         )
 
         mock_ffai = MagicMock()
-        mock_ffai._build_prompt.return_value = ("resolved prompt", None)
-        mock_ffai.last_resolved_prompt = "resolved prompt"
+        mock_ffai.build_prompt.return_value = ("resolved prompt", set())
 
         mock_builder = MagicMock()
         mock_builder.build_dict.return_value = {"status": "failed"}
@@ -164,8 +163,7 @@ class TestAgentExecutorExecute:
         )
 
         mock_ffai = MagicMock()
-        mock_ffai._build_prompt.return_value = ("resolved prompt", None)
-        mock_ffai.last_resolved_prompt = "resolved prompt"
+        mock_ffai.build_prompt.return_value = ("resolved prompt", set())
 
         mock_builder = MagicMock()
         mock_builder.build_dict.return_value = {"status": "max_rounds_exceeded"}
@@ -204,8 +202,7 @@ class TestAgentExecutorExecute:
         executor, _ = _make_executor()
 
         mock_ffai = MagicMock()
-        mock_ffai._build_prompt.return_value = ("resolved prompt", None)
-        mock_ffai.last_resolved_prompt = "resolved prompt"
+        mock_ffai.build_prompt.return_value = ("resolved prompt", set())
 
         mock_builder = MagicMock()
         mock_builder.build_dict.return_value = {"status": "failed", "error": "boom"}
@@ -251,8 +248,7 @@ class TestAgentExecutorExecute:
         )
 
         mock_ffai = MagicMock()
-        mock_ffai._build_prompt.return_value = ("resolved prompt", None)
-        mock_ffai.last_resolved_prompt = "resolved prompt"
+        mock_ffai.build_prompt.return_value = ("resolved prompt", set())
 
         mock_builder = MagicMock()
         mock_builder.build_dict.return_value = {"status": "success"}
@@ -297,8 +293,7 @@ class TestAgentExecutorExecute:
         mock_agent_result = AgentResult(response="ok", status="success")
 
         mock_ffai = MagicMock()
-        mock_ffai._build_prompt.return_value = ("resolved", None)
-        mock_ffai.last_resolved_prompt = "resolved"
+        mock_ffai.build_prompt.return_value = ("resolved", set())
 
         mock_builder = MagicMock()
         mock_builder.build_dict.return_value = {"status": "success"}
@@ -389,7 +384,9 @@ class TestAgentExecutorValidateResponse:
 
         def mock_val_generate(*args, **kwargs):
             call_count[0] += 1
-            return "FAIL: Not good enough"
+            from src.core.response_result import ResponseResult
+
+            return ResponseResult(response="FAIL: Not good enough")
 
         mock_ffai_val = MagicMock()
         mock_ffai_val.generate_response = mock_val_generate

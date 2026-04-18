@@ -60,9 +60,9 @@ class TestFFAIGenerateResponse:
         from src.FFAI import FFAI
 
         ffai = FFAI(mock_ffmistralsmall)
-        response = ffai.generate_response("Hello!")
+        result = ffai.generate_response("Hello!")
 
-        assert response == "This is a test response."
+        assert result.response == "This is a test response."
         assert len(ffai.history) == 1
 
     def test_generate_response_with_prompt_name(self, mock_ffmistralsmall):
@@ -352,9 +352,9 @@ class TestFFAICleanResponse:
         mock_ffmistralsmall.generate_response = lambda prompt, **kwargs: "Normal response text"
 
         ffai = FFAI(mock_ffmistralsmall)
-        response = ffai.generate_response("Hello!")
+        result = ffai.generate_response("Hello!")
 
-        assert response == "Normal response text"
+        assert result.response == "Normal response text"
 
 
 class TestFFAISystemInstructions:
@@ -689,9 +689,9 @@ class TestFFAIBuildPrompt:
         from src.FFAI import FFAI
 
         ffai = FFAI(mock_ffmistralsmall)
-        ffai.prompt_attr_history = [
-            {"prompt_name": "prev", "prompt": "Previous Q", "response": "Previous A"}
-        ]
+        ffai._context.prompt_attr_history.extend(
+            [{"prompt_name": "prev", "prompt": "Previous Q", "response": "Previous A"}]
+        )
 
         result, interpolated = ffai._build_prompt("New question", history=["prev"])
 
@@ -706,7 +706,6 @@ class TestFFAIBuildPrompt:
         from src.FFAI import FFAI
 
         ffai = FFAI(mock_ffmistralsmall)
-        ffai.prompt_attr_history = []
 
         result, interpolated = ffai._build_prompt("New question", history=["missing"])
 
@@ -718,10 +717,12 @@ class TestFFAIBuildPrompt:
         from src.FFAI import FFAI
 
         ffai = FFAI(mock_ffmistralsmall)
-        ffai.prompt_attr_history = [
-            {"prompt_name": "q1", "prompt": "Q1", "response": "A1"},
-            {"prompt_name": "q2", "prompt": "Q2", "response": "A2"},
-        ]
+        ffai._context.prompt_attr_history.extend(
+            [
+                {"prompt_name": "q1", "prompt": "Q1", "response": "A1"},
+                {"prompt_name": "q2", "prompt": "Q2", "response": "A2"},
+            ]
+        )
 
         result, interpolated = ffai._build_prompt("New", history=["q1", "q2"])
 
@@ -736,10 +737,12 @@ class TestFFAIBuildPrompt:
         from src.FFAI import FFAI
 
         ffai = FFAI(mock_ffmistralsmall)
-        ffai.prompt_attr_history = [
-            {"prompt_name": "q1", "prompt": "Q1 old", "response": "A1 old"},
-            {"prompt_name": "q1", "prompt": "Q1 new", "response": "A1 new"},
-        ]
+        ffai._context.prompt_attr_history.extend(
+            [
+                {"prompt_name": "q1", "prompt": "Q1 old", "response": "A1 old"},
+                {"prompt_name": "q1", "prompt": "Q1 new", "response": "A1 new"},
+            ]
+        )
 
         result, interpolated = ffai._build_prompt("New", history=["q1"])
 
