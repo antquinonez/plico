@@ -1,0 +1,21 @@
+prompts:
+  - sequence: 1
+    prompt_name: "hello"
+    prompt: "Say hello in exactly one sentence."
+    history: []
+    condition: null
+    references: []
+
+  - sequence: 2
+    prompt_name: "followup"
+    prompt: "Now translate that into French. Keep it to one sentence."
+    history: ["hello"]
+    condition: '{{hello.status}} == "success"'
+    references: []
+
+  - sequence: 3
+    prompt_name: "summary"
+    prompt: "Summarize the conversation so far in exactly 10 words."
+    history: ["hello", "followup"]
+    condition: null
+    references: []

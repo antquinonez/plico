@@ -48,6 +48,11 @@ class PromptResult:
         extraction_trace: Per-criteria extraction trace showing format matched or failure reason.
         strategy: Evaluation strategy used.
         result_type: Result origin type ("batch" or "synthesis").
+        input_tokens: Number of tokens in the prompt sent to the model.
+        output_tokens: Number of tokens in the model's completion.
+        total_tokens: Total tokens (input + output).
+        cost_usd: Estimated cost in USD for this prompt execution.
+        duration_ms: Wall-clock duration of the LLM call in milliseconds.
 
     """
 
@@ -85,6 +90,11 @@ class PromptResult:
     extraction_trace: dict[str, str] | None = None
     strategy: str | None = None
     result_type: str = "batch"
+    input_tokens: int = 0
+    output_tokens: int = 0
+    total_tokens: int = 0
+    cost_usd: float = 0.0
+    duration_ms: float = 0.0
 
     VALID_STATUSES = ("pending", "success", "failed", "skipped", "max_rounds_exceeded")
 
@@ -130,4 +140,9 @@ class PromptResult:
             extraction_trace=data.get("extraction_trace"),
             strategy=data.get("strategy"),
             result_type=data.get("result_type", "batch"),
+            input_tokens=data.get("input_tokens", 0),
+            output_tokens=data.get("output_tokens", 0),
+            total_tokens=data.get("total_tokens", 0),
+            cost_usd=data.get("cost_usd", 0.0),
+            duration_ms=data.get("duration_ms", 0.0),
         )

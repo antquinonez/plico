@@ -24,6 +24,7 @@ import litellm
 from litellm import completion
 
 from ..core.client_base import FFAIClientBase
+from ..core.usage import TokenUsage
 from ..retry_utils import (
     extract_retry_after,
     should_retry_exception,
@@ -263,9 +264,10 @@ class FFLiteLLMClient(FFAIClientBase):
         if not prompt.strip():
             raise ValueError("Empty prompt provided")
 
-        self.conversation_history.append({"role": "user", "content": prompt})
+        self._reset_usage()
 
         messages = self._build_messages(system_instructions)
+        messages.append({"role": "user", "content": prompt})
 
         model_string = self._model_string
         if model:
@@ -296,79 +298,99 @@ class FFLiteLLMClient(FFAIClientBase):
             f"Calling LiteLLM with model={model_string}, temperature={api_params.get('temperature')}"
         )
 
-        # Get retry configuration
         retry_config = self._retry_config or {}
         max_attempts = retry_config.get("max_attempts", 3) if isinstance(retry_config, dict) else 3
 
-        # Retry loop
-        for attempt in range(1, max_attempts + 1):
-            try:
-                response = completion(**api_params)
-                message = response.choices[0].message
-                tool_calls = getattr(message, "tool_calls", None)
+        with self._trace_llm_call(model_string):
+            for attempt in range(1, max_attempts + 1):
+                try:
+                    response = completion(**api_params)
+                    self._extract_usage(response, model_string)
+                    message = response.choices[0].message
+                    tool_calls = getattr(message, "tool_calls", None)
 
-                if tool_calls:
+                    if tool_calls:
+                        assistant_response = message.content or ""
+                        self.conversation_history.append({"role": "user", "content": prompt})
+                        self.conversation_history.append(
+                            {
+                                "role": "assistant",
+                                "content": assistant_response,
+                                "tool_calls": self._serialize_tool_calls(tool_calls),
+                            }
+                        )
+                        logger.debug(
+                            "Response received with %s tool call(s)",
+                            len(tool_calls),
+                        )
+                        return assistant_response
+
                     assistant_response = message.content or ""
+
+                    self.conversation_history.append({"role": "user", "content": prompt})
                     self.conversation_history.append(
-                        {
-                            "role": "assistant",
-                            "content": assistant_response,
-                            "tool_calls": self._serialize_tool_calls(tool_calls),
-                        }
+                        {"role": "assistant", "content": assistant_response}
                     )
-                    logger.debug(
-                        "Response received with %s tool call(s)",
-                        len(tool_calls),
-                    )
+
+                    logger.debug(f"Response received: {assistant_response[:100]}...")
                     return assistant_response
 
-                assistant_response = message.content or ""
+                except Exception as e:
+                    error_str = str(e)
 
-                self.conversation_history.append(
-                    {"role": "assistant", "content": assistant_response}
-                )
+                    if attempt < max_attempts and should_retry_exception(e):
+                        retry_after = extract_retry_after(e)
 
-                logger.debug(f"Response received: {assistant_response[:100]}...")
-                return assistant_response
+                        if retry_after:
+                            wait_time = min(retry_after, 60)
+                            logger.warning(
+                                f"Rate limit hit for {model_string}. "
+                                f"Retrying in {wait_time:.1f}s (attempt {attempt}/{max_attempts})"
+                            )
+                        else:
+                            wait_time = min(2 ** (attempt - 1), 60)
+                            logger.warning(
+                                f"Transient error for {model_string}. "
+                                f"Retrying in {wait_time:.1f}s (attempt {attempt}/{max_attempts})"
+                            )
 
-            except Exception as e:
-                error_str = str(e)
+                        time.sleep(wait_time)
+                        continue
 
-                # Check if we should retry
-                if attempt < max_attempts and should_retry_exception(e):
-                    retry_after = extract_retry_after(e)
+                    if self._fallbacks:
+                        logger.warning(f"Primary model {model_string} failed, trying fallbacks")
+                        return self._try_fallbacks(messages, api_params, error_str)
 
-                    if retry_after:
-                        wait_time = min(retry_after, 60)  # Cap at 60 seconds
-                        logger.warning(
-                            f"Rate limit hit for {model_string}. "
-                            f"Retrying in {wait_time:.1f}s (attempt {attempt}/{max_attempts})"
-                        )
-                    else:
-                        # Exponential backoff: 1s, 2s, 4s...
-                        wait_time = min(2 ** (attempt - 1), 60)
-                        logger.warning(
-                            f"Transient error for {model_string}. "
-                            f"Retrying in {wait_time:.1f}s (attempt {attempt}/{max_attempts})"
-                        )
+                    logger.error(f"All retries exhausted for {model_string}: {error_str[:200]}")
+                    raise
 
-                    time.sleep(wait_time)
-                    continue
-
-                # If we get here, either:
-                # 1. This was the last attempt
-                # 2. The error is not retryable
-                # Try fallbacks if available
-                if self._fallbacks:
-                    logger.warning(f"Primary model {model_string} failed, trying fallbacks")
-                    return self._try_fallbacks(messages, api_params, error_str)
-
-                # No fallbacks, raise the error
-                logger.error(f"All retries exhausted for {model_string}: {error_str[:200]}")
-                raise
-
-        # This should never be reached, but just in case
         raise RuntimeError(f"Unexpected error in retry loop for {model_string}")
+
+    def _extract_usage(self, response: Any, model_string: str) -> None:
+        """Extract token usage and cost from a LiteLLM completion response.
+
+        Args:
+            response: The ModelResponse object from litellm.completion().
+            model_string: The model string used for the call.
+
+        """
+        usage = getattr(response, "usage", None)
+        if usage:
+            self._last_usage = TokenUsage(
+                input_tokens=getattr(usage, "prompt_tokens", 0) or 0,
+                output_tokens=getattr(usage, "completion_tokens", 0) or 0,
+                total_tokens=getattr(usage, "total_tokens", 0) or 0,
+            )
+        try:
+            self._last_cost_usd = litellm.completion_cost(response)
+        except Exception:
+            self._last_cost_usd = 0.0
+        logger.debug(
+            f"Usage for {model_string}: "
+            f"input={self._last_usage.input_tokens if self._last_usage else 0}, "
+            f"output={self._last_usage.output_tokens if self._last_usage else 0}, "
+            f"cost=${self._last_cost_usd:.6f}"
+        )
 
     def _serialize_tool_calls(self, tool_calls: list[Any]) -> list[dict[str, Any]]:
         """Convert provider tool calls into history-safe dictionaries."""
@@ -423,6 +445,7 @@ class FFLiteLLMClient(FFAIClientBase):
                 params = original_params.copy()
                 params["model"] = fallback_model
                 response = completion(**params)
+                self._extract_usage(response, fallback_model)
                 assistant_response = response.choices[0].message.content
                 self.conversation_history.append(
                     {"role": "assistant", "content": assistant_response}
@@ -472,7 +495,7 @@ class FFLiteLLMClient(FFAIClientBase):
 
         """
         logger.debug(f"Cloning client with model_string={self._model_string}")
-        return FFLiteLLMClient(
+        clone = FFLiteLLMClient(
             model_string=self._model_string,
             config=copy.deepcopy(self._config),
             api_key=self.api_key,
@@ -485,6 +508,8 @@ class FFLiteLLMClient(FFAIClientBase):
             retry_config=copy.copy(self._retry_config),
             **copy.deepcopy(self._extra_kwargs),
         )
+        clone._reset_usage()
+        return clone
 
     def __repr__(self) -> str:
         return f"FFLiteLLMClient(model_string={self._model_string!r}, model={self.model!r})"

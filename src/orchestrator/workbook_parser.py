@@ -263,6 +263,11 @@ class WorkbookParser:
         "extraction_trace",
         "strategy",
         "result_type",
+        "input_tokens",
+        "output_tokens",
+        "total_tokens",
+        "cost_usd",
+        "duration_ms",
     ]
     TOOLS_HEADERS = [
         "name",

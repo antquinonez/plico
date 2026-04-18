@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import logging
 import re
+import time
 from collections.abc import Callable
 from typing import Any
 
@@ -119,6 +120,7 @@ class AgentExecutor:
         )
 
         try:
+            agent_start = time.monotonic()
             agent_result = agent_loop.execute(
                 prompt=resolved_prompt,
                 tools=tool_names,
@@ -129,10 +131,18 @@ class AgentExecutor:
                 temperature=self.config.get("temperature"),
                 max_tokens=self.config.get("max_tokens"),
             )
+            agent_duration_ms = (time.monotonic() - agent_start) * 1000
 
             builder.with_agent_result(agent_result)
             builder.with_resolved_prompt(resolved_prompt)
             builder.with_attempts(1)
+            builder.with_duration(agent_duration_ms)
+
+            usage = getattr(ffai.client, "last_usage", None)
+            if usage:
+                builder.with_usage(usage.input_tokens, usage.output_tokens, usage.total_tokens)
+            cost_usd = getattr(ffai.client, "last_cost_usd", 0.0)
+            builder.with_cost(cost_usd)
 
             if agent_result.status == "failed":
                 logger.error(f"{seq_label} agent mode failed")

@@ -12,6 +12,7 @@ concerns.
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any
 
 from ..config import get_config
@@ -29,6 +30,11 @@ def _build_synthesis_result(
     response: str = "",
     resolved_prompt: str = "",
     error: str | None = None,
+    input_tokens: int = 0,
+    output_tokens: int = 0,
+    total_tokens: int = 0,
+    cost_usd: float = 0.0,
+    duration_ms: float = 0.0,
 ) -> dict[str, Any]:
     """Build a synthesis result dictionary.
 
@@ -81,6 +87,11 @@ def _build_synthesis_result(
         "semantic_filter": None,
         "query_expansion": None,
         "rerank": None,
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "total_tokens": total_tokens,
+        "cost_usd": cost_usd,
+        "duration_ms": duration_ms,
     }
 
 
@@ -273,10 +284,18 @@ class SynthesisRunner:
                 full_prompt = "\n\n===\n\n".join(prompt_parts)
 
                 ffai = orchestrator._get_isolated_ffai(synth_prompt.get("client"))
+                call_start = time.monotonic()
                 response = ffai.generate_response(
                     prompt=full_prompt,
                     prompt_name=synth_prompt.get("prompt_name"),
                 )
+                call_duration_ms = (time.monotonic() - call_start) * 1000
+
+                usage = getattr(ffai, "last_usage", None)
+                input_tokens = usage.input_tokens if usage else 0
+                output_tokens = usage.output_tokens if usage else 0
+                total_tokens = usage.total_tokens if usage else 0
+                cost_usd = getattr(ffai, "last_cost_usd", 0.0)
 
                 result = _build_synthesis_result(
                     synth_prompt,
@@ -285,6 +304,11 @@ class SynthesisRunner:
                     has_scoring=orchestrator.has_scoring,
                     response=response,
                     resolved_prompt=full_prompt,
+                    input_tokens=input_tokens,
+                    output_tokens=output_tokens,
+                    total_tokens=total_tokens,
+                    cost_usd=cost_usd,
+                    duration_ms=call_duration_ms,
                 )
 
             except Exception as e:
