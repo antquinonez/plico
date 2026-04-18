@@ -1542,3 +1542,154 @@ class TestConditionEvaluator:
         evaluator = ConditionEvaluator(results)
         result, _ = evaluator.evaluate('{{step1.status}} == "pending"')
         assert result is True
+
+    # ========================================
+    # _value_to_display tests
+    # ========================================
+
+    def test_value_to_display_none(self):
+        """None becomes empty string display literal."""
+        results = {"step1": self.create_results(response=None)}
+        evaluator = ConditionEvaluator(results)
+        result, error, trace = evaluator.evaluate_with_trace('{{step1.error}} == ""')
+        assert result is True
+        assert trace is not None
+
+    def test_value_to_display_bool_true(self):
+        """True becomes 'True' in display trace."""
+        results = {"step1": self.create_results(has_response=True)}
+        evaluator = ConditionEvaluator(results)
+        result, error, trace = evaluator.evaluate_with_trace("{{step1.has_response}} == True")
+        assert result is True
+        assert "True" in trace
+
+    def test_value_to_display_bool_false(self):
+        """False becomes 'False' in display trace."""
+        results = {"step1": self.create_results(has_response=False)}
+        evaluator = ConditionEvaluator(results)
+        result, error, trace = evaluator.evaluate_with_trace("{{step1.has_response}} == False")
+        assert result is True
+        assert "False" in trace
+
+    def test_value_to_display_int(self):
+        """Int becomes string representation in trace."""
+        results = {"step1": self.create_results(attempts=3)}
+        evaluator = ConditionEvaluator(results)
+        result, error, trace = evaluator.evaluate_with_trace("{{step1.attempts}} == 3")
+        assert result is True
+        assert "3" in trace
+
+    def test_value_to_display_plain_string(self):
+        """Plain string stays quoted in display trace."""
+        results = {"step1": self.create_results(status="success")}
+        evaluator = ConditionEvaluator(results)
+        result, error, trace = evaluator.evaluate_with_trace('{{step1.status}} == "success"')
+        assert result is True
+        assert '"success"' in trace
+
+    def test_value_to_display_json_dict_response(self):
+        """JSON dict response shows parsed repr in display trace."""
+        json_response = '{"score": 8.5, "pass": true}'
+        results = {"step1": self.create_results(response=json_response)}
+        evaluator = ConditionEvaluator(results)
+        result, error, trace = evaluator.evaluate_with_trace("{{step1.has_response}} == True")
+        assert result is True
+        assert "score" not in trace
+
+    def test_value_to_display_json_in_trace(self):
+        """JSON response property shows parsed dict repr in trace."""
+        json_response = '{"score": 8.5, "pass": true}'
+        results = {"step1": self.create_results(response=json_response)}
+        evaluator = ConditionEvaluator(results)
+        result, error, trace = evaluator.evaluate_with_trace('"score" in {{step1.response}}')
+        assert result is True
+        assert trace is not None
+        assert "'score'" in trace or '"score"' in trace
+
+    def test_value_to_display_markdown_json_in_trace(self):
+        """Markdown-wrapped JSON shows parsed dict repr in trace."""
+        json_response = '```json\n{"quality": 8, "notes": "good"}\n```'
+        results = {"step1": self.create_results(response=json_response)}
+        evaluator = ConditionEvaluator(results)
+        result, error, trace = evaluator.evaluate_with_trace('"quality" in {{step1.response}}')
+        assert result is True
+        assert trace is not None
+        assert "'quality'" in trace or '"quality"' in trace
+
+    def test_value_to_display_json_list_response(self):
+        """JSON list response shows parsed list repr in trace."""
+        json_response = '["alpha", "beta", "gamma"]'
+        results = {"step1": self.create_results(response=json_response)}
+        evaluator = ConditionEvaluator(results)
+        result, error, trace = evaluator.evaluate_with_trace('"alpha" in {{step1.response}}')
+        assert result is True
+        assert trace is not None
+        assert "'alpha'" in trace
+
+    def test_value_to_display_non_json_string(self):
+        """Non-JSON string stays as plain quoted string in trace."""
+        results = {"step1": self.create_results(response="just plain text")}
+        evaluator = ConditionEvaluator(results)
+        result, error, trace = evaluator.evaluate_with_trace('"plain" in {{step1.response}}')
+        assert result is True
+        assert '"just plain text"' in trace
+
+    def test_value_to_display_string_with_newlines(self):
+        """String with newlines has them escaped in display trace."""
+        results = {"step1": self.create_results(response="line1\nline2")}
+        evaluator = ConditionEvaluator(results)
+        result, error, trace = evaluator.evaluate_with_trace('"line1" in {{step1.response}}')
+        assert result is True
+        assert "\\n" in trace
+
+    # ========================================
+    # _resolve_display_trace tests
+    # ========================================
+
+    def test_resolve_display_trace_known_refs_resolved(self):
+        """Known prompt names are fully resolved in display trace."""
+        results = {"step1": self.create_results(status="success")}
+        evaluator = ConditionEvaluator(results)
+        result, error, trace = evaluator.evaluate_with_trace('{{step1.status}} == "success"')
+        assert result is True
+        assert trace is not None
+        assert "{{step1.status}}" not in trace
+        assert '"success"' in trace
+
+    def test_resolve_display_trace_unknown_ref_in_trace(self):
+        """_resolve_display_trace leaves unknown names as-is (called directly)."""
+        results = {"step1": self.create_results(status="success")}
+        evaluator = ConditionEvaluator(results)
+        trace = evaluator._resolve_display_trace(
+            '{{step1.status}} == "success" and {{unknown.status}} == "ok"'
+        )
+        assert '"success"' in trace
+        assert "{{unknown.status}}" in trace
+
+    def test_resolve_display_trace_multiple_variables(self):
+        """Display trace resolves multiple variables independently."""
+        results = {
+            "step1": self.create_results(status="success"),
+            "step2": self.create_results(attempts=3),
+        }
+        evaluator = ConditionEvaluator(results)
+        result, error, trace = evaluator.evaluate_with_trace(
+            '{{step1.status}} == "success" and {{step2.attempts}} > 1'
+        )
+        assert result is True
+        assert trace is not None
+        assert '"success"' in trace
+        assert "3" in trace
+
+    def test_resolve_display_trace_json_vs_literal(self):
+        """Display trace shows parsed JSON while evaluation uses literal."""
+        json_response = '{"quality": 8}'
+        results = {"step1": self.create_results(response=json_response)}
+        evaluator = ConditionEvaluator(results)
+
+        result, error, trace = evaluator.evaluate_with_trace(
+            'json_get({{step1.response}}, "quality") == 8'
+        )
+        assert result is True
+        assert trace is not None
+        assert "'quality'" in trace or "quality" in trace
