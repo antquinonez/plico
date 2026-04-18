@@ -358,6 +358,44 @@ class ConditionEvaluator:
             logger.error(f"Condition evaluation error: {error_msg}")
             return False, error_msg
 
+    def evaluate_with_trace(self, condition: str) -> tuple[bool, str | None, str | None]:
+        """Evaluate a condition expression and return the resolved trace.
+
+        Like evaluate(), but also returns the resolved expression showing
+        what each {{name.property}} was substituted with.
+
+        Args:
+            condition: The condition string to evaluate.
+
+        Returns:
+            Tuple of (result, error_message, resolved_trace).
+            - result: True if condition passes, False otherwise.
+            - error_message: None if successful, error string if failed.
+            - resolved_trace: The condition after variable substitution,
+              e.g. '"failed" == "success"', or None if no condition.
+
+        """
+        if not condition or not condition.strip():
+            return True, None, None
+
+        resolved = None
+        try:
+            resolved = self._resolve_variables(condition)
+            if not resolved.strip():
+                return True, None, None
+
+            tree = ast.parse(resolved, mode="eval")
+            result = self._eval_node(tree.body)
+
+            return bool(result), None, resolved
+
+        except SyntaxError as e:
+            error_msg = f"Syntax error in condition: {e}"
+            return False, error_msg, resolved
+        except Exception as e:
+            error_msg = str(e)
+            return False, error_msg, resolved
+
     def _resolve_variables(self, text: str) -> str:
         """Replace {{name.property}} with actual values.
 

@@ -404,3 +404,9 @@ def spy_client():
             return True
 
     return SpyClient()
+
+
+def make_header_index(ws):
+    """Build a name-to-index mapping from a worksheet's header row."""
+    headers = [cell.value for cell in ws[1]]
+    return {name: i for i, name in enumerate(headers) if name}

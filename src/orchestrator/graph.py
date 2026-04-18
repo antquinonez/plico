@@ -11,14 +11,54 @@ conditions.
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from typing import Any
 
 from .condition_evaluator import ConditionEvaluator
 from .state import ExecutionState, PromptNode
 
 
-def build_execution_graph(prompts: list[dict[str, Any]]) -> dict[int, PromptNode]:
+@dataclass
+class DependencyEdge:
+    """A single dependency edge in the execution graph.
+
+    Attributes:
+        from_seq: Sequence number of the dependency (upstream prompt).
+        to_seq: Sequence number of the dependent (downstream prompt).
+        source: How the edge was derived — 'history' or 'condition'.
+        condition_text: The condition expression (only set when source='condition').
+
+    """
+
+    from_seq: int
+    to_seq: int
+    source: str
+    condition_text: str | None = None
+
+
+@dataclass
+class ExecutionGraph:
+    """Complete execution graph with dependency metadata.
+
+    Attributes:
+        nodes: Dictionary mapping sequence numbers to PromptNodes.
+        edges: List of all dependency edges with source information.
+        max_level: The deepest execution level in the graph.
+
+    """
+
+    nodes: dict[int, PromptNode] = field(default_factory=dict)
+    edges: list[DependencyEdge] = field(default_factory=list)
+    max_level: int = 0
+
+
+def build_execution_graph(
+    prompts: list[dict[str, Any]],
+) -> dict[int, PromptNode]:
     """Build dependency graph for parallel execution.
+
+    Delegates to build_execution_graph_with_edges and returns only the nodes
+    dict for backward compatibility.
 
     Args:
         prompts: List of prompt dictionaries with sequence, prompt_name,
@@ -31,7 +71,31 @@ def build_execution_graph(prompts: list[dict[str, Any]]) -> dict[int, PromptNode
         ValueError: If a dependency cycle is detected.
 
     """
+    graph = build_execution_graph_with_edges(prompts)
+    return graph.nodes
+
+
+def build_execution_graph_with_edges(
+    prompts: list[dict[str, Any]],
+) -> ExecutionGraph:
+    """Build execution graph with full edge source metadata.
+
+    Like build_execution_graph but returns an ExecutionGraph containing
+    both the nodes dict and a list of DependencyEdge objects that record
+    whether each edge came from the history field or a condition expression.
+
+    Args:
+        prompts: List of prompt dictionaries.
+
+    Returns:
+        ExecutionGraph with nodes, edges, and max_level.
+
+    Raises:
+        ValueError: If a dependency cycle is detected.
+
+    """
     nodes: dict[int, PromptNode] = {}
+    edges: list[DependencyEdge] = []
     prompt_by_name: dict[str, int] = {}
 
     for prompt in prompts:
@@ -43,15 +107,36 @@ def build_execution_graph(prompts: list[dict[str, Any]]) -> dict[int, PromptNode
 
     for prompt in prompts:
         seq = prompt["sequence"]
+
         history = prompt.get("history") or []
         for dep_name in history:
             if dep_name in prompt_by_name:
-                nodes[seq].dependencies.add(prompt_by_name[dep_name])
+                dep_seq = prompt_by_name[dep_name]
+                nodes[seq].dependencies.add(dep_seq)
+                edges.append(
+                    DependencyEdge(
+                        from_seq=dep_seq,
+                        to_seq=seq,
+                        source="history",
+                    )
+                )
 
         condition = prompt.get("condition") or ""
+        seen_condition_deps: set[int] = set()
         for dep_name, _ in ConditionEvaluator.extract_referenced_names(condition):
             if dep_name in prompt_by_name:
-                nodes[seq].dependencies.add(prompt_by_name[dep_name])
+                dep_seq = prompt_by_name[dep_name]
+                nodes[seq].dependencies.add(dep_seq)
+                if dep_seq not in seen_condition_deps:
+                    seen_condition_deps.add(dep_seq)
+                    edges.append(
+                        DependencyEdge(
+                            from_seq=dep_seq,
+                            to_seq=seq,
+                            source="condition",
+                            condition_text=str(condition),
+                        )
+                    )
 
     level_cache: dict[int, int] = {}
 
@@ -72,10 +157,13 @@ def build_execution_graph(prompts: list[dict[str, Any]]) -> dict[int, PromptNode
         path.discard(seq)
         return nodes[seq].level
 
+    max_level = 0
     for seq in nodes:
-        assign_levels(seq, set())
+        lvl = assign_levels(seq, set())
+        if lvl > max_level:
+            max_level = lvl
 
-    return nodes
+    return ExecutionGraph(nodes=nodes, edges=edges, max_level=max_level)
 
 
 def get_ready_prompts(state: ExecutionState, nodes: dict[int, PromptNode]) -> list[PromptNode]:
@@ -122,3 +210,28 @@ def evaluate_condition(
     result, error = evaluator.evaluate(str(condition))
 
     return result, result, error
+
+
+def evaluate_condition_with_trace(
+    prompt: dict[str, Any],
+    results_by_name: dict[str, dict[str, Any]],
+) -> tuple[bool, str | None, str | None, str | None]:
+    """Evaluate a prompt's condition and return the resolved trace.
+
+    Args:
+        prompt: Prompt dictionary with optional condition.
+        results_by_name: Results indexed by prompt_name.
+
+    Returns:
+        Tuple of (should_execute, condition_result, condition_error, condition_trace).
+
+    """
+    condition = prompt.get("condition")
+
+    if not condition or not str(condition).strip():
+        return True, None, None, None
+
+    evaluator = ConditionEvaluator(results_by_name)
+    result, error, trace = evaluator.evaluate_with_trace(str(condition))
+
+    return result, result, error, trace

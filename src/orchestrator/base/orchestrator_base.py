@@ -489,8 +489,20 @@ class OrchestratorBase(ABC):
     def _evaluate_condition(
         self, prompt: dict[str, Any], results_by_name: dict[str, dict[str, Any]]
     ) -> tuple[bool, str | None, str | None]:
-        """Evaluate a prompt's condition."""
+        """Evaluate a prompt's condition.
+
+        Kept for ManifestOrchestrator backward compatibility.
+        New code should use _evaluate_condition_with_trace instead.
+        """
         return evaluate_condition(prompt, results_by_name)
+
+    def _evaluate_condition_with_trace(
+        self, prompt: dict[str, Any], results_by_name: dict[str, dict[str, Any]]
+    ) -> tuple[bool, str | None, str | None, str | None]:
+        """Evaluate a prompt's condition and return the resolved trace."""
+        from ..graph import evaluate_condition_with_trace
+
+        return evaluate_condition_with_trace(prompt, results_by_name)
 
     def _execute_agent_mode(
         self,
@@ -586,15 +598,16 @@ class OrchestratorBase(ABC):
 
         if results_lock:
             with results_lock:
-                should_execute, cond_result, cond_error = self._evaluate_condition(
-                    prompt, results_by_name
+                should_execute, cond_result, cond_error, cond_trace = (
+                    self._evaluate_condition_with_trace(prompt, results_by_name)
                 )
         else:
-            should_execute, cond_result, cond_error = self._evaluate_condition(
-                prompt, results_by_name
+            should_execute, cond_result, cond_error, cond_trace = (
+                self._evaluate_condition_with_trace(prompt, results_by_name)
             )
 
         builder.with_condition_result(cond_result, cond_error)
+        builder.with_condition_trace(cond_trace)
 
         if not should_execute:
             builder.as_skipped(cond_result, cond_error)

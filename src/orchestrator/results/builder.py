@@ -152,6 +152,22 @@ class ResultBuilder:
         self._result.condition_error = condition_error
         return self
 
+    def with_condition_trace(self, condition_trace: str | None) -> ResultBuilder:
+        """Set the resolved condition expression trace.
+
+        The trace shows the original condition after variable substitution,
+        e.g. '{{fetch.status}} == "success"' becomes '"failed" == "success"'.
+
+        Args:
+            condition_trace: The resolved condition expression.
+
+        Returns:
+            Self for chaining.
+
+        """
+        self._result.condition_trace = condition_trace
+        return self
+
     def with_resolved_prompt(self, resolved_prompt: str) -> ResultBuilder:
         """Set the fully resolved prompt text.
 

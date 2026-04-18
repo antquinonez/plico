@@ -99,6 +99,9 @@ Excel is Plico's human-friendly authoring surface. Define prompts as rows, depen
 python scripts/run_orchestrator.py my_analysis.xlsx
 # ... edit prompts sheet in Excel ...
 
+# Preview execution plan (no API calls)
+python scripts/run_orchestrator.py my_analysis.xlsx --explain
+
 # Option A: Run directly (results written to timestamped sheet)
 python scripts/run_orchestrator.py my_analysis.xlsx -c 4
 
@@ -464,6 +467,10 @@ Plico is declarative across multiple dimensions:
 | **Documents** | Reference names in prompts | Automatic injection/indexing |
 | **RAG** | Semantic queries per prompt | Relevant chunk retrieval |
 | **Agent Mode** | `agent_mode: true` on a prompt | Multi-turn tool-call loop (optional) |
+| **Scoring** | Scoring sheet with criteria, weights, scales | Weighted aggregation, strategy overrides, dense ranking |
+| **Synthesis** | Cross-row comparison prompts | Ranking, context budgeting, `top:N` scoping |
+| **Planning** | Generator prompts with `phase: planning` | LLM-driven criteria generation, artifact injection |
+| **Observability** | `--explain` flag on any workbook/manifest | Execution DAG, dependency edge traces, cost estimate |
 
 **Result:** You describe *what* you want; Plico figures out *how* to execute it.
 
@@ -671,6 +678,62 @@ python scripts/run_manifest.py ./manifests/my_workflow/ -c 4
 
 ---
 
+## Execution Plan Preview
+
+Preview how a workflow will execute before spending any API tokens:
+
+```bash
+# Preview a workbook
+python scripts/run_orchestrator.py analysis.xlsx --explain
+
+# Preview a manifest
+python scripts/manifest_run.py ./manifests/manifest_analysis --explain
+
+# Via invoke
+inv explain ./analysis.xlsx
+```
+
+**Output includes:**
+
+1. **Execution DAG** — prompts grouped by dependency level with annotations for history, references, client routing, conditions, and agent mode
+2. **Dependency Edges** — every edge labeled `[history]` or `[condition]`, with a `⚠` warning on implicit edges created by condition variable references (e.g., `{{fetch.status}}` silently creates a dependency on `fetch`)
+3. **Cost Estimate** — total LLM calls and estimated input tokens
+
+```
+══════════════════════════════════════════════════════════════
+  Execution Plan: screening.xlsx
+══════════════════════════════════════════════════════════════
+  Prompts: 12  |  Levels: 4  |  Batch rows: 5  |  Concurrency: 3
+
+─── Execution DAG ───
+
+  Level 0 (independent, runs first)
+  ──────────────────────────────────────────────────────────
+    Seq  10  extract_profile     →  refs: resume  |  client: fast
+    Seq  15  extract_education   →  refs: resume  |  client: fast
+
+  Level 1 (depends on Level 0+)
+  ──────────────────────────────────────────────────────────
+    Seq  20  evaluate_skills     →  hist: extract_profile  |  client: smart
+    Seq  25  evaluate_education  →  hist: extract_education  |  client: smart
+
+─── Dependency Edges ───
+
+  extract_profile → evaluate_skills  [history]
+  fetch → process  [condition] ⚠
+    condition: {{fetch.status}} == "success"
+    resolved: {{fetch.<prop>}} references prompt "fetch"
+
+─── Cost Estimate ───
+
+  12 prompts × 5 batch rows = 60 LLM calls
+  No API calls made. Run with full execution for actual costs.
+```
+
+**When to use:** Debugging dependency order, auditing condition-sourced implicit edges, estimating costs before a run, understanding parallelism.
+
+---
+
 ## Excel: A Human-Friendly Authoring Surface
 
 While manifests are the protocol, Excel is the visual authoring layer. The sheets map directly
@@ -719,9 +782,11 @@ These columns map to `prompts.yaml` fields.
 1. **Create template:** `python scripts/run_orchestrator.py analysis.xlsx`
    - Creates template workbook if file doesn't exist, then exits
 2. **Edit in Excel:** Define prompts, dependencies, conditions, and optional RAG/client fields
-3. **Run directly:** `python scripts/run_orchestrator.py analysis.xlsx -c 4`
+3. **Preview execution:** `python scripts/run_orchestrator.py analysis.xlsx --explain`
+   - Shows DAG, dependency edges, and cost estimate without API calls
+4. **Run directly:** `python scripts/run_orchestrator.py analysis.xlsx -c 4`
    - Writes results to a timestamped workbook sheet
-4. **Or export + run manifest:**
+5. **Or export + run manifest:**
    - `python scripts/export_manifest.py analysis.xlsx`
    - `python scripts/run_manifest.py ./manifests/manifest_analysis/`
 
@@ -980,7 +1045,8 @@ Plico/
 │   │   ├── state/                     # Execution state and dependency nodes
 │   │   ├── results/                   # Result builders and DTOs
 │   │   ├── condition_evaluator.py     # AST-based expression evaluator
-│   │   ├── client_registry.py         # Client factory and routing
+│   │   ├── explain.py               # Execution plan preview (DAG, edges, cost)
+│   │   ├── client_registry.py       # Client factory and routing
 │   │   ├── document_processor.py      # Document parsing and caching
 │   │   └── document_registry.py       # Document lookup and injection
 │   └── RAG/                           # Retrieval-augmented generation

@@ -621,6 +621,7 @@ class TestFFVectorStore:
         assert all("id" in d and "content" in d and "metadata" in d for d in docs)
 
 
+@requires_chromadb
 class TestFFRAGClientInit:
     """Tests for FFRAGClient initialization options."""
 

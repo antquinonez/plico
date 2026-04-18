@@ -987,9 +987,9 @@ class TestWriteResultsRoundTrip:
         assert ws.cell(row=2, column=5).value == "Hello?"
         assert ws.cell(row=2, column=6).value == "Hello? resolved"
         assert ws.cell(row=2, column=7).value == '["a"]'
-        assert ws.cell(row=2, column=12).value == "Hi!"
-        assert ws.cell(row=2, column=13).value == "success"
-        assert ws.cell(row=2, column=14).value == 2
+        assert ws.cell(row=2, column=13).value == "Hi!"
+        assert ws.cell(row=2, column=14).value == "success"
+        assert ws.cell(row=2, column=15).value == 2
 
     def test_falsy_values_written_correctly(self, temp_workbook_with_data):
         """agent_mode=False, total_rounds=0, total_llm_calls=0 should not become empty string."""

@@ -137,6 +137,7 @@ src/
 │   ├── synthesis_runner.py    # Post-execution scoring and synthesis orchestration
 │   ├── validation.py          # OrchestratorValidator with structured error reporting
 │   ├── validation_manager.py  # Validation lifecycle management
+│   ├── explain.py              # Execution plan preview and prompt preview (no API calls)
 │   ├── tool_registry.py       # Tool registration and execution for agent mode
 │   └── builtin_tools.py       # Built-in tool implementations
 │
@@ -193,6 +194,7 @@ tests/
 ├── test_document_processor.py # Document processor tests
 ├── test_document_registry.py  # Document registry tests
 ├── test_scoring.py            # Scoring rubric and aggregation tests
+├── test_explain.py            # Execution plan preview and observability tests
 ├── test_planning.py           # Planning phase orchestrator tests
 ├── test_planning_artifact_parser.py  # Planning artifact parser unit tests
 ├── test_synthesis.py          # Cross-row synthesis tests
@@ -583,6 +585,42 @@ Generator prompts produce large JSON outputs (scoring criteria + evaluation prom
 When using `--planning` mode, `create_screening_workbook.py` sets `max_tokens=16000`
 to avoid response truncation. For non-planning workbooks, the default (4096) is used.
 
+## Observability Module
+
+The observability module provides zero-cost previews and execution traces — no API calls required.
+
+### Execution Plan Preview (`--explain`)
+
+Shows the full execution DAG, dependency edges (history vs. condition), prompt metadata, and cost estimates before running any prompts.
+
+```bash
+# Preview execution plan
+python scripts/run_orchestrator.py workbook.xlsx --explain
+
+# Preview a specific resolved prompt (with variable substitution)
+python scripts/run_orchestrator.py workbook.xlsx --explain --prompt analyze
+python scripts/run_orchestrator.py workbook.xlsx --explain --prompt analyze --batch-row 1
+```
+
+### Resolved Prompt Preview (`--explain --prompt <name>`)
+
+Simulates variable substitution for a single prompt showing template variables, upstream references, history context, and injected documents — exactly as the LLM would receive it.
+
+### Condition Trace
+
+Every prompt with a `condition` field records a `condition_trace` in the result showing the resolved expression with variables replaced by actual values. Example: `{{fetch.status}} == "success"` → trace shows `"success" == "success"`.
+
+### Scoring Extraction Trace
+
+Every prompt that has scores extracted records an `extraction_trace` describing which format matched and how the score was parsed: `flat: skills_match=8`, `nested_object: scores.python.score=6`, or `key 'baz' not found in top-level keys ['foo']`.
+
+### New Result Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `condition_trace` | String or None | Resolved condition expression with values substituted |
+| `extraction_trace` | Dict or None | Per-criteria scoring extraction traces |
+
 ## Evaluation Module (Scoring and Synthesis)
 
 The evaluation module enables structured document evaluation workflows: score extraction, weighted aggregation, and cross-row comparison/ranking.
@@ -685,8 +723,9 @@ Auto-discover resumes from a folder and evaluate against a job description.
 **Create a self-contained workbook (JD + resumes baked in):**
 
 ```bash
-python scripts/create_screening_workbook.py ./screening.xlsx \
-    --resumes-path ./resumes/ --jd ./job_description.md
+python scripts/run_orchestrator.py workbook.xlsx -c 3
+python scripts/run_orchestrator.py workbook.xlsx --explain            # Preview execution plan (no API calls)
+python scripts/run_orchestrator.py workbook.xlsx --explain --prompt analyze  # Preview resolved prompt
 ```
 
 **Create a template workbook (reusable across requisitions):**

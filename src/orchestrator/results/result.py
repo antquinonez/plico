@@ -23,6 +23,7 @@ class PromptResult:
         condition: Optional condition expression.
         condition_result: Result of condition evaluation.
         condition_error: Error from condition evaluation.
+        condition_trace: Resolved condition expression showing substituted values.
         response: The AI-generated response.
         status: Execution status (pending, success, failed, skipped).
         attempts: Number of execution attempts.
@@ -44,6 +45,7 @@ class PromptResult:
         scores: Extracted scoring criteria values.
         composite_score: Weighted composite score.
         scoring_status: Scoring aggregation status.
+        extraction_trace: Per-criteria extraction trace showing format matched or failure reason.
         strategy: Evaluation strategy used.
         result_type: Result origin type ("batch" or "synthesis").
 
@@ -58,6 +60,7 @@ class PromptResult:
     condition: str | None = None
     condition_result: Any = None
     condition_error: str | None = None
+    condition_trace: str | None = None
     response: str | None = None
     status: str = "pending"
     attempts: int = 0
@@ -79,6 +82,7 @@ class PromptResult:
     scores: dict[str, Any] | None = None
     composite_score: float | None = None
     scoring_status: str | None = None
+    extraction_trace: dict[str, str] | None = None
     strategy: str | None = None
     result_type: str = "batch"
 
@@ -101,6 +105,7 @@ class PromptResult:
             condition=data.get("condition"),
             condition_result=data.get("condition_result"),
             condition_error=data.get("condition_error"),
+            condition_trace=data.get("condition_trace"),
             response=data.get("response"),
             status=data.get("status", "pending"),
             attempts=data.get("attempts", 0),
@@ -122,6 +127,7 @@ class PromptResult:
             scores=data.get("scores"),
             composite_score=data.get("composite_score"),
             scoring_status=data.get("scoring_status"),
+            extraction_trace=data.get("extraction_trace"),
             strategy=data.get("strategy"),
             result_type=data.get("result_type", "batch"),
         )

@@ -37,63 +37,98 @@ def _make_criteria(**overrides):
 class TestExtractScore:
     def test_flat_json(self):
         response = '{"skills_match": 8, "education": 7}'
-        assert extract_score(response, "skills_match") == 8.0
-        assert extract_score(response, "education") == 7.0
+        score, trace = extract_score(response, "skills_match")
+        assert score == 8.0
+        assert "flat:" in trace
+        score, trace = extract_score(response, "education")
+        assert score == 7.0
 
     def test_nested_json_scores_key(self):
         response = '{"scores": {"skills_match": 9, "experience": 6}}'
-        assert extract_score(response, "skills_match") == 9.0
-        assert extract_score(response, "experience") == 6.0
+        score, trace = extract_score(response, "skills_match")
+        assert score == 9.0
+        assert "nested:" in trace
+        score, trace = extract_score(response, "experience")
+        assert score == 6.0
 
     def test_flat_takes_priority_over_nested(self):
         response = '{"skills_match": 5, "scores": {"skills_match": 9}}'
-        assert extract_score(response, "skills_match") == 5.0
+        score, trace = extract_score(response, "skills_match")
+        assert score == 5.0
+        assert "flat:" in trace
 
     def test_missing_key_returns_none(self):
         response = '{"skills_match": 8}'
-        assert extract_score(response, "nonexistent") is None
+        score, trace = extract_score(response, "nonexistent")
+        assert score is None
+        assert "not found" in trace
 
     def test_non_numeric_value_returns_none(self):
         response = '{"skills_match": "great"}'
-        assert extract_score(response, "skills_match") is None
+        score, trace = extract_score(response, "skills_match")
+        assert score is None
 
     def test_malformed_json_returns_none(self):
         response = "not json at all"
-        assert extract_score(response, "skills_match") is None
+        score, trace = extract_score(response, "skills_match")
+        assert score is None
 
     def test_json_repair_on_malformed(self):
         response = '{"skills_match": 8, education: 7}'
-        result = extract_score(response, "skills_match")
-        assert result == 8.0
+        score, trace = extract_score(response, "skills_match")
+        assert score == 8.0
 
     def test_empty_response_returns_none(self):
-        assert extract_score("", "test") is None
-        assert extract_score(None, "test") is None
+        score, trace = extract_score("", "test")
+        assert score is None
+        assert trace == "response empty"
+        score, trace = extract_score(None, "test")
+        assert score is None
 
     def test_int_value_cast_to_float(self):
         response = '{"score": 7}'
-        assert extract_score(response, "score") == 7.0
-        assert isinstance(extract_score(response, "score"), float)
+        score, trace = extract_score(response, "score")
+        assert score == 7.0
+        assert isinstance(score, float)
 
     def test_nested_score_object(self):
         response = '{"python": {"score": 9, "reasoning": "Expert level"}}'
-        assert extract_score(response, "python") == 9.0
+        score, trace = extract_score(response, "python")
+        assert score == 9.0
+        assert "flat_object:" in trace
 
     def test_nested_value_key(self):
         response = '{"python": {"value": 8, "reasoning": "Strong"}}'
-        assert extract_score(response, "python") == 8.0
+        score, trace = extract_score(response, "python")
+        assert score == 8.0
 
     def test_nested_rating_key(self):
         response = '{"python": {"rating": 7, "reasoning": "Good"}}'
-        assert extract_score(response, "python") == 7.0
+        score, trace = extract_score(response, "python")
+        assert score == 7.0
 
     def test_nested_score_object_in_scores_key(self):
         response = '{"scores": {"python": {"score": 6, "reasoning": "OK"}}}'
-        assert extract_score(response, "python") == 6.0
+        score, trace = extract_score(response, "python")
+        assert score == 6.0
+        assert "nested_object:" in trace
 
     def test_flat_value_takes_priority_over_nested(self):
         response = '{"python": 9}'
-        assert extract_score(response, "python") == 9.0
+        score, trace = extract_score(response, "python")
+        assert score == 9.0
+
+    def test_trace_on_empty_response(self):
+        score, trace = extract_score("", "test")
+        assert score is None
+        assert trace == "response empty"
+
+    def test_trace_on_missing_key(self):
+        response = '{"foo": 1, "bar": 2}'
+        score, trace = extract_score(response, "baz")
+        assert score is None
+        assert "baz" in trace
+        assert "foo" in trace
 
 
 class TestScoringRubric:

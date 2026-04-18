@@ -14,6 +14,8 @@ import sys
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
+from tests.integration.conftest import make_header_index
+
 
 class TestBatchVariableResolution:
     """Tests for variable resolution in batch mode."""
@@ -57,11 +59,12 @@ class TestBatchVariableResolution:
 
         wb = load_workbook(integration_workbook_with_batch_data)
         ws = wb[results_sheet]
+        h = make_header_index(ws)
 
         batch_names = set()
         for row in ws.iter_rows(min_row=2, values_only=True):
-            if row[0] is not None:
-                batch_names.add(row[1])
+            if row[h["batch_id"]] is not None:
+                batch_names.add(row[h["batch_name"]])
 
         assert "north_widget_a" in batch_names, f"Should have 'north_widget_a', got {batch_names}"
         assert "south_widget_b" in batch_names, f"Should have 'south_widget_b', got {batch_names}"
@@ -156,16 +159,15 @@ class TestBatchResults:
 
         wb = load_workbook(integration_workbook_with_batch_data)
         ws = wb[results_sheet]
+        h = make_header_index(ws)
 
-        headers = [cell.value for cell in ws[1]]
-
-        assert "batch_name" in headers, "Should have batch_name column"
+        assert "batch_name" in h, "Should have batch_name column"
 
         results_count = 0
         for row in ws.iter_rows(min_row=2, values_only=True):
-            if row[0] is not None:
+            if row[h["batch_id"]] is not None:
                 results_count += 1
-                assert row[1] is not None, "batch_name should be populated"
+                assert row[h["batch_name"]] is not None, "batch_name should be populated"
 
         assert results_count == 3, f"Should have 3 results, got {results_count}"
 
@@ -236,12 +238,13 @@ class TestBatchRealAPI:
 
         wb = load_workbook(integration_workbook_with_batch_data)
         ws = wb[results_sheet]
+        h = make_header_index(ws)
 
         batch_results = {}
         for row in ws.iter_rows(min_row=2, values_only=True):
-            if row[0] is not None:
-                batch_name = row[1]
-                response = row[11]
+            if row[h["batch_id"]] is not None:
+                batch_name = row[h["batch_name"]]
+                response = row[h["response"]]
                 batch_results[batch_name] = response
 
         assert "north_widget_a" in batch_results

@@ -16,6 +16,8 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
+from tests.integration.conftest import make_header_index
+
 
 class TestOrchestratorExecution:
     """Tests for orchestrator execution behavior."""
@@ -184,10 +186,11 @@ class TestOrchestratorRetries:
 
         wb = load_workbook(integration_workbook)
         ws = wb[results_sheet]
+        h = make_header_index(ws)
 
         for row in ws.iter_rows(min_row=2, values_only=True):
-            if row[2] == 1:
-                assert row[12] == "success", "Status should be success after retry"
+            if row[h["sequence"]] == 1:
+                assert row[h["status"]] == "success", "Status should be success after retry"
                 assert call_count[0] >= 2, f"Should have retried, got {call_count[0]} calls"
                 return
 
@@ -231,13 +234,14 @@ class TestOrchestratorRetries:
 
         wb = load_workbook(integration_workbook)
         ws = wb[results_sheet]
+        h = make_header_index(ws)
 
         for row in ws.iter_rows(min_row=2, values_only=True):
-            if row[2] == 1:
-                assert row[12] == "failed", "Status should be failed"
-                assert row[14] is not None, "Should have error message"
-                assert "Permanent failure" in str(row[14]), (
-                    f"Error message should contain 'Permanent failure', got {row[14]}"
+            if row[h["sequence"]] == 1:
+                assert row[h["status"]] == "failed", "Status should be failed"
+                assert row[h["error"]] is not None, "Should have error message"
+                assert "Permanent failure" in str(row[h["error"]]), (
+                    f"Error message should contain 'Permanent failure', got {row[h['error']]}"
                 )
                 return
 
@@ -296,11 +300,15 @@ class TestOrchestratorFailurePropagation:
 
         wb = load_workbook(integration_workbook)
         ws = wb[results_sheet]
+        h = make_header_index(ws)
 
         results = {}
         for row in ws.iter_rows(min_row=2, values_only=True):
-            if row[2] is not None:
-                results[row[3]] = {"status": row[12], "response": row[11]}
+            if row[h["sequence"]] is not None:
+                results[row[h["prompt_name"]]] = {
+                    "status": row[h["status"]],
+                    "response": row[h["response"]],
+                }
 
         assert results["failing"]["status"] == "failed", "First prompt should fail"
 
@@ -343,11 +351,12 @@ class TestOrchestratorRealAPI:
 
         wb = load_workbook(integration_workbook)
         ws = wb[results_sheet]
+        h = make_header_index(ws)
 
         responses = {}
         for row in ws.iter_rows(min_row=2, values_only=True):
-            if row[2] is not None:
-                responses[row[3]] = row[11]
+            if row[h["sequence"]] is not None:
+                responses[row[h["prompt_name"]]] = row[h["response"]]
 
         assert responses["greeting"] is not None
         assert responses["math"] is not None

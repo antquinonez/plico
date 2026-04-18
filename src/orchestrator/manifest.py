@@ -340,8 +340,19 @@ class ManifestOrchestrator(OrchestratorBase):
             Tuple of (should_execute, condition_result_string, condition_error)
 
         """
-        should_execute, result, error = super()._evaluate_condition(prompt, results_by_name)
+        should_execute, result, error, _trace = super()._evaluate_condition_with_trace(
+            prompt, results_by_name
+        )
         return should_execute, str(result) if result is not None else None, error
+
+    def _evaluate_condition_with_trace(
+        self, prompt: dict[str, Any], results_by_name: dict[str, dict[str, Any]]
+    ) -> tuple[bool, str | None, str | None, str | None]:
+        """Evaluate with trace (override to return string result for backward compatibility)."""
+        should_execute, result, error, trace = super()._evaluate_condition_with_trace(
+            prompt, results_by_name
+        )
+        return should_execute, str(result) if result is not None else None, error, trace
 
     def _init_client_registry(self, clients_data: list[dict[str, Any]] | None = None) -> None:
         """Initialize client registry from manifest (backward compatibility wrapper).

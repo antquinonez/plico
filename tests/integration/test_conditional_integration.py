@@ -16,6 +16,8 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
+from tests.integration.conftest import make_header_index
+
 
 class TestConditionalExecution:
     """Tests for conditional execution."""
@@ -36,14 +38,15 @@ class TestConditionalExecution:
 
         wb = load_workbook(integration_workbook_with_conditions)
         ws = wb[results_sheet]
+        h = make_header_index(ws)
 
         results = {}
         for row in ws.iter_rows(min_row=2, values_only=True):
-            if row[2] is not None:
-                results[row[3]] = {
-                    "status": row[12],
-                    "condition": row[8],
-                    "condition_result": row[9],
+            if row[h["sequence"]] is not None:
+                results[row[h["prompt_name"]]] = {
+                    "status": row[h["status"]],
+                    "condition": row[h["condition"]],
+                    "condition_result": row[h["condition_result"]],
                 }
 
         assert results["check1"]["status"] == "success", "check1 should succeed (no condition)"
@@ -74,11 +77,19 @@ class TestConditionalExecution:
 
         wb = load_workbook(integration_workbook_with_conditions)
         ws = wb[results_sheet]
+        h = make_header_index(ws)
 
         for row in ws.iter_rows(min_row=2, values_only=True):
-            if row[0] is not None and row[1] == "combined":
-                assert row[7] == True, f"combined condition_result should be True, got {row[7]}"
-                assert row[9] == "success", f"combined should run, got status {row[9]}"
+            if row[h["prompt_name"]] == "combined":
+                assert row[h["condition_result"]] == True, (
+                    f"combined condition_result should be True, got {row[h['condition_result']]}"
+                )
+                assert row[h["status"]] == "success", (
+                    f"combined should run, got status {row[h['status']]}"
+                )
+                return
+
+        pytest.fail("combined result not found")
 
     def test_condition_implies_dependency(self, integration_workbook, spy_client):
         """
@@ -173,11 +184,12 @@ class TestConditionalExecution:
 
         wb = load_workbook(integration_workbook)
         ws = wb[results_sheet]
+        h = make_header_index(ws)
 
         results = {}
         for row in ws.iter_rows(min_row=2, values_only=True):
-            if row[2] is not None:
-                results[row[3]] = {"status": row[12]}
+            if row[h["sequence"]] is not None:
+                results[row[h["prompt_name"]]] = {"status": row[h["status"]]}
 
         assert results["check_yes"]["status"] == "success", (
             "check_yes should run (response contains 'yes')"
@@ -231,10 +243,13 @@ class TestConditionalExecution:
 
         wb = load_workbook(integration_workbook)
         ws = wb[results_sheet]
+        h = make_header_index(ws)
 
         for row in ws.iter_rows(min_row=2, values_only=True):
-            if row[2] is not None and row[3] == "check_length":
-                assert row[12] == "success", f"check_length should run (len > 10), got {row[12]}"
+            if row[h["sequence"]] is not None and row[h["prompt_name"]] == "check_length":
+                assert row[h["status"]] == "success", (
+                    f"check_length should run (len > 10), got {row[h['status']]}"
+                )
                 return
 
         pytest.fail("check_length result not found")
@@ -255,13 +270,16 @@ class TestConditionalExecution:
 
         wb = load_workbook(integration_workbook_with_conditions)
         ws = wb[results_sheet]
+        h = make_header_index(ws)
 
         for row in ws.iter_rows(min_row=2, values_only=True):
-            if row[2] is not None and row[3] == "never_runs":
-                assert row[12] == "skipped", (
-                    f"never_runs should have status 'skipped', got {row[12]}"
+            if row[h["sequence"]] is not None and row[h["prompt_name"]] == "never_runs":
+                assert row[h["status"]] == "skipped", (
+                    f"never_runs should have status 'skipped', got {row[h['status']]}"
                 )
-                assert row[9] == False, f"never_runs condition_result should be False, got {row[9]}"
+                assert row[h["condition_result"]] == False, (
+                    f"never_runs condition_result should be False, got {row[h['condition_result']]}"
+                )
                 return
 
         pytest.fail("never_runs result not found")
@@ -297,14 +315,15 @@ class TestConditionalRealAPI:
 
         wb = load_workbook(integration_workbook_with_conditions)
         ws = wb[results_sheet]
+        h = make_header_index(ws)
 
         results = {}
         for row in ws.iter_rows(min_row=2, values_only=True):
-            if row[2] is not None:
-                results[row[3]] = {
-                    "status": row[12],
-                    "response": row[11],
-                    "condition_result": row[9],
+            if row[h["sequence"]] is not None:
+                results[row[h["prompt_name"]]] = {
+                    "status": row[h["status"]],
+                    "response": row[h["response"]],
+                    "condition_result": row[h["condition_result"]],
                 }
 
         assert results["check1"]["status"] == "success"
@@ -370,11 +389,12 @@ class TestConditionalRealAPI:
 
         wb = load_workbook(workbook_path)
         ws = wb[results_sheet]
+        h = make_header_index(ws)
 
         for row in ws.iter_rows(min_row=2, values_only=True):
-            if row[2] is not None and row[3] == "generate":
-                assert "positive" in str(row[11]).lower(), (
-                    f"generate response should contain 'positive', got {row[11]}"
+            if row[h["sequence"]] is not None and row[h["prompt_name"]] == "generate":
+                assert "positive" in str(row[h["response"]]).lower(), (
+                    f"generate response should contain 'positive', got {row[h['response']]}"
                 )
                 return
 

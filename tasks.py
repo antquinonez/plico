@@ -323,6 +323,30 @@ def test_all(c: Context):
     c.run("python -m pytest tests -v -m ''", pty=PTY)
 
 
+@task
+def explain(c: Context, workbook: str, concurrency: str = "1"):
+    """Show execution plan for a workbook without running it.
+
+    Displays the execution DAG, dependency edges (including implicit ones
+    from conditions), and a cost estimate. No API calls are made.
+
+    Args:
+        workbook: Path to workbook file or manifest directory.
+        concurrency: Concurrency setting for the display.
+
+    Examples:
+        inv explain ./workbooks/my_prompts.xlsx
+        inv explain ./manifests/manifest_screening
+        inv explain ./screening.xlsx -c 4
+
+    """
+    if os.path.isdir(workbook):
+        cmd = f"python scripts/manifest_run.py {workbook} --explain -c {concurrency}"
+    else:
+        cmd = f"python scripts/run_orchestrator.py {workbook} --explain -c {concurrency}"
+    _run_cmd(c, cmd)
+
+
 # ============================================================================
 # WORKBOOK TASKS (wb namespace)
 # ============================================================================
@@ -1179,6 +1203,7 @@ screening.add_task(screening_manifest, name="manifest")
 ns = Collection()
 ns.add_task(help)
 ns.add_task(config_check, name="config-check")
+ns.add_task(explain)
 ns.add_task(lint)
 ns.add_task(format)
 ns.add_task(test)
