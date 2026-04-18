@@ -1,0 +1,9 @@
+name: "Observability Native Clients"
+description: "Validates token usage, cost estimation, and OTel spans for native clients (FFMistral, FFMistralSmall, FFGemini, FFPerplexity)."
+version: "1.0"
+source_workbook: ""
+exported_at: "2026-04-18T12:00:00"
+has_data: false
+has_clients: false
+has_documents: false
+prompt_count: 3

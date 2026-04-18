@@ -99,6 +99,9 @@ Excel is Plico's human-friendly authoring surface. Define prompts as rows, depen
 python scripts/run_orchestrator.py my_analysis.xlsx
 # ... edit prompts sheet in Excel ...
 
+# Preview execution plan (no API calls)
+python scripts/run_orchestrator.py my_analysis.xlsx --explain
+
 # Option A: Run directly (results written to timestamped sheet)
 python scripts/run_orchestrator.py my_analysis.xlsx -c 4
 
@@ -464,6 +467,12 @@ Plico is declarative across multiple dimensions:
 | **Documents** | Reference names in prompts | Automatic injection/indexing |
 | **RAG** | Semantic queries per prompt | Relevant chunk retrieval |
 | **Agent Mode** | `agent_mode: true` on a prompt | Multi-turn tool-call loop (optional) |
+| **Scoring** | Scoring sheet with criteria, weights, scales | Weighted aggregation, strategy overrides, dense ranking |
+| **Synthesis** | Cross-row comparison prompts | Ranking, context budgeting, `top:N` scoping |
+| **Planning** | Generator prompts with `phase: planning` | LLM-driven criteria generation, artifact injection |
+| **Observability** | `--explain` flag on any workbook/manifest | Execution DAG, dependency edge traces, cost estimate |
+| **Token & Cost Tracking** | Automatic on all clients | Per-prompt input/output tokens, cost, duration in parquet |
+| **OpenTelemetry** | `config/main.yaml` `observability` section | OTLP spans for run/planning/execution/prompt/LLM levels |
 
 **Result:** You describe *what* you want; Plico figures out *how* to execute it.
 
@@ -671,6 +680,62 @@ python scripts/run_manifest.py ./manifests/my_workflow/ -c 4
 
 ---
 
+## Execution Plan Preview
+
+Preview how a workflow will execute before spending any API tokens:
+
+```bash
+# Preview a workbook
+python scripts/run_orchestrator.py analysis.xlsx --explain
+
+# Preview a manifest
+python scripts/manifest_run.py ./manifests/manifest_analysis --explain
+
+# Via invoke
+inv explain ./analysis.xlsx
+```
+
+**Output includes:**
+
+1. **Execution DAG** — prompts grouped by dependency level with annotations for history, references, client routing, conditions, and agent mode
+2. **Dependency Edges** — every edge labeled `[history]` or `[condition]`, with a `⚠` warning on implicit edges created by condition variable references (e.g., `{{fetch.status}}` silently creates a dependency on `fetch`)
+3. **Cost Estimate** — total LLM calls and estimated input tokens
+
+```
+══════════════════════════════════════════════════════════════
+  Execution Plan: screening.xlsx
+══════════════════════════════════════════════════════════════
+  Prompts: 12  |  Levels: 4  |  Batch rows: 5  |  Concurrency: 3
+
+─── Execution DAG ───
+
+  Level 0 (independent, runs first)
+  ──────────────────────────────────────────────────────────
+    Seq  10  extract_profile     →  refs: resume  |  client: fast
+    Seq  15  extract_education   →  refs: resume  |  client: fast
+
+  Level 1 (depends on Level 0+)
+  ──────────────────────────────────────────────────────────
+    Seq  20  evaluate_skills     →  hist: extract_profile  |  client: smart
+    Seq  25  evaluate_education  →  hist: extract_education  |  client: smart
+
+─── Dependency Edges ───
+
+  extract_profile → evaluate_skills  [history]
+  fetch → process  [condition] ⚠
+    condition: {{fetch.status}} == "success"
+    resolved: {{fetch.<prop>}} references prompt "fetch"
+
+─── Cost Estimate ───
+
+  12 prompts × 5 batch rows = 60 LLM calls
+  No API calls made. Run with full execution for actual costs.
+```
+
+**When to use:** Debugging dependency order, auditing condition-sourced implicit edges, estimating costs before a run, understanding parallelism.
+
+---
+
 ## Excel: A Human-Friendly Authoring Surface
 
 While manifests are the protocol, Excel is the visual authoring layer. The sheets map directly
@@ -713,15 +778,20 @@ These columns map to `prompts.yaml` fields.
 | `response` | AI response text |
 | `status` | `success`, `failed`, or `skipped` |
 | `error` / `attempts` / `condition` / `condition_result` | Execution details |
+| `input_tokens` / `output_tokens` / `total_tokens` | Token counts per prompt (all native and LiteLLM clients) |
+| `cost_usd` | Estimated cost in USD per prompt |
+| `duration_ms` | Wall-clock LLM call duration in milliseconds |
 
 ### Workflow
 
 1. **Create template:** `python scripts/run_orchestrator.py analysis.xlsx`
    - Creates template workbook if file doesn't exist, then exits
 2. **Edit in Excel:** Define prompts, dependencies, conditions, and optional RAG/client fields
-3. **Run directly:** `python scripts/run_orchestrator.py analysis.xlsx -c 4`
+3. **Preview execution:** `python scripts/run_orchestrator.py analysis.xlsx --explain`
+   - Shows DAG, dependency edges, and cost estimate without API calls
+4. **Run directly:** `python scripts/run_orchestrator.py analysis.xlsx -c 4`
    - Writes results to a timestamped workbook sheet
-4. **Or export + run manifest:**
+5. **Or export + run manifest:**
    - `python scripts/export_manifest.py analysis.xlsx`
    - `python scripts/run_manifest.py ./manifests/manifest_analysis/`
 
@@ -818,6 +888,54 @@ client = FFLiteLLMClient(
 
 ---
 
+## Observability
+
+Plico automatically tracks token usage, estimated cost, and call duration for every LLM call. This data flows into both the parquet output and optional OpenTelemetry spans.
+
+### Per-Prompt Metrics
+
+Every row in the output parquet includes:
+
+| Column | Description |
+|--------|-------------|
+| `input_tokens` | Tokens sent to the model (prompt + context) |
+| `output_tokens` | Tokens in the model's response |
+| `total_tokens` | Sum of input + output |
+| `cost_usd` | Estimated cost based on model pricing |
+| `duration_ms` | Wall-clock time for the LLM call |
+
+These columns are populated for all active clients: `FFMistral`, `FFMistralSmall`, `FFGemini`, `FFPerplexity`, and `FFLiteLLMClient`.
+
+### Model Pricing
+
+Native clients (FFMistral, FFMistralSmall, FFGemini, FFPerplexity) use a built-in pricing table (`src/core/pricing.py`) with per-1K-token rates. LiteLLM clients use `litellm.completion_cost()` which queries live pricing data. Unknown models report $0.00 cost with a debug log.
+
+### OpenTelemetry Integration
+
+Plico can emit OTLP spans to any OpenTelemetry Collector for distributed tracing. Spans are emitted at multiple levels:
+
+| Span Level | Span Name Pattern | Key Attributes |
+|------------|-------------------|----------------|
+| Run | `run.<name>` | total_prompts, successful, failed |
+| Planning | `planning.<name>` | phase, generator count |
+| Execution | `execution` | concurrency, batch mode |
+| Prompt | `prompt.<prompt_name>` | status, attempts, condition |
+| LLM call | `llm.<client_class>` | model, input_tokens, output_tokens, cost_usd |
+
+**Configuration** (`config/main.yaml`):
+
+```yaml
+observability:
+  enabled: false
+  otlp:
+    endpoint: "localhost:4317"
+    insecure: true
+```
+
+**Zero overhead when disabled.** If `observability.enabled` is `false` or the OTel packages are not installed, all span creation is replaced with no-op context managers — no performance impact, no hard dependency.
+
+---
+
 ## Architecture
 
 ```
@@ -861,6 +979,7 @@ client = FFLiteLLMClient(
 |   +-- FFLiteLLMClient (100+ providers via LiteLLM)                                               |
 |   +-- FFMistral, FFAnthropic, FFGemini, FFPerplexity                                             |
 |   +-- FFAzureClientBase --> FFAzureMistral, FFAzurePhi, ...                                      |
+|   +-- Token usage, cost estimation, OTel spans (per LLM call)                                    |
 |                                                                                                  |
 +------------------------------------------------+-------------------------------------------------+
                                                  |
@@ -965,6 +1084,13 @@ Plico/
 │   ├── FFAIClientBase.py              # Client abstract base class
 │   ├── config.py                      # Pydantic-settings configuration
 │   ├── retry_utils.py                 # Retry decorators and rate-limit handling
+│   ├── core/                          # Core abstractions
+│   │   ├── client_base.py             # FFAIClientBase with usage tracking + OTel spans
+│   │   ├── usage.py                   # TokenUsage dataclass
+│   │   ├── pricing.py                 # Model pricing registry for cost estimation
+│   │   └── history/                   # Ordered, permanent, conversation history
+│   ├── observability/                 # Observability (OTel spans, telemetry)
+│   │   └── telemetry.py              # TelemetryManager with NoOp fallback
 │   ├── agent/                         # Agentic execution (opt-in)
 │   │   ├── agent_loop.py              # Native multi-round tool-call loop
 │   │   └── agent_result.py            # AgentResult, ToolCallRecord dataclasses
@@ -980,7 +1106,8 @@ Plico/
 │   │   ├── state/                     # Execution state and dependency nodes
 │   │   ├── results/                   # Result builders and DTOs
 │   │   ├── condition_evaluator.py     # AST-based expression evaluator
-│   │   ├── client_registry.py         # Client factory and routing
+│   │   ├── explain.py               # Execution plan preview (DAG, edges, cost)
+│   │   ├── client_registry.py       # Client factory and routing
 │   │   ├── document_processor.py      # Document parsing and caching
 │   │   └── document_registry.py       # Document lookup and injection
 │   └── RAG/                           # Retrieval-augmented generation
@@ -1108,6 +1235,14 @@ The central configuration file. Key sections:
 |---------|---------|-------------|
 | `document_processor.checksum_length` | `8` | SHA256 prefix length for cache invalidation |
 | `document_processor.text_extensions` | `.txt`, `.md`, `.py`, ... | Recognized text file extensions |
+
+**Observability** — token tracking, cost estimation, and OpenTelemetry:
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `observability.enabled` | `false` | Enable/disable observability (zero overhead when disabled) |
+| `observability.otlp.endpoint` | `"localhost:4317"` | OTLP gRPC collector endpoint |
+| `observability.otlp.insecure` | `true` | Use insecure (non-TLS) connection |
 
 ### config/clients.yaml
 

@@ -65,6 +65,7 @@ def _load_all_configs() -> dict[str, Any]:
         "clients": clients_yaml,
         "model_defaults": _load_yaml_file("model_defaults.yaml").get("model_defaults", {}),
         "sample": _load_yaml_file("sample_workbook.yaml").get("sample_workbooks", {}),
+        "observability": _load_yaml_file("main.yaml").get("observability", {}),
     }
 
 
@@ -459,6 +460,24 @@ class SampleConfig(BaseSettings):
     sample_clients: dict[str, SampleClientConfig] = Field(default_factory=dict)
 
 
+class OTelConfig(BaseSettings):
+    """OpenTelemetry configuration."""
+
+    service_name: str = "plico"
+    endpoint: str = "http://localhost:4317"
+    export_traces: bool = True
+    insecure: bool = True
+
+
+class ObservabilityConfig(BaseSettings):
+    """Observability configuration for token tracking, cost, and telemetry."""
+
+    enabled: bool = False
+    otel: OTelConfig = Field(default_factory=OTelConfig)
+    token_tracking: bool = True
+    cost_tracking: bool = True
+
+
 class Config(BaseSettings):
     """Main configuration class."""
 
@@ -481,6 +500,7 @@ class Config(BaseSettings):
     evaluation: EvaluationConfig = Field(default_factory=EvaluationConfig)
     model_defaults: ModelDefaultsConfig = Field(default_factory=ModelDefaultsConfig)
     sample: SampleConfig = Field(default_factory=SampleConfig)
+    observability: ObservabilityConfig = Field(default_factory=ObservabilityConfig)
 
     @model_validator(mode="before")
     @classmethod

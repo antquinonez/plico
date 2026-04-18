@@ -142,6 +142,8 @@ class FFPerplexity(FFAIClientBase):
 
         logger.debug(f"Generating response for prompt: {prompt}")
 
+        self._reset_usage()
+
         used_model = model or self.model or "sonar"
 
         used_max_tokens = None
@@ -180,86 +182,90 @@ class FFPerplexity(FFAIClientBase):
         )
 
         try:
-            self.conversation_history.append({"role": "user", "content": prompt})
+            with self._trace_llm_call(used_model):
+                messages = self._convert_history_to_messages()
+                messages.append({"role": "user", "content": prompt})
 
-            messages = self._convert_history_to_messages()
+                if system_instructions:
+                    messages = [m for m in messages if m["role"] != "system"]
+                    messages.insert(0, {"role": "system", "content": system_instructions})
 
-            if system_instructions:
-                messages = [m for m in messages if m["role"] != "system"]
-                messages.insert(0, {"role": "system", "content": system_instructions})
+                api_params: dict[str, Any] = {
+                    "model": used_model,
+                    "messages": messages,
+                    "max_tokens": used_max_tokens,
+                    "temperature": used_temperature,
+                }
 
-            api_params: dict[str, Any] = {
-                "model": used_model,
-                "messages": messages,
-                "max_tokens": used_max_tokens,
-                "temperature": used_temperature,
-            }
+                if top_p is not None and 0 <= float(top_p) <= 1:
+                    api_params["top_p"] = float(top_p)
 
-            if top_p is not None and 0 <= float(top_p) <= 1:
-                api_params["top_p"] = float(top_p)
+                if presence_penalty is not None:
+                    api_params["presence_penalty"] = float(presence_penalty)
 
-            if presence_penalty is not None:
-                api_params["presence_penalty"] = float(presence_penalty)
+                if frequency_penalty is not None:
+                    api_params["frequency_penalty"] = float(frequency_penalty)
 
-            if frequency_penalty is not None:
-                api_params["frequency_penalty"] = float(frequency_penalty)
+                if stop is not None:
+                    if isinstance(stop, (list, tuple, set)):
+                        api_params["stop"] = list(stop)
+                    elif isinstance(stop, str):
+                        api_params["stop"] = [stop]
 
-            if stop is not None:
-                if isinstance(stop, (list, tuple, set)):
-                    api_params["stop"] = list(stop)
-                elif isinstance(stop, str):
-                    api_params["stop"] = [stop]
+                if response_format:
+                    if isinstance(response_format, dict):
+                        api_params["response_format"] = response_format
+                    elif isinstance(response_format, str) and "json" in response_format.lower():
+                        api_params["response_format"] = {"type": "json_object"}
 
-            if response_format:
-                if isinstance(response_format, dict):
-                    api_params["response_format"] = response_format
-                elif isinstance(response_format, str) and "json" in response_format.lower():
-                    api_params["response_format"] = {"type": "json_object"}
+                if tools and isinstance(tools, list):
+                    api_params["tools"] = tools
 
-            if tools and isinstance(tools, list):
-                api_params["tools"] = tools
+                    if tool_choice:
+                        api_params["tool_choice"] = tool_choice
 
-                if tool_choice:
-                    api_params["tool_choice"] = tool_choice
+                logger.debug(f"Calling Perplexity API with params: {api_params}")
 
-            logger.debug(f"Calling Perplexity API with params: {api_params}")
+                response = self.client.chat.completions.create(**api_params)
 
-            response = self.client.chat.completions.create(**api_params)
+                self._extract_token_usage(response, used_model)
 
-            if (
-                hasattr(response.choices[0].message, "tool_calls")
-                and response.choices[0].message.tool_calls
-            ):
-                assistant_response = response.choices[0].message.content or ""
-                tool_calls = response.choices[0].message.tool_calls
+                self.conversation_history.append({"role": "user", "content": prompt})
 
-                self.conversation_history.append(
-                    {
-                        "role": "assistant",
-                        "content": assistant_response,
-                        "tool_calls": [
-                            {
-                                "id": tc.id,
-                                "function": {
-                                    "name": tc.function.name,
-                                    "arguments": tc.function.arguments,
-                                },
-                            }
-                            for tc in tool_calls
-                        ],
-                    }
-                )
+                if (
+                    hasattr(response.choices[0].message, "tool_calls")
+                    and response.choices[0].message.tool_calls
+                ):
+                    assistant_response = response.choices[0].message.content or ""
+                    tool_calls = response.choices[0].message.tool_calls
 
-                return f"{assistant_response}\n[Tool calls detected: {len(tool_calls)}]"
-            else:
-                assistant_response = response.choices[0].message.content
+                    self.conversation_history.append(
+                        {
+                            "role": "assistant",
+                            "content": assistant_response,
+                            "tool_calls": [
+                                {
+                                    "id": tc.id,
+                                    "function": {
+                                        "name": tc.function.name,
+                                        "arguments": tc.function.arguments,
+                                    },
+                                }
+                                for tc in tool_calls
+                            ],
+                        }
+                    )
 
-                self.conversation_history.append(
-                    {"role": "assistant", "content": assistant_response}
-                )
+                    return f"{assistant_response}\n[Tool calls detected: {len(tool_calls)}]"
+                else:
+                    assistant_response = response.choices[0].message.content
 
-                logger.info("Response generated successfully")
-                return assistant_response
+                    self.conversation_history.append(
+                        {"role": "assistant", "content": assistant_response}
+                    )
+
+                    logger.info("Response generated successfully")
+                    return assistant_response
 
         except Exception as e:
             logger.error("Problem with response generation")

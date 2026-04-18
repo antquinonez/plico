@@ -19,3 +19,4 @@ outputs/*
 working_docs/*
 .coverage
 .opencode/package-lock.json
+articles/*

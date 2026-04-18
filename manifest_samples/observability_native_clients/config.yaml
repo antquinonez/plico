@@ -1,0 +1,5 @@
+client_type: "mistral-small"
+temperature: 0.3
+max_tokens: 256
+max_retries: 2
+system_instructions: "You are a concise assistant. Follow instructions exactly."

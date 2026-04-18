@@ -358,6 +358,45 @@ class ConditionEvaluator:
             logger.error(f"Condition evaluation error: {error_msg}")
             return False, error_msg
 
+    def evaluate_with_trace(self, condition: str) -> tuple[bool, str | None, str | None]:
+        """Evaluate a condition expression and return the resolved trace.
+
+        Like evaluate(), but also returns the resolved expression showing
+        what each {{name.property}} was substituted with.
+
+        Args:
+            condition: The condition string to evaluate.
+
+        Returns:
+            Tuple of (result, error_message, resolved_trace).
+            - result: True if condition passes, False otherwise.
+            - error_message: None if successful, error string if failed.
+            - resolved_trace: The condition after variable substitution,
+              e.g. '"failed" == "success"', or None if no condition.
+
+        """
+        if not condition or not condition.strip():
+            return True, None, None
+
+        resolved = None
+        try:
+            resolved = self._resolve_variables(condition)
+            if not resolved.strip():
+                return True, None, None
+
+            tree = ast.parse(resolved, mode="eval")
+            result = self._eval_node(tree.body)
+
+            trace = self._resolve_display_trace(condition)
+            return bool(result), None, trace
+
+        except SyntaxError as e:
+            error_msg = f"Syntax error in condition: {e}"
+            return False, error_msg, resolved
+        except Exception as e:
+            error_msg = str(e)
+            return False, error_msg, resolved
+
     def _resolve_variables(self, text: str) -> str:
         """Replace {{name.property}} with actual values.
 
@@ -377,6 +416,29 @@ class ConditionEvaluator:
             computed_value = self._compute_property(result, prop, value)
 
             return self._value_to_literal(computed_value)
+
+        return self.VARIABLE_PATTERN.sub(replacer, text)
+
+    def _resolve_display_trace(self, text: str) -> str:
+        """Replace {{name.property}} with display-friendly values.
+
+        Like _resolve_variables but uses _value_to_display for human-readable
+        JSON representation in the condition_trace output.
+        """
+
+        def replacer(match: re.Match) -> str:
+            name = match.group(1)
+            prop = match.group(2)
+
+            if name not in self.results_by_name:
+                return match.group(0)
+
+            result = self.results_by_name[name]
+            value = result.get(prop)
+
+            computed_value = self._compute_property(result, prop, value)
+
+            return self._value_to_display(computed_value)
 
         return self.VARIABLE_PATTERN.sub(replacer, text)
 
@@ -444,6 +506,31 @@ class ConditionEvaluator:
         elif isinstance(value, int | float):
             return str(value)
         elif isinstance(value, str):
+            escaped = value.replace("\\", "\\\\").replace('"', '\\"')
+            escaped = escaped.replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t")
+            return f'"{escaped}"'
+        else:
+            escaped = str(value).replace("\\", "\\\\").replace('"', '\\"')
+            return f'"{escaped}"'
+
+    def _value_to_display(self, value: Any) -> str:
+        """Convert a value to a human-readable literal for trace display.
+
+        Like _value_to_literal but uses parsed JSON representation when
+        the value is a string containing parseable JSON (e.g. markdown
+        code fences). The json_get/json_has functions parse JSON internally,
+        so the trace should show the effective parsed value.
+        """
+        if value is None:
+            return '""'
+        elif isinstance(value, bool):
+            return "True" if value else "False"
+        elif isinstance(value, int | float):
+            return str(value)
+        elif isinstance(value, str):
+            parsed = _parse_llm_json(value)
+            if parsed is not None and isinstance(parsed, dict | list):
+                return repr(parsed)
             escaped = value.replace("\\", "\\\\").replace('"', '\\"')
             escaped = escaped.replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t")
             return f'"{escaped}"'

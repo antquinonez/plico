@@ -184,6 +184,8 @@ class FFGemini(FFAIClientBase):
             logger.error("Received empty prompt")
             raise ValueError("Prompt cannot be empty")
 
+        self._reset_usage()
+
         self.refresh_token_if_needed()
 
         used_model = model or self.model or "google/gemini-1.5-pro-002"
@@ -218,11 +220,10 @@ class FFGemini(FFAIClientBase):
             f"Max Tokens: {used_max_tokens}"
         )
 
-        self.chat_history.append({"role": "user", "content": prompt})
+        messages = self._convert_history_to_messages()
+        messages.append({"role": "user", "content": prompt})
 
         self._response_generated = False
-
-        messages = self._convert_history_to_messages()
 
         if system_instructions:
             messages = [m for m in messages if m["role"] != "system"]
@@ -269,52 +270,57 @@ class FFGemini(FFAIClientBase):
         logger.debug(f"API params: {api_params}")
 
         try:
-            response = await self.client.chat.completions.create(**api_params)
+            with self._trace_llm_call(used_model):
+                response = await self.client.chat.completions.create(**api_params)
 
-            logger.debug(f"Full API response: {response}")
+                self._extract_token_usage(response, used_model)
 
-            await asyncio.sleep(0.1)
+                self.chat_history.append({"role": "user", "content": prompt})
 
-            if response.choices and response.choices[0].message:
-                if (
-                    hasattr(response.choices[0].message, "tool_calls")
-                    and response.choices[0].message.tool_calls
-                ):
-                    content = response.choices[0].message.content or ""
-                    tool_calls = response.choices[0].message.tool_calls
+                logger.debug(f"Full API response: {response}")
 
-                    self.chat_history.append(
-                        {
-                            "role": "assistant",
-                            "content": content,
-                            "tool_calls": [
-                                {
-                                    "id": tc.id,
-                                    "function": {
-                                        "name": tc.function.name,
-                                        "arguments": tc.function.arguments,
-                                    },
-                                }
-                                for tc in tool_calls
-                            ],
-                        }
-                    )
+                await asyncio.sleep(0.1)
 
-                    self._response_generated = True
-                    logger.info("Response with tool calls generated successfully")
-                    return f"{content}\n[Tool calls detected: {len(tool_calls)}]"
-                elif response.choices[0].message.content:
-                    content = response.choices[0].message.content
-                    self.chat_history.append({"role": "assistant", "content": content})
-                    self._response_generated = True
-                    logger.info("Response generated successfully")
-                    return content
+                if response.choices and response.choices[0].message:
+                    if (
+                        hasattr(response.choices[0].message, "tool_calls")
+                        and response.choices[0].message.tool_calls
+                    ):
+                        content = response.choices[0].message.content or ""
+                        tool_calls = response.choices[0].message.tool_calls
+
+                        self.chat_history.append(
+                            {
+                                "role": "assistant",
+                                "content": content,
+                                "tool_calls": [
+                                    {
+                                        "id": tc.id,
+                                        "function": {
+                                            "name": tc.function.name,
+                                            "arguments": tc.function.arguments,
+                                        },
+                                    }
+                                    for tc in tool_calls
+                                ],
+                            }
+                        )
+
+                        self._response_generated = True
+                        logger.info("Response with tool calls generated successfully")
+                        return f"{content}\n[Tool calls detected: {len(tool_calls)}]"
+                    elif response.choices[0].message.content:
+                        content = response.choices[0].message.content
+                        self.chat_history.append({"role": "assistant", "content": content})
+                        self._response_generated = True
+                        logger.info("Response generated successfully")
+                        return content
+                    else:
+                        logger.error("Unexpected response structure from API")
+                        raise ValueError("Unexpected response structure from API")
                 else:
                     logger.error("Unexpected response structure from API")
                     raise ValueError("Unexpected response structure from API")
-            else:
-                logger.error("Unexpected response structure from API")
-                raise ValueError("Unexpected response structure from API")
         except Exception as e:
             error_str = str(e)
 

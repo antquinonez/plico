@@ -16,6 +16,8 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
+from tests.integration.conftest import make_header_index
+
 
 class TestMultiClientExecution:
     """Tests for multi-client execution."""
@@ -52,11 +54,15 @@ class TestMultiClientExecution:
 
             wb = load_workbook(integration_workbook_with_clients)
             ws = wb[results_sheet]
+            h = make_header_index(ws)
 
             results = {}
             for row in ws.iter_rows(min_row=2, values_only=True):
-                if row[2] is not None:
-                    results[row[3]] = {"client": row[7], "response": row[11]}
+                if row[h["sequence"]] is not None:
+                    results[row[h["prompt_name"]]] = {
+                        "client": row[h["client"]],
+                        "response": row[h["response"]],
+                    }
 
             assert results["task1"]["client"] == "fast", (
                 f"task1 should use 'fast' client, got {results['task1']['client']}"
@@ -151,14 +157,15 @@ class TestMultiClientRealAPI:
 
         wb = load_workbook(integration_workbook_with_clients)
         ws = wb[results_sheet]
+        h = make_header_index(ws)
 
         results = {}
         for row in ws.iter_rows(min_row=2, values_only=True):
-            if row[2] is not None:
-                results[row[3]] = {
-                    "client": row[7],
-                    "response": row[11],
-                    "status": row[12],
+            if row[h["sequence"]] is not None:
+                results[row[h["prompt_name"]]] = {
+                    "client": row[h["client"]],
+                    "response": row[h["response"]],
+                    "status": row[h["status"]],
                 }
 
         for task_name, data in results.items():

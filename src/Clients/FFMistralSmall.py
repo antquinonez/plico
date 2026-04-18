@@ -177,6 +177,8 @@ class FFMistralSmall(FFAIClientBase):
 
         logger.debug(f"Generating response for prompt: {prompt}")
 
+        self._reset_usage()
+
         # Parameter normalization
         used_model = model or self.model or "mistral-large-latest"
 
@@ -218,97 +220,87 @@ class FFMistralSmall(FFAIClientBase):
         )
 
         try:
-            # Add user prompt to history
-            self.conversation_history.append({"role": "user", "content": prompt})
+            with self._trace_llm_call(used_model):
+                messages = self._convert_history_to_messages()
+                messages.append({"role": "user", "content": prompt})
 
-            # Create messages list
-            messages = self._convert_history_to_messages()
+                if system_instructions:
+                    messages = [m for m in messages if m["role"] != "system"]
+                    messages.insert(0, {"role": "system", "content": system_instructions})
 
-            # Handle system instructions
-            if system_instructions:
-                # Remove existing system message if present
-                messages = [m for m in messages if m["role"] != "system"]
-                # Add new system message at the beginning
-                messages.insert(0, {"role": "system", "content": system_instructions})
+                api_params = {
+                    "model": used_model,
+                    "messages": messages,
+                    "max_tokens": used_max_tokens,
+                    "temperature": used_temperature,
+                }
 
-            # Build parameters dict for API call
-            api_params = {
-                "model": used_model,
-                "messages": messages,
-                "max_tokens": used_max_tokens,
-                "temperature": used_temperature,
-            }
+                if top_p is not None and 0 <= float(top_p) <= 1:
+                    api_params["top_p"] = float(top_p)
 
-            # Add optional parameters only if they have valid values
-            if top_p is not None and 0 <= float(top_p) <= 1:
-                api_params["top_p"] = float(top_p)
+                if stop is not None:
+                    if isinstance(stop, (list, tuple, set)):
+                        api_params["stop"] = list(stop)
+                    elif isinstance(stop, str):
+                        api_params["stop"] = [stop]
 
-            if stop is not None:
-                if isinstance(stop, (list, tuple, set)):
-                    api_params["stop"] = list(stop)
-                elif isinstance(stop, str):
-                    api_params["stop"] = [stop]
+                if response_format:
+                    if isinstance(response_format, dict):
+                        api_params["response_format"] = response_format
+                    elif isinstance(response_format, str) and "json" in response_format.lower():
+                        api_params["response_format"] = {"type": "json_object"}
 
-            if response_format:
-                if isinstance(response_format, dict):
-                    api_params["response_format"] = response_format
-                elif isinstance(response_format, str) and "json" in response_format.lower():
-                    api_params["response_format"] = {"type": "json_object"}
+                if tools and isinstance(tools, list):
+                    api_params["tools"] = tools
 
-            if tools and isinstance(tools, list):
-                api_params["tools"] = tools
+                    if tool_choice:
+                        api_params["tool_choice"] = tool_choice
 
-                if tool_choice:
-                    api_params["tool_choice"] = tool_choice
+                if safe_mode is not None:
+                    api_params["safe_prompt"] = bool(safe_mode)
 
-            # Mistral-specific parameters
-            if safe_mode is not None:
-                api_params["safe_prompt"] = bool(safe_mode)
+                logger.debug(f"Calling Mistral API with params: {api_params}")
 
-            logger.debug(f"Calling Mistral API with params: {api_params}")
+                response = self.client.chat.complete(**api_params)
 
-            # Call Mistral API
-            response = self.client.chat.complete(**api_params)
+                self._extract_token_usage(response, used_model)
 
-            # Handle tool calls if present
-            if (
-                hasattr(response.choices[0].message, "tool_calls")
-                and response.choices[0].message.tool_calls
-            ):
-                assistant_response = response.choices[0].message.content or ""
-                tool_calls = response.choices[0].message.tool_calls
+                self.conversation_history.append({"role": "user", "content": prompt})
 
-                # Add assistant's response to history
-                self.conversation_history.append(
-                    {
-                        "role": "assistant",
-                        "content": assistant_response,
-                        "tool_calls": [
-                            {
-                                "id": tc.id,
-                                "function": {
-                                    "name": tc.function.name,
-                                    "arguments": tc.function.arguments,
-                                },
-                            }
-                            for tc in tool_calls
-                        ],
-                    }
-                )
+                if (
+                    hasattr(response.choices[0].message, "tool_calls")
+                    and response.choices[0].message.tool_calls
+                ):
+                    assistant_response = response.choices[0].message.content or ""
+                    tool_calls = response.choices[0].message.tool_calls
 
-                # For compatibility with the simple interface, return a string with tool call info
-                return f"{assistant_response}\n[Tool calls detected: {len(tool_calls)}]"
-            else:
-                # Extract standard response
-                assistant_response = response.choices[0].message.content
+                    self.conversation_history.append(
+                        {
+                            "role": "assistant",
+                            "content": assistant_response,
+                            "tool_calls": [
+                                {
+                                    "id": tc.id,
+                                    "function": {
+                                        "name": tc.function.name,
+                                        "arguments": tc.function.arguments,
+                                    },
+                                }
+                                for tc in tool_calls
+                            ],
+                        }
+                    )
 
-                # Add assistant's response to history
-                self.conversation_history.append(
-                    {"role": "assistant", "content": assistant_response}
-                )
+                    return f"{assistant_response}\n[Tool calls detected: {len(tool_calls)}]"
+                else:
+                    assistant_response = response.choices[0].message.content
 
-                logger.info("Response generated successfully")
-                return assistant_response
+                    self.conversation_history.append(
+                        {"role": "assistant", "content": assistant_response}
+                    )
+
+                    logger.info("Response generated successfully")
+                    return assistant_response
 
         except Exception as e:
             error_str = str(e)

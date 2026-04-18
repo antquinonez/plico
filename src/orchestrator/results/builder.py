@@ -152,6 +152,22 @@ class ResultBuilder:
         self._result.condition_error = condition_error
         return self
 
+    def with_condition_trace(self, condition_trace: str | None) -> ResultBuilder:
+        """Set the resolved condition expression trace.
+
+        The trace shows the original condition after variable substitution,
+        e.g. '{{fetch.status}} == "success"' becomes '"failed" == "success"'.
+
+        Args:
+            condition_trace: The resolved condition expression.
+
+        Returns:
+            Self for chaining.
+
+        """
+        self._result.condition_trace = condition_trace
+        return self
+
     def with_resolved_prompt(self, resolved_prompt: str) -> ResultBuilder:
         """Set the fully resolved prompt text.
 
@@ -255,6 +271,49 @@ class ResultBuilder:
         self._result.composite_score = composite_score
         self._result.scoring_status = scoring_status
         self._result.strategy = strategy
+        return self
+
+    def with_usage(self, input_tokens: int, output_tokens: int, total_tokens: int) -> ResultBuilder:
+        """Set token usage from the LLM response.
+
+        Args:
+            input_tokens: Number of tokens in the prompt.
+            output_tokens: Number of tokens in the completion.
+            total_tokens: Total tokens (input + output).
+
+        Returns:
+            Self for chaining.
+
+        """
+        self._result.input_tokens = input_tokens
+        self._result.output_tokens = output_tokens
+        self._result.total_tokens = total_tokens
+        return self
+
+    def with_cost(self, cost_usd: float) -> ResultBuilder:
+        """Set estimated cost for this prompt execution.
+
+        Args:
+            cost_usd: Estimated cost in USD.
+
+        Returns:
+            Self for chaining.
+
+        """
+        self._result.cost_usd = cost_usd
+        return self
+
+    def with_duration(self, duration_ms: float) -> ResultBuilder:
+        """Set wall-clock duration of the LLM call.
+
+        Args:
+            duration_ms: Duration in milliseconds.
+
+        Returns:
+            Self for chaining.
+
+        """
+        self._result.duration_ms = duration_ms
         return self
 
     def as_planning(self) -> ResultBuilder:

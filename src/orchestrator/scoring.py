@@ -33,49 +33,74 @@ class ScoringCriteria:
     score_type: str = ""
 
 
-def extract_score(response: str, criteria_name: str) -> float | None:
+def extract_score(
+    response: str | dict[str, Any], criteria_name: str
+) -> tuple[float | None, str | None]:
     """Extract a numerical score from an LLM response.
 
     Attempts to parse the response as JSON and find the criteria_name key
-    either at the top level or nested under a 'scores' key.
+    either at the top level or nested under a 'scores' key. Accepts either
+    a raw string or a pre-parsed dict (from clean_response auto-parsing).
 
     Args:
-        response: The LLM response text.
+        response: The LLM response text or pre-parsed dict.
         criteria_name: The key to look for in the parsed JSON.
 
     Returns:
-        The extracted score as a float, or None if not found.
+        Tuple of (score, extraction_trace).
+        - score: The extracted score as a float, or None if not found.
+        - extraction_trace: Description of which format was matched, or
+          reason for failure (e.g. "response empty", "key not found").
 
     """
     if not response:
-        return None
-    try:
-        data = json_repair_loads(response)
-        if not isinstance(data, dict):
-            return None
+        return None, "response empty"
 
-        if criteria_name in data:
-            val = data[criteria_name]
+    if isinstance(response, dict):
+        data = response
+    else:
+        try:
+            data = json_repair_loads(response)
+        except (ValueError, TypeError) as e:
+            return None, f"JSON parse error: {e}"
+
+    if not isinstance(data, dict):
+        return None, f"response is {type(data).__name__}, not dict"
+
+    top_keys = list(data.keys())
+
+    if criteria_name in data:
+        val = data[criteria_name]
+        if isinstance(val, int | float):
+            return float(val), f"flat: {criteria_name}={val}"
+        if isinstance(val, dict):
+            for score_key in ("score", "value", "rating"):
+                if score_key in val and isinstance(val[score_key], int | float):
+                    return (
+                        float(val[score_key]),
+                        f"flat_object: {criteria_name}.{score_key}={val[score_key]}",
+                    )
+        return None, f"key '{criteria_name}' found but value is non-numeric: {type(val).__name__}"
+
+    if "scores" in data and isinstance(data["scores"], dict):
+        nested = data["scores"]
+        if criteria_name in nested:
+            val = nested[criteria_name]
             if isinstance(val, int | float):
-                return float(val)
+                return float(val), f"nested: scores.{criteria_name}={val}"
             if isinstance(val, dict):
                 for score_key in ("score", "value", "rating"):
                     if score_key in val and isinstance(val[score_key], int | float):
-                        return float(val[score_key])
+                        return (
+                            float(val[score_key]),
+                            f"nested_object: scores.{criteria_name}.{score_key}={val[score_key]}",
+                        )
+            return (
+                None,
+                f"key '{criteria_name}' found in scores but value is non-numeric: {type(val).__name__}",
+            )
 
-        if "scores" in data and isinstance(data["scores"], dict):
-            nested = data["scores"]
-            if criteria_name in nested:
-                val = nested[criteria_name]
-                if isinstance(val, int | float):
-                    return float(val)
-                if isinstance(val, dict):
-                    for score_key in ("score", "value", "rating"):
-                        if score_key in val and isinstance(val[score_key], int | float):
-                            return float(val[score_key])
-    except (ValueError, TypeError):
-        pass
-    return None
+    return None, f"key '{criteria_name}' not found in top-level keys {top_keys}"
 
 
 class ScoringRubric:
@@ -115,11 +140,23 @@ class ScoringRubric:
                 continue
 
             response = source_result.get("response", "")
-            score = extract_score(response, criteria.criteria_name)
+            score, trace = extract_score(response, criteria.criteria_name)
             if score is not None:
                 extracted[criteria.criteria_name] = score
+                if source_result.get("extraction_trace"):
+                    traces = source_result["extraction_trace"]
+                else:
+                    traces = {}
+                traces[criteria.criteria_name] = trace
+                source_result["extraction_trace"] = traces
             else:
                 failed.append(criteria.criteria_name)
+                if source_result.get("extraction_trace"):
+                    traces = source_result["extraction_trace"]
+                else:
+                    traces = {}
+                traces[criteria.criteria_name] = f"FAILED: {trace}"
+                source_result["extraction_trace"] = traces
                 logger.warning(
                     f"Failed to extract score '{criteria.criteria_name}' "
                     f"from prompt '{criteria.source_prompt}' "

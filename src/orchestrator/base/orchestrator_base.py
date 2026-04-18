@@ -28,6 +28,7 @@ from typing import TYPE_CHECKING, Any
 from ...config import get_config
 from ...core.client_base import FFAIClientBase
 from ...FFAI import FFAI
+from ...observability import get_telemetry_manager
 from ..agent_executor import AgentExecutor
 from ..client_registry import ClientRegistry
 from ..document_processor import DocumentProcessor
@@ -489,8 +490,20 @@ class OrchestratorBase(ABC):
     def _evaluate_condition(
         self, prompt: dict[str, Any], results_by_name: dict[str, dict[str, Any]]
     ) -> tuple[bool, str | None, str | None]:
-        """Evaluate a prompt's condition."""
+        """Evaluate a prompt's condition.
+
+        Kept for ManifestOrchestrator backward compatibility.
+        New code should use _evaluate_condition_with_trace instead.
+        """
         return evaluate_condition(prompt, results_by_name)
+
+    def _evaluate_condition_with_trace(
+        self, prompt: dict[str, Any], results_by_name: dict[str, dict[str, Any]]
+    ) -> tuple[bool, str | None, str | None, str | None]:
+        """Evaluate a prompt's condition and return the resolved trace."""
+        from ..graph import evaluate_condition_with_trace
+
+        return evaluate_condition_with_trace(prompt, results_by_name)
 
     def _execute_agent_mode(
         self,
@@ -586,15 +599,16 @@ class OrchestratorBase(ABC):
 
         if results_lock:
             with results_lock:
-                should_execute, cond_result, cond_error = self._evaluate_condition(
-                    prompt, results_by_name
+                should_execute, cond_result, cond_error, cond_trace = (
+                    self._evaluate_condition_with_trace(prompt, results_by_name)
                 )
         else:
-            should_execute, cond_result, cond_error = self._evaluate_condition(
-                prompt, results_by_name
+            should_execute, cond_result, cond_error, cond_trace = (
+                self._evaluate_condition_with_trace(prompt, results_by_name)
             )
 
         builder.with_condition_result(cond_result, cond_error)
+        builder.with_condition_trace(cond_trace)
 
         if not should_execute:
             builder.as_skipped(cond_result, cond_error)
@@ -626,41 +640,71 @@ class OrchestratorBase(ABC):
                 "tools.yaml to the workbook/manifest."
             )
 
-        for attempt in range(1, max_retries + 1):
-            builder.with_attempts(attempt)
+        telemetry = get_telemetry_manager()
+        prompt_span_name = "orchestrator.prompt"
 
-            try:
-                logger.info(
-                    f"Executing {seq_label} (attempt {attempt})"
-                    + (f" with client '{client_name}'" if client_name else "")
-                )
+        with telemetry.span(prompt_span_name) as prompt_span:
+            prompt_span.set_attribute("prompt.name", prompt.get("prompt_name", ""))
+            prompt_span.set_attribute("prompt.sequence", prompt["sequence"])
+            if batch_id is not None:
+                prompt_span.set_attribute("prompt.batch_id", batch_id)
 
-                injected_prompt = self._inject_references(prompt)
+            for attempt in range(1, max_retries + 1):
+                builder.with_attempts(attempt)
 
-                response = ffai.generate_response(
-                    prompt=injected_prompt,
-                    prompt_name=prompt.get("prompt_name"),
-                    history=prompt.get("history"),
-                    model=self.config.get("model"),
-                    temperature=self.config.get("temperature"),
-                    max_tokens=self.config.get("max_tokens"),
-                )
+                try:
+                    logger.info(
+                        f"Executing {seq_label} (attempt {attempt})"
+                        + (f" with client '{client_name}'" if client_name else "")
+                    )
 
-                builder.with_resolved_prompt(ffai.last_resolved_prompt or injected_prompt)
-                builder.with_response(response)
-                logger.info(f"{seq_label} succeeded")
-                break
+                    injected_prompt = self._inject_references(prompt)
 
-            except Exception as e:
-                builder.with_error(str(e), attempt)
-                logger.warning(f"{seq_label} failed (attempt {attempt}): {e}")
+                    call_start = time.monotonic()
+                    response = ffai.generate_response(
+                        prompt=injected_prompt,
+                        prompt_name=prompt.get("prompt_name"),
+                        history=prompt.get("history"),
+                        model=self.config.get("model"),
+                        temperature=self.config.get("temperature"),
+                        max_tokens=self.config.get("max_tokens"),
+                    )
+                    call_duration_ms = (time.monotonic() - call_start) * 1000
 
-                if attempt == max_retries:
-                    logger.error(f"{seq_label} failed after {max_retries} attempts")
-                else:
-                    delay = retry_base_delay * (2 ** (attempt - 1))
-                    logger.info(f"Retrying {seq_label} in {delay:.1f}s")
-                    time.sleep(delay)
+                    builder.with_resolved_prompt(ffai.last_resolved_prompt or injected_prompt)
+                    builder.with_response(response)
+                    builder.with_duration(call_duration_ms)
+
+                    usage = getattr(ffai, "last_usage", None)
+                    if usage:
+                        builder.with_usage(
+                            usage.input_tokens, usage.output_tokens, usage.total_tokens
+                        )
+                        prompt_span.set_attribute("prompt.input_tokens", usage.input_tokens)
+                        prompt_span.set_attribute("prompt.output_tokens", usage.output_tokens)
+                        prompt_span.set_attribute("prompt.total_tokens", usage.total_tokens)
+                    cost_usd = getattr(ffai, "last_cost_usd", 0.0)
+                    builder.with_cost(cost_usd)
+                    prompt_span.set_attribute("prompt.cost_usd", cost_usd)
+                    prompt_span.set_attribute("prompt.duration_ms", call_duration_ms)
+                    prompt_span.set_attribute("prompt.status", "success")
+                    prompt_span.set_attribute("prompt.attempts", attempt)
+
+                    logger.info(f"{seq_label} succeeded")
+                    break
+
+                except Exception as e:
+                    builder.with_error(str(e), attempt)
+                    logger.warning(f"{seq_label} failed (attempt {attempt}): {e}")
+
+                    if attempt == max_retries:
+                        logger.error(f"{seq_label} failed after {max_retries} attempts")
+                        prompt_span.set_attribute("prompt.status", "failed")
+                        prompt_span.set_attribute("prompt.error", str(e)[:500])
+                    else:
+                        delay = retry_base_delay * (2 ** (attempt - 1))
+                        logger.info(f"Retrying {seq_label} in {delay:.1f}s")
+                        time.sleep(delay)
 
         return builder.build_dict()
 
@@ -1029,40 +1073,80 @@ class OrchestratorBase(ABC):
             Output identifier (sheet name or parquet path).
 
         """
-        self._load_source()
+        telemetry = get_telemetry_manager()
+        run_span_name = "orchestrator.run"
 
-        if self.has_planning:
-            self._validate_pre_planning()
-            self._init_client()
-            self._execute_planning_phase()
-            self._validate_post_planning()
-        else:
-            self._validate()
-            self._init_client()
+        with telemetry.span(run_span_name) as run_span:
+            run_span.set_attribute("orchestrator.name", self.config.get("name", ""))
+            run_span.set_attribute("orchestrator.client_type", self.config.get("client_type", ""))
+            run_span.set_attribute("orchestrator.batch_mode", self.is_batch_mode)
 
-        if self.is_batch_mode:
-            logger.info(f"Running in batch mode with {len(self.batch_data)} batches")
-            if self.concurrency > 1:
-                logger.info("Using parallel batch execution")
-                self.results = self.execute_batch_parallel()
+            self._load_source()
+
+            if self.has_planning:
+                with telemetry.span("orchestrator.planning") as planning_span:
+                    planning_span.set_attribute(
+                        "planning.prompt_count",
+                        len([p for p in self.prompts if p.get("phase") == "planning"]),
+                    )
+                    self._validate_pre_planning()
+                    self._init_client()
+                    self._execute_planning_phase()
+                    self._validate_post_planning()
             else:
-                self.results = self.execute_batch()
-        else:
-            if self.concurrency > 1:
-                logger.info("Using parallel execution")
-                self.results = self.execute_parallel()
-            else:
-                self.results = self.execute()
+                self._validate()
+                self._init_client()
 
-        if self.has_scoring:
-            self._aggregate_scores()
+            with telemetry.span("orchestrator.execution") as exec_span:
+                mode = "sequential"
+                if self.is_batch_mode:
+                    mode = "batch_parallel" if self.concurrency > 1 else "batch"
+                elif self.concurrency > 1:
+                    mode = "parallel"
+                exec_span.set_attribute("execution.mode", mode)
 
-        if self.has_synthesis:
-            self._execute_synthesis()
+                if self.is_batch_mode:
+                    logger.info(f"Running in batch mode with {len(self.batch_data)} batches")
+                    if self.concurrency > 1:
+                        logger.info("Using parallel batch execution")
+                        self.results = self.execute_batch_parallel()
+                    else:
+                        self.results = self.execute_batch()
+                else:
+                    if self.concurrency > 1:
+                        logger.info("Using parallel execution")
+                        self.results = self.execute_parallel()
+                    else:
+                        self.results = self.execute()
 
-        output = self._write_results(self.results)
-        logger.info(f"Orchestration complete. Results in: {output}")
-        return output
+            if self.has_scoring:
+                self._aggregate_scores()
+
+            if self.has_synthesis:
+                with telemetry.span("orchestrator.synthesis") as synth_span:
+                    synth_count = len(list(getattr(self, "synthesis_prompts", []) or []))
+                    synth_span.set_attribute("synthesis.prompt_count", synth_count)
+                    self._execute_synthesis()
+
+            try:
+                output = self._write_results(self.results)
+            except Exception:
+                logger.error("Failed to write results", exc_info=True)
+                run_span.set_attribute("run.write_error", True)
+                raise
+
+            summary = self.get_summary()
+            if "total_prompts" in summary:
+                run_span.set_attribute("run.total_prompts", summary["total_prompts"])
+                run_span.set_attribute("run.successful", summary["successful"])
+                run_span.set_attribute("run.failed", summary["failed"])
+            if "tokens" in summary:
+                run_span.set_attribute("run.total_tokens", summary["tokens"]["total"])
+            if "cost_usd" in summary:
+                run_span.set_attribute("run.cost_usd", summary["cost_usd"])
+
+            logger.info(f"Orchestration complete. Results in: {output}")
+            return output
 
     def get_summary(self) -> dict[str, Any]:
         """Get execution summary.
@@ -1081,6 +1165,18 @@ class OrchestratorBase(ABC):
             "skipped": sum(1 for r in self.results if r["status"] == "skipped"),
             "total_attempts": sum(r["attempts"] for r in self.results),
         }
+
+        total_input = sum(r.get("input_tokens", 0) for r in self.results)
+        total_output = sum(r.get("output_tokens", 0) for r in self.results)
+        total_tokens = sum(r.get("total_tokens", 0) for r in self.results)
+        total_cost = sum(r.get("cost_usd", 0.0) for r in self.results)
+        if total_tokens > 0 or total_cost > 0:
+            summary["tokens"] = {
+                "input": total_input,
+                "output": total_output,
+                "total": total_tokens,
+            }
+            summary["cost_usd"] = round(total_cost, 6)
 
         condition_count = sum(1 for r in self.results if r.get("condition"))
         if condition_count > 0:

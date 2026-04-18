@@ -23,6 +23,7 @@ class PromptResult:
         condition: Optional condition expression.
         condition_result: Result of condition evaluation.
         condition_error: Error from condition evaluation.
+        condition_trace: Resolved condition expression showing substituted values.
         response: The AI-generated response.
         status: Execution status (pending, success, failed, skipped).
         attempts: Number of execution attempts.
@@ -44,8 +45,14 @@ class PromptResult:
         scores: Extracted scoring criteria values.
         composite_score: Weighted composite score.
         scoring_status: Scoring aggregation status.
+        extraction_trace: Per-criteria extraction trace showing format matched or failure reason.
         strategy: Evaluation strategy used.
         result_type: Result origin type ("batch" or "synthesis").
+        input_tokens: Number of tokens in the prompt sent to the model.
+        output_tokens: Number of tokens in the model's completion.
+        total_tokens: Total tokens (input + output).
+        cost_usd: Estimated cost in USD for this prompt execution.
+        duration_ms: Wall-clock duration of the LLM call in milliseconds.
 
     """
 
@@ -58,6 +65,7 @@ class PromptResult:
     condition: str | None = None
     condition_result: Any = None
     condition_error: str | None = None
+    condition_trace: str | None = None
     response: str | None = None
     status: str = "pending"
     attempts: int = 0
@@ -79,8 +87,14 @@ class PromptResult:
     scores: dict[str, Any] | None = None
     composite_score: float | None = None
     scoring_status: str | None = None
+    extraction_trace: dict[str, str] | None = None
     strategy: str | None = None
     result_type: str = "batch"
+    input_tokens: int = 0
+    output_tokens: int = 0
+    total_tokens: int = 0
+    cost_usd: float = 0.0
+    duration_ms: float = 0.0
 
     VALID_STATUSES = ("pending", "success", "failed", "skipped", "max_rounds_exceeded")
 
@@ -101,6 +115,7 @@ class PromptResult:
             condition=data.get("condition"),
             condition_result=data.get("condition_result"),
             condition_error=data.get("condition_error"),
+            condition_trace=data.get("condition_trace"),
             response=data.get("response"),
             status=data.get("status", "pending"),
             attempts=data.get("attempts", 0),
@@ -122,6 +137,12 @@ class PromptResult:
             scores=data.get("scores"),
             composite_score=data.get("composite_score"),
             scoring_status=data.get("scoring_status"),
+            extraction_trace=data.get("extraction_trace"),
             strategy=data.get("strategy"),
             result_type=data.get("result_type", "batch"),
+            input_tokens=data.get("input_tokens", 0),
+            output_tokens=data.get("output_tokens", 0),
+            total_tokens=data.get("total_tokens", 0),
+            cost_usd=data.get("cost_usd", 0.0),
+            duration_ms=data.get("duration_ms", 0.0),
         )

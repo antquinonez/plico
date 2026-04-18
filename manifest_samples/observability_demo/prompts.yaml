@@ -1,0 +1,79 @@
+prompts:
+  - sequence: 1
+    prompt_name: "gen_product"
+    prompt: |
+      Return exactly this JSON with no markdown formatting:
+      {"product": "CloudSync Pro", "category": "SaaS", "rating": 4.8, "reviews": 1250, "status": "active"}
+    history: []
+    condition: null
+    references: []
+
+  - sequence: 2
+    prompt_name: "gen_complaint"
+    prompt: |
+      Return exactly this JSON with no markdown formatting:
+      {"product": "CloudSync Pro", "category": "SaaS", "rating": 2.1, "reviews": 45, "status": "flagged"}
+    history: []
+    condition: null
+    references: []
+
+  - sequence: 3
+    prompt_name: "check_active"
+    prompt: |
+      The product status is active. Confirm by saying 'Status is active'.
+    history: ["gen_product"]
+    condition: '{{gen_product.status}} == "success"'
+    references: []
+
+  - sequence: 4
+    prompt_name: "check_flagged"
+    prompt: |
+      The product status is flagged. Confirm by saying 'Status is flagged'.
+    history: ["gen_complaint"]
+    condition: '{{gen_complaint.status}} == "success"'
+    references: []
+
+  - sequence: 5
+    prompt_name: "check_high_rating"
+    prompt: |
+      The product rating is above 4.0. Confirm by saying 'High rating confirmed'.
+    history: ["gen_product"]
+    condition: "json_get({{gen_product.response}}, \"rating\") > 4.0"
+    references: []
+
+  - sequence: 6
+    prompt_name: "check_low_rating"
+    prompt: |
+      The product rating is below 3.0. Confirm by saying 'Low rating confirmed'.
+    history: ["gen_complaint"]
+    condition: "json_get({{gen_complaint.response}}, \"rating\") < 3.0"
+    references: []
+
+  - sequence: 7
+    prompt_name: "analyze_sentiment"
+    prompt: |
+      Analyze these two product entries and return a JSON with sentiment and complexity scores.
+
+      PRODUCT 1:
+      {{gen_product.response}}
+
+      PRODUCT 2:
+      {{gen_complaint.response}}
+
+      Return ONLY this JSON with no markdown:
+      {"sentiment_score": 7, "complexity_score": 5, "summary": "Mixed sentiment across products"}
+    history: ["gen_product", "gen_complaint"]
+    condition: null
+    references: []
+
+  - sequence: 8
+    prompt_name: "final_summary"
+    prompt: |
+      Produce a one-line summary of the product analysis.
+      Active checks passed: {{check_active.status}}.
+      High rating check passed: {{check_high_rating.status}}.
+      Low rating check passed: {{check_low_rating.status}}.
+      Analysis: {{analyze_sentiment.response}}
+    history: ["check_active", "check_high_rating", "check_low_rating", "analyze_sentiment"]
+    condition: '{{check_active.status}} == "success" and {{check_high_rating.status}} == "success"'
+    references: []

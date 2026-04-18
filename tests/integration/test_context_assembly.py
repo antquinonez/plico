@@ -260,7 +260,7 @@ class TestContextAssemblyRealAPI:
         results = {}
         for row in ws.iter_rows(min_row=2, values_only=True):
             if row[2] is not None:
-                results[row[3]] = row[11]
+                results[row[3]] = row[12]
 
         assert (
             "4" in str(results.get("step1", "")) or "four" in str(results.get("step1", "")).lower()
@@ -302,7 +302,7 @@ class TestContextAssemblyRealAPI:
         results = {}
         for row in ws.iter_rows(min_row=2, values_only=True):
             if row[2] is not None:
-                results[row[3]] = row[11]
+                results[row[3]] = row[12]
 
         unrelated_response = str(results.get("unrelated", ""))
         assert "banana" not in unrelated_response.lower(), (

@@ -198,6 +198,7 @@ class TestFFMistralToolCalls:
             mock_tool_response.choices[0].message.tool_calls[
                 0
             ].function.arguments = '{"city": "London"}'
+            mock_tool_response.usage = None
 
             mock_mistral_client.chat.complete.return_value = mock_tool_response
             MockMistral.return_value = mock_mistral_client
@@ -264,3 +265,87 @@ class TestFFMistralErrorHandling:
 
             with pytest.raises(RuntimeError, match="Error generating response"):
                 client.generate_response("Hello!")
+
+
+class TestFFMistralUsageExtraction:
+    """Tests for token usage and cost extraction."""
+
+    def test_usage_extracted_from_response(self, mock_mistral_client):
+        """Test that usage is extracted when response includes usage data."""
+        with patch("src.Clients.FFMistral.Mistral") as MockMistral:
+            mock_response = MagicMock()
+            mock_response.choices = [MagicMock()]
+            mock_response.choices[0].message.content = "Hello!"
+            mock_response.choices[0].message.tool_calls = None
+            mock_response.usage = MagicMock()
+            mock_response.usage.prompt_tokens = 50
+            mock_response.usage.completion_tokens = 25
+            mock_response.usage.total_tokens = 75
+
+            mock_mistral_client.chat.complete.return_value = mock_response
+            MockMistral.return_value = mock_mistral_client
+
+            from src.Clients.FFMistral import FFMistral
+
+            client = FFMistral(api_key="test-key")
+            client.generate_response("Hello!")
+
+            assert client.last_usage is not None
+            assert client.last_usage.input_tokens == 50
+            assert client.last_usage.output_tokens == 25
+            assert client.last_usage.total_tokens == 75
+            assert client.last_cost_usd > 0.0
+
+    def test_usage_none_when_no_usage_in_response(self, mock_mistral_client):
+        """Test that usage is None when response has no usage data."""
+        with patch("src.Clients.FFMistral.Mistral") as MockMistral:
+            mock_response = MagicMock()
+            mock_response.choices = [MagicMock()]
+            mock_response.choices[0].message.content = "Hello!"
+            mock_response.choices[0].message.tool_calls = None
+            mock_response.usage = None
+
+            mock_mistral_client.chat.complete.return_value = mock_response
+            MockMistral.return_value = mock_mistral_client
+
+            from src.Clients.FFMistral import FFMistral
+
+            client = FFMistral(api_key="test-key")
+            client.generate_response("Hello!")
+
+            assert client.last_usage is None
+            assert client.last_cost_usd == 0.0
+
+    def test_usage_reset_between_calls(self, mock_mistral_client):
+        """Test that usage is reset between calls."""
+        with patch("src.Clients.FFMistral.Mistral") as MockMistral:
+            mock_response_with_usage = MagicMock()
+            mock_response_with_usage.choices = [MagicMock()]
+            mock_response_with_usage.choices[0].message.content = "Hello!"
+            mock_response_with_usage.choices[0].message.tool_calls = None
+            mock_response_with_usage.usage = MagicMock()
+            mock_response_with_usage.usage.prompt_tokens = 50
+            mock_response_with_usage.usage.completion_tokens = 25
+            mock_response_with_usage.usage.total_tokens = 75
+
+            mock_response_no_usage = MagicMock()
+            mock_response_no_usage.choices = [MagicMock()]
+            mock_response_no_usage.choices[0].message.content = "Hi!"
+            mock_response_no_usage.choices[0].message.tool_calls = None
+            mock_response_no_usage.usage = None
+
+            mock_mistral_client.chat.complete.side_effect = [
+                mock_response_with_usage,
+                mock_response_no_usage,
+            ]
+            MockMistral.return_value = mock_mistral_client
+
+            from src.Clients.FFMistral import FFMistral
+
+            client = FFMistral(api_key="test-key")
+
+            client.generate_response("First call")
+            assert client.last_usage is not None
+
+            client.generate_response("Second call")
+            assert client.last_usage is None

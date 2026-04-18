@@ -179,6 +179,11 @@ Results are written to a timestamped Parquet file:
 | `semantic_query` | RAG query used |
 | `rerank` / `query_expansion` | RAG settings |
 | `sequence` / `prompt_name` / `history` | Execution metadata |
+| `input_tokens` | Tokens in the prompt sent to the model |
+| `output_tokens` | Tokens in the model's response |
+| `total_tokens` | Sum of input + output tokens |
+| `cost_usd` | Estimated cost in USD for this prompt execution |
+| `duration_ms` | Wall-clock LLM call duration in milliseconds |
 | `scores` | JSON object of extracted scores (batch rows, when scoring enabled) |
 | `composite_score` | Weighted average score (batch rows, when scoring enabled) |
 | `scoring_status` | `"ok"`, `"partial"`, `"failed"`, or `"skipped"` |
@@ -1427,6 +1432,9 @@ orchestrator = ManifestOrchestrator(
     shared_document_path="./job_description.md",  # Shared document (name derived from filename)
 )
 parquet_path = orchestrator.run()
+
+summary = orchestrator.get_summary()
+# summary includes: tokens (input, output, total), cost_usd
 ```
 
 ---

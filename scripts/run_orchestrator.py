@@ -44,6 +44,7 @@ from _shared import ProgressIndicator, get_client, setup_logging
 
 from src.config import get_config
 from src.orchestrator import ExcelOrchestrator
+from src.orchestrator.explain import build_explain_plan, format_explain, format_prompt_preview
 from src.orchestrator.validation import OrchestratorValidator
 
 load_dotenv()
@@ -81,6 +82,21 @@ def main():
         "--dry-run", action="store_true", help="Validate workbook without executing"
     )
     parser.add_argument(
+        "--explain",
+        action="store_true",
+        help="Show execution plan (DAG, dependencies, cost estimate) without executing",
+    )
+    parser.add_argument(
+        "--prompt",
+        help="Show resolved prompt preview for a specific prompt_name (requires --explain)",
+    )
+    parser.add_argument(
+        "--batch-row",
+        type=int,
+        default=None,
+        help="Batch row index (0-based) for variable substitution in prompt preview",
+    )
+    parser.add_argument(
         "--quiet",
         "-q",
         action="store_true",
@@ -104,6 +120,9 @@ def main():
     )
 
     args = parser.parse_args()
+
+    if args.prompt and not args.explain:
+        parser.error("--prompt requires --explain")
 
     global logger
     logger = setup_logging(quiet=args.quiet, verbose=args.verbose)
@@ -164,6 +183,45 @@ def main():
             print(f"  Seq {p['sequence']}: {p.get('prompt_name', '(unnamed)')}")
 
         return 1 if result.has_errors else 0
+
+    if args.explain:
+        prompts = builder.load_prompts()
+        batch_data = builder.load_data()
+
+        if args.prompt:
+            target = None
+            for p in prompts:
+                if p.get("prompt_name") == args.prompt:
+                    target = p
+                    break
+            if not target:
+                print(f"Error: prompt '{args.prompt}' not found.")
+                print(
+                    f"Available: {', '.join(p.get('prompt_name', '') for p in prompts if p.get('prompt_name'))}"
+                )
+                return 1
+            batch_row = None
+            if batch_data and args.batch_row is not None:
+                idx = args.batch_row
+                if 0 <= idx < len(batch_data):
+                    batch_row = batch_data[idx]
+                else:
+                    print(f"Warning: --batch-row {idx} out of range (0-{len(batch_data) - 1})")
+            print(format_prompt_preview(target, batch_row=batch_row))
+            return 0
+
+        plan = build_explain_plan(
+            prompts,
+            batch_data=batch_data,
+        )
+        print(
+            format_explain(
+                plan,
+                title=os.path.basename(workbook_path),
+                concurrency=args.concurrency,
+            )
+        )
+        return 0
 
     client_type = workbook_config.get("client_type") or args.client
     client = get_client(client_type, workbook_config)

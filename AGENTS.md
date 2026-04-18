@@ -96,26 +96,38 @@ src/
 ├── PermanentHistory.py        # Chronological turn history
 ├── ConversationHistory.py     # Conversation management
 │
+├── core/                      # Core abstractions shared across modules
+│   ├── __init__.py
+│   ├── client_base.py         # FFAIClientBase ABC with usage tracking + OTel spans
+│   ├── usage.py               # TokenUsage dataclass
+│   └── pricing.py             # Model pricing registry for cost estimation
+│
+├── observability/             # Observability (token tracking, OTel telemetry)
+│   ├── __init__.py            # Public API
+│   └── telemetry.py           # TelemetryManager with NoOpSpan fallback
+│
 ├── Clients/                   # AI client implementations
-│   ├── __init__.py            # Exports all client classes
+│   ├── __init__.py            # Exports active client classes
 │   ├── model_defaults.py      # Default model configurations
-│   ├── FFAzureClientBase.py   # Base class for Azure clients
-│   ├── FFMistral.py           # Mistral API client
-│   ├── FFMistralSmall.py      # Mistral Small API client
-│   ├── FFAnthropic.py         # Anthropic Claude client
-│   ├── FFAnthropicCached.py   # Anthropic with prompt caching
-│   ├── FFGemini.py            # Google Gemini client
-│   ├── FFPerplexity.py        # Perplexity AI client
-│   ├── FFOpenAIAssistant.py   # OpenAI Assistant API client
-│   ├── FFNvidiaDeepSeek.py    # NVIDIA NIM DeepSeek client
-│   ├── FFLiteLLMClient.py     # LiteLLM universal client
-│   ├── FFAzureMistral.py      # Azure Mistral deployment
-│   ├── FFAzureMistralSmall.py # Azure Mistral Small deployment
-│   ├── FFAzureCodestral.py    # Azure Codestral deployment
-│   ├── FFAzureDeepSeek.py     # Azure DeepSeek deployment
-│   ├── FFAzureDeepSeekV3.py   # Azure DeepSeek V3 deployment
-│   ├── FFAzureMSDeepSeekR1.py # Azure MS DeepSeek R1 deployment
-│   └── FFAzurePhi.py          # Azure Phi deployment
+│   ├── FFMistral.py           # Mistral API client (usage + OTel spans)
+│   ├── FFMistralSmall.py      # Mistral Small API client (usage + OTel spans)
+│   ├── FFGemini.py            # Google Gemini client (usage + OTel spans)
+│   ├── FFPerplexity.py        # Perplexity AI client (usage + OTel spans)
+│   ├── FFLiteLLMClient.py     # LiteLLM universal client (usage + OTel spans)
+│   ├── not_maintained/        # Archived clients (Azure, Anthropic, etc.)
+│   │   ├── FFAzureClientBase.py   # Base class for Azure clients
+│   │   ├── FFAnthropic.py         # Anthropic Claude client
+│   │   ├── FFAnthropicCached.py   # Anthropic with prompt caching
+│   │   ├── FFOpenAIAssistant.py   # OpenAI Assistant API client
+│   │   ├── FFNvidiaDeepSeek.py    # NVIDIA NIM DeepSeek client
+│   │   ├── FFAzureMistral.py      # Azure Mistral deployment
+│   │   ├── FFAzureMistralSmall.py # Azure Mistral Small deployment
+│   │   ├── FFAzureCodestral.py    # Azure Codestral deployment
+│   │   ├── FFAzureDeepSeek.py     # Azure DeepSeek deployment
+│   │   ├── FFAzureDeepSeekV3.py   # Azure DeepSeek V3 deployment
+│   │   ├── FFAzureMSDeepSeekR1.py # Azure MS DeepSeek R1 deployment
+│   │   └── FFAzurePhi.py          # Azure Phi deployment
+│   └──
 │
 ├── orchestrator/              # Excel workbook orchestration
 │   ├── __init__.py
@@ -137,6 +149,7 @@ src/
 │   ├── synthesis_runner.py    # Post-execution scoring and synthesis orchestration
 │   ├── validation.py          # OrchestratorValidator with structured error reporting
 │   ├── validation_manager.py  # Validation lifecycle management
+│   ├── explain.py              # Execution plan preview and prompt preview (no API calls)
 │   ├── tool_registry.py       # Tool registration and execution for agent mode
 │   └── builtin_tools.py       # Built-in tool implementations
 │
@@ -185,6 +198,9 @@ tests/
 │   └── test_client_isolation.py
 ├── test_ffai.py               # FFAI wrapper tests
 ├── test_config.py             # Configuration tests
+├── test_usage.py              # TokenUsage dataclass tests
+├── test_pricing.py            # Model pricing registry tests
+├── test_telemetry.py          # OTel telemetry manager tests
 ├── test_manifest.py           # Manifest workflow tests
 ├── test_excel_orchestrator.py # Orchestrator tests
 ├── test_workbook_parser.py    # Workbook parser tests
@@ -193,6 +209,7 @@ tests/
 ├── test_document_processor.py # Document processor tests
 ├── test_document_registry.py  # Document registry tests
 ├── test_scoring.py            # Scoring rubric and aggregation tests
+├── test_explain.py            # Execution plan preview and observability tests
 ├── test_planning.py           # Planning phase orchestrator tests
 ├── test_planning_artifact_parser.py  # Planning artifact parser unit tests
 ├── test_synthesis.py          # Cross-row synthesis tests
@@ -253,17 +270,24 @@ USE_CASES/
 
 ### Client Classes by Provider
 
+**Active clients** (usage tracking + OTel spans):
+
 | Provider | Client Class | Type | Description |
 |----------|--------------|------|-------------|
 | **Mistral** | `FFMistral` | native | Mistral API (mistral-large-latest) |
 | | `FFMistralSmall` | native | Mistral Small API (mistral-small-2503) |
-| **Anthropic** | `FFAnthropic` | native | Claude via Anthropic API |
-| | `FFAnthropicCached` | native | Claude with prompt caching |
 | **Google** | `FFGemini` | openai | Gemini via OpenAI-compatible API |
 | **Perplexity** | `FFPerplexity` | openai | Perplexity AI via OpenAI-compatible |
+| **LiteLLM** | `FFLiteLLMClient` | litellm | Universal client for 100+ providers |
+
+**Archived clients** (in `not_maintained/`, no usage tracking):
+
+| Provider | Client Class | Type | Description |
+|----------|--------------|------|-------------|
+| **Anthropic** | `FFAnthropic` | native | Claude via Anthropic API |
+| | `FFAnthropicCached` | native | Claude with prompt caching |
 | **OpenAI** | `FFOpenAIAssistant` | openai | OpenAI Assistant API |
 | **NVIDIA** | `FFNvidiaDeepSeek` | openai | DeepSeek via NVIDIA NIM |
-| **LiteLLM** | `FFLiteLLMClient` | litellm | Universal client for 100+ providers |
 | **Azure** | `FFAzureMistral` | azure | Azure-hosted Mistral |
 | | `FFAzureMistralSmall` | azure | Azure-hosted Mistral Small |
 | | `FFAzureCodestral` | azure | Azure-hosted Codestral |
@@ -282,13 +306,10 @@ USE_CASES/
 ### Usage Example
 
 ```python
-from src.Clients import FFMistralSmall, FFAnthropic, FFLiteLLMClient
+from src.Clients import FFMistralSmall, FFLiteLLMClient
 
 # Native Mistral client
 mistral = FFMistralSmall(api_key="...", model="mistral-small-2503")
-
-# Native Anthropic client
-anthropic = FFAnthropic(api_key="...", model="claude-3-5-sonnet-20241022")
 
 # LiteLLM universal client
 litellm = FFLiteLLMClient(
@@ -298,6 +319,10 @@ litellm = FFLiteLLMClient(
 
 # All clients share the same interface
 response = client.generate_response("Hello!")
+
+# After a call, usage and cost are available on all active clients
+print(client.last_usage)       # TokenUsage(input_tokens=50, output_tokens=25, total_tokens=75)
+print(f"${client.last_cost_usd:.6f}")  # $0.000011
 ```
 
 ## RAG Module
@@ -583,6 +608,94 @@ Generator prompts produce large JSON outputs (scoring criteria + evaluation prom
 When using `--planning` mode, `create_screening_workbook.py` sets `max_tokens=16000`
 to avoid response truncation. For non-planning workbooks, the default (4096) is used.
 
+## Observability Module
+
+The observability module provides zero-cost previews, execution traces, and automatic token/cost tracking — no API calls required for previews.
+
+### Execution Plan Preview (`--explain`)
+
+Shows the full execution DAG, dependency edges (history vs. condition), prompt metadata, and cost estimates before running any prompts.
+
+```bash
+# Preview execution plan
+python scripts/run_orchestrator.py workbook.xlsx --explain
+
+# Preview a specific resolved prompt (with variable substitution)
+python scripts/run_orchestrator.py workbook.xlsx --explain --prompt analyze
+python scripts/run_orchestrator.py workbook.xlsx --explain --prompt analyze --batch-row 1
+```
+
+### Resolved Prompt Preview (`--explain --prompt <name>`)
+
+Simulates variable substitution for a single prompt showing template variables, upstream references, history context, and injected documents — exactly as the LLM would receive it.
+
+### Token Usage & Cost Tracking
+
+All active clients (`FFMistral`, `FFMistralSmall`, `FFGemini`, `FFPerplexity`, `FFLiteLLMClient`) automatically extract token counts and estimate cost after each `generate_response()` call. This data is available as side-channel attributes on the client and the FFAI wrapper:
+
+```python
+client.generate_response("Hello!")
+print(client.last_usage)       # TokenUsage(input_tokens=50, output_tokens=25, total_tokens=75)
+print(f"${client.last_cost_usd:.6f}")  # $0.000011
+```
+
+**Architecture:**
+
+- `FFAIClientBase` provides class-level `_last_usage` / `_last_cost_usd` defaults, `_reset_usage()`, and `_extract_token_usage()` (shared by FFMistral, FFMistralSmall, FFGemini, FFPerplexity)
+- `FFLiteLLMClient` has its own `_extract_usage()` using `litellm.completion_cost()` for live pricing
+- `src/core/pricing.py` provides a static pricing table for native clients
+- The orchestrator captures usage via `getattr(ffai, "last_usage", None)` and writes it to parquet columns
+
+**Parquet columns:** `input_tokens`, `output_tokens`, `total_tokens`, `cost_usd`, `duration_ms`
+
+### OpenTelemetry Integration
+
+Plico emits OTLP spans at multiple levels when observability is enabled. Default is `false` — users opt in.
+
+| Span Level | Span Name Pattern | Key Attributes |
+|------------|-------------------|----------------|
+| Run | `run.<name>` | total_prompts, successful, failed, tokens, cost |
+| Planning | `planning.<name>` | phase, generator count |
+| Execution | `execution` | concurrency, batch mode |
+| Prompt | `prompt.<prompt_name>` | status, attempts, condition, tokens, cost |
+| LLM call | `llm.<client_class>` | model, input_tokens, output_tokens, cost_usd |
+
+**Zero overhead when disabled.** All span creation is replaced with no-op context managers — no performance impact, no hard OTel dependency.
+
+### Configuration (config/main.yaml)
+
+```yaml
+observability:
+  enabled: false              # Default off; set true to emit OTLP spans
+  otel:
+    service_name: "plico"
+    endpoint: "http://localhost:4317"
+    export_traces: true
+    insecure: true
+  token_tracking: true         # Per-prompt token counts in parquet (always on)
+  cost_tracking: true          # Per-prompt cost estimation in parquet (always on)
+```
+
+### Condition Trace
+
+Every prompt with a `condition` field records a `condition_trace` in the result showing the resolved expression with variables replaced by actual values. Example: `{{fetch.status}} == "success"` → trace shows `"success" == "success"`.
+
+### Scoring Extraction Trace
+
+Every prompt that has scores extracted records an `extraction_trace` describing which format matched and how the score was parsed: `flat: skills_match=8`, `nested_object: scores.python.score=6`, or `key 'baz' not found in top-level keys ['foo']`.
+
+### New Result Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `condition_trace` | String or None | Resolved condition expression with values substituted |
+| `extraction_trace` | Dict or None | Per-criteria scoring extraction traces |
+| `input_tokens` | int | Tokens in the prompt sent to the model |
+| `output_tokens` | int | Tokens in the model's response |
+| `total_tokens` | int | Sum of input + output tokens |
+| `cost_usd` | float | Estimated cost in USD for this prompt execution |
+| `duration_ms` | float | Wall-clock LLM call duration in milliseconds |
+
 ## Evaluation Module (Scoring and Synthesis)
 
 The evaluation module enables structured document evaluation workflows: score extraction, weighted aggregation, and cross-row comparison/ranking.
@@ -685,8 +798,9 @@ Auto-discover resumes from a folder and evaluate against a job description.
 **Create a self-contained workbook (JD + resumes baked in):**
 
 ```bash
-python scripts/create_screening_workbook.py ./screening.xlsx \
-    --resumes-path ./resumes/ --jd ./job_description.md
+python scripts/run_orchestrator.py workbook.xlsx -c 3
+python scripts/run_orchestrator.py workbook.xlsx --explain            # Preview execution plan (no API calls)
+python scripts/run_orchestrator.py workbook.xlsx --explain --prompt analyze  # Preview resolved prompt
 ```
 
 **Create a template workbook (reusable across requisitions):**

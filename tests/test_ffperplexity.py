@@ -283,6 +283,7 @@ class TestFFPerplexityToolCalls:
             mock_tool_response.choices[0].message.tool_calls[
                 0
             ].function.arguments = '{"city": "London"}'
+            mock_tool_response.usage = None
 
             mock_openai_client.chat.completions.create.return_value = mock_tool_response
             MockOpenAI.return_value = mock_openai_client
@@ -349,3 +350,53 @@ class TestFFPerplexityErrorHandling:
 
             with pytest.raises(RuntimeError, match="Error generating response"):
                 client.generate_response("Hello!")
+
+
+class TestFFPerplexityUsageExtraction:
+    """Tests for token usage and cost extraction."""
+
+    def test_usage_extracted_from_response(self, mock_openai_client):
+        """Test that usage is extracted when response includes usage data."""
+        with patch("src.Clients.FFPerplexity.OpenAI") as MockOpenAI:
+            mock_response = MagicMock()
+            mock_response.choices = [MagicMock()]
+            mock_response.choices[0].message.content = "Hello!"
+            mock_response.choices[0].message.tool_calls = None
+            mock_response.usage = MagicMock()
+            mock_response.usage.prompt_tokens = 80
+            mock_response.usage.completion_tokens = 40
+            mock_response.usage.total_tokens = 120
+
+            mock_openai_client.chat.completions.create.return_value = mock_response
+            MockOpenAI.return_value = mock_openai_client
+
+            from src.Clients.FFPerplexity import FFPerplexity
+
+            client = FFPerplexity(api_key="test-key")
+            client.generate_response("Hello!")
+
+            assert client.last_usage is not None
+            assert client.last_usage.input_tokens == 80
+            assert client.last_usage.output_tokens == 40
+            assert client.last_usage.total_tokens == 120
+            assert client.last_cost_usd > 0.0
+
+    def test_usage_none_when_no_usage_in_response(self, mock_openai_client):
+        """Test that usage is None when response has no usage data."""
+        with patch("src.Clients.FFPerplexity.OpenAI") as MockOpenAI:
+            mock_response = MagicMock()
+            mock_response.choices = [MagicMock()]
+            mock_response.choices[0].message.content = "Hello!"
+            mock_response.choices[0].message.tool_calls = None
+            mock_response.usage = None
+
+            mock_openai_client.chat.completions.create.return_value = mock_response
+            MockOpenAI.return_value = mock_openai_client
+
+            from src.Clients.FFPerplexity import FFPerplexity
+
+            client = FFPerplexity(api_key="test-key")
+            client.generate_response("Hello!")
+
+            assert client.last_usage is None
+            assert client.last_cost_usd == 0.0

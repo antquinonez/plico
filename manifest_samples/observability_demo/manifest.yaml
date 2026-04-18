@@ -1,0 +1,12 @@
+name: "Observability Demo"
+description: "Demonstrates condition_trace and extraction_trace in manifest/parquet workflows. Uses conditions with JSON access, string methods, and scoring rubric for score extraction."
+version: "1.0"
+source_workbook: ""
+exported_at: "2026-04-18T10:00:00"
+output_prompts:
+  - final_summary
+has_data: false
+has_clients: false
+has_documents: false
+has_scoring: false
+prompt_count: 8

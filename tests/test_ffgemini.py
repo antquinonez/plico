@@ -546,6 +546,8 @@ class TestFFGeminiToolCalls:
                 0
             ].function.arguments = '{"city": "London"}'
 
+            mock_tool_response.usage = None
+
             mock_gemini_client.chat.completions.create = AsyncMock(return_value=mock_tool_response)
 
             with patch("src.Clients.FFGemini.AsyncOpenAI", return_value=mock_gemini_client):
@@ -848,3 +850,77 @@ class TestFFGeminiConversationHistory:
                     client.clear_conversation()
 
                     assert client.chat_history == []
+
+
+class TestFFGeminiUsageExtraction:
+    """Tests for token usage and cost extraction."""
+
+    def test_usage_extracted_from_response(self, mock_gemini_client):
+        """Test that usage is extracted when response includes usage data."""
+        with patch("src.Clients.FFGemini.google.auth") as mock_auth:
+            mock_creds = MagicMock()
+            mock_creds.valid = True
+            mock_creds.token = "test-token"
+            mock_auth.default.return_value = (mock_creds, "test-project")
+
+            mock_response = MagicMock()
+            mock_response.choices = [MagicMock()]
+            mock_response.choices[0].message.content = "Test response"
+            mock_response.choices[0].message.tool_calls = None
+            mock_response.usage = MagicMock()
+            mock_response.usage.prompt_tokens = 100
+            mock_response.usage.completion_tokens = 50
+            mock_response.usage.total_tokens = 150
+
+            mock_gemini_client.chat.completions.create = AsyncMock(return_value=mock_response)
+
+            with patch("src.Clients.FFGemini.AsyncOpenAI", return_value=mock_gemini_client):
+                with patch("src.Clients.FFGemini.subprocess.run") as mock_run:
+                    mock_result = MagicMock()
+                    mock_result.stdout = "us-central1\n"
+                    mock_run.return_value = mock_result
+
+                    from src.Clients.FFGemini import FFGemini
+
+                    client = FFGemini()
+
+                    with patch.object(client, "refresh_token_if_needed"):
+                        client.generate_response_sync("Hello!")
+
+                    assert client.last_usage is not None
+                    assert client.last_usage.input_tokens == 100
+                    assert client.last_usage.output_tokens == 50
+                    assert client.last_usage.total_tokens == 150
+                    assert client.last_cost_usd > 0.0
+
+    def test_usage_none_when_no_usage_in_response(self, mock_gemini_client):
+        """Test that usage is None when response has no usage data."""
+        with patch("src.Clients.FFGemini.google.auth") as mock_auth:
+            mock_creds = MagicMock()
+            mock_creds.valid = True
+            mock_creds.token = "test-token"
+            mock_auth.default.return_value = (mock_creds, "test-project")
+
+            mock_response = MagicMock()
+            mock_response.choices = [MagicMock()]
+            mock_response.choices[0].message.content = "Test response"
+            mock_response.choices[0].message.tool_calls = None
+            mock_response.usage = None
+
+            mock_gemini_client.chat.completions.create = AsyncMock(return_value=mock_response)
+
+            with patch("src.Clients.FFGemini.AsyncOpenAI", return_value=mock_gemini_client):
+                with patch("src.Clients.FFGemini.subprocess.run") as mock_run:
+                    mock_result = MagicMock()
+                    mock_result.stdout = "us-central1\n"
+                    mock_run.return_value = mock_result
+
+                    from src.Clients.FFGemini import FFGemini
+
+                    client = FFGemini()
+
+                    with patch.object(client, "refresh_token_if_needed"):
+                        client.generate_response_sync("Hello!")
+
+                    assert client.last_usage is None
+                    assert client.last_cost_usd == 0.0

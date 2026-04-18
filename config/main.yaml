@@ -251,3 +251,13 @@ retry:
     - 502
     - 504
   log_level: "INFO"
+
+observability:
+  enabled: false
+  otel:
+    service_name: "plico"
+    endpoint: "http://localhost:4317"
+    export_traces: true
+    insecure: true
+  token_tracking: true
+  cost_tracking: true

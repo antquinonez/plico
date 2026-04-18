@@ -548,6 +548,26 @@ candidate-criterion pair with columns: `normalized_score`, `weight`,
 criterion), scale bounds, and description. A `_composite` summary row per
 candidate shows the weighted aggregate score and its rank/percentile.
 
+### Token Usage & Cost Tracking
+
+Every result row (Excel and parquet) includes observability columns:
+
+| Column | Description |
+|--------|-------------|
+| `input_tokens` | Tokens in the prompt sent to the model |
+| `output_tokens` | Tokens in the model's response |
+| `total_tokens` | Sum of input + output |
+| `cost_usd` | Estimated cost per prompt |
+| `duration_ms` | LLM call duration in milliseconds |
+
+These are populated for all native clients (FFMistral, FFMistralSmall, FFGemini, FFPerplexity) and LiteLLM clients. The orchestrator summary also aggregates totals:
+
+```
+Summary: 12 success, 0 failed
+Tokens: input=14804, output=8597, total=23401
+Cost: $0.002319
+```
+
 ---
 
 ## Preparing Your Documents

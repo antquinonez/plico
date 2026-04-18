@@ -10,6 +10,13 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+collect_ignore_glob = [
+    "test_ffanthropic*.py",
+    "test_ffazure_*.py",
+    "test_ffnvidia_*.py",
+    "test_ffopenai_*.py",
+]
+
 
 @pytest.fixture
 def mock_mistral_response():
@@ -18,6 +25,7 @@ def mock_mistral_response():
     response.choices = [MagicMock()]
     response.choices[0].message.content = "This is a test response."
     response.choices[0].message.tool_calls = None
+    response.usage = None
     return response
 
 
@@ -53,6 +61,7 @@ def mock_openai_response():
     response.choices = [MagicMock()]
     response.choices[0].message.content = "This is a test response."
     response.choices[0].message.tool_calls = None
+    response.usage = None
     return response
 
 
@@ -71,6 +80,7 @@ def mock_azure_response():
     response.choices = [MagicMock()]
     response.choices[0].message.content = "This is a test response."
     response.choices[0].message.tool_calls = None
+    response.usage = None
     return response
 
 
