@@ -1,0 +1,7 @@
+client_type: "litellm-mistral-small"
+temperature: 0.3
+max_tokens: 2048
+max_retries: 3
+system_instructions: |
+  You are a JSON-producing assistant. Follow instructions exactly.
+  When asked for JSON, output ONLY valid JSON with no markdown formatting.
