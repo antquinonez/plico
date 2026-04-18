@@ -14,6 +14,7 @@ import logging
 import re
 from typing import Any
 
+from .models import PromptSpec
 from .workbook_parser import parse_history_string
 
 logger = logging.getLogger(__name__)
@@ -45,7 +46,7 @@ def resolve_variables(text: str | None, data_row: dict[str, Any]) -> str | None:
     return re.sub(pattern, replacer, text)
 
 
-def resolve_prompt_variables(prompt: dict[str, Any], data_row: dict[str, Any]) -> dict[str, Any]:
+def resolve_prompt_variables(prompt: PromptSpec, data_row: dict[str, Any]) -> PromptSpec:
     """Resolve all {{variable}} placeholders in a prompt.
 
     Also merges per-row ``_documents`` from the data row into the prompt's

@@ -36,8 +36,9 @@ from ..document_processor import DocumentProcessor
 from ..document_registry import DocumentRegistry
 from ..executor import Executor
 from ..graph import build_execution_graph, evaluate_condition, get_ready_prompts
+from ..models import ConfigSpec, DocumentSpec, Interaction, PromptSpec
 from ..planning_runner import PlanningPhaseRunner
-from ..results import ResultBuilder
+from ..results import ResultBuilder, ResultsFrame
 from ..scoring import ScoringRubric
 from ..state import ExecutionState, PromptNode
 from ..synthesis_runner import SynthesisRunner
@@ -115,8 +116,8 @@ class OrchestratorBase(ABC):
 
         self.progress_callback = progress_callback
 
-        self.config: dict[str, Any] = {}
-        self.prompts: list[dict[str, Any]] = []
+        self.config: ConfigSpec = {}
+        self.prompts: list[PromptSpec] = []
         self.results: list[dict[str, Any]] = []
 
         # FFAI wrapper around the default client. Created by _init_client() and
@@ -125,7 +126,7 @@ class OrchestratorBase(ABC):
         # own client state.
         self.ffai: FFAI | None = None
 
-        self.shared_prompt_attr_history: list[dict[str, Any]] = []
+        self.shared_prompt_attr_history: list[Interaction] = []
         self.history_lock = threading.Lock()
         self._response_context = ResponseContext(
             shared_prompt_attr_history=self.shared_prompt_attr_history,
@@ -155,7 +156,20 @@ class OrchestratorBase(ABC):
         # Planning phase state
         self.planning_results: list[dict[str, Any]] = []
         self.has_planning: bool = False
-        self.planning_prompts: list[dict[str, Any]] = []
+        self.planning_prompts: list[PromptSpec] = []
+
+        self._results_frame: ResultsFrame | None = None
+
+    @property
+    def results_frame(self) -> ResultsFrame:
+        """Lazily-built ResultsFrame wrapping self.results.
+
+        Invalidated whenever self.results is reassigned.
+        """
+        if self._results_frame is None:
+            all_results = list(self.planning_results) + list(self.results)
+            self._results_frame = ResultsFrame(all_results)
+        return self._results_frame
 
     @property
     @abstractmethod
@@ -209,7 +223,7 @@ class OrchestratorBase(ABC):
 
     def _init_documents(
         self,
-        documents_data: list[dict[str, Any]],
+        documents_data: list[DocumentSpec],
         workbook_dir: str,
     ) -> None:
         """Initialize document processor and registry for document references.
@@ -326,7 +340,7 @@ class OrchestratorBase(ABC):
     def _get_isolated_ffai(
         self,
         client_name: str | None = None,
-        batch_history: list[dict[str, Any]] | None = None,
+        batch_history: list[Interaction] | None = None,
         batch_history_lock: threading.Lock | None = None,
     ) -> FFAI:
         """Create an FFAI instance with isolated client and scoped history.
@@ -358,9 +372,9 @@ class OrchestratorBase(ABC):
 
     def _record_to_history(
         self,
-        history: list[dict[str, Any]],
+        history: list[Interaction],
         lock: threading.Lock | None,
-        prompt: dict[str, Any],
+        prompt: PromptSpec,
         response: str | None,
     ) -> None:
         """Record an interaction to a specific history list.
@@ -399,7 +413,7 @@ class OrchestratorBase(ABC):
         """
         self._validation_manager.validate(self)
 
-    def _inject_references(self, prompt: dict[str, Any]) -> str:
+    def _inject_references(self, prompt: PromptSpec) -> str:
         """Inject document references or semantic search results into a prompt.
 
         Args:
@@ -497,7 +511,7 @@ class OrchestratorBase(ABC):
         return get_ready_prompts(state, nodes)
 
     def _evaluate_condition(
-        self, prompt: dict[str, Any], results_by_name: dict[str, dict[str, Any]]
+        self, prompt: PromptSpec, results_by_name: dict[str, dict[str, Any]]
     ) -> tuple[bool, str | None, str | None]:
         """Evaluate a prompt's condition.
 
@@ -507,7 +521,7 @@ class OrchestratorBase(ABC):
         return evaluate_condition(prompt, results_by_name)
 
     def _evaluate_condition_with_trace(
-        self, prompt: dict[str, Any], results_by_name: dict[str, dict[str, Any]]
+        self, prompt: PromptSpec, results_by_name: dict[str, dict[str, Any]]
     ) -> tuple[bool, str | None, str | None, str | None]:
         """Evaluate a prompt's condition and return the resolved trace."""
         from ..graph import evaluate_condition_with_trace
@@ -516,11 +530,11 @@ class OrchestratorBase(ABC):
 
     def _execute_agent_mode(
         self,
-        prompt: dict[str, Any],
+        prompt: PromptSpec,
         ffai: FFAI,
         builder: Any,
         seq_label: str,
-        batch_history: list[dict[str, Any]] | None = None,
+        batch_history: list[Interaction] | None = None,
         batch_history_lock: threading.Lock | None = None,
     ) -> dict[str, Any]:
         """Execute a prompt using the agentic tool-call loop.
@@ -566,12 +580,12 @@ class OrchestratorBase(ABC):
 
     def _execute_with_retry(
         self,
-        prompt: dict[str, Any],
+        prompt: PromptSpec,
         results_by_name: dict[str, dict[str, Any]],
         results_lock: threading.Lock | None = None,
         batch_id: int | None = None,
         batch_name: str | None = None,
-        batch_history: list[dict[str, Any]] | None = None,
+        batch_history: list[Interaction] | None = None,
         batch_history_lock: threading.Lock | None = None,
     ) -> dict[str, Any]:
         """Execute a prompt with retry logic, supporting both regular and batch execution.
@@ -721,7 +735,7 @@ class OrchestratorBase(ABC):
 
     def _execute_prompt_core(
         self,
-        prompt: dict[str, Any],
+        prompt: PromptSpec,
         results_by_name: dict[str, dict[str, Any]],
         results_lock: threading.Lock | None = None,
     ) -> dict[str, Any]:
@@ -740,9 +754,7 @@ class OrchestratorBase(ABC):
         """
         return self._execute_with_retry(prompt, results_by_name, results_lock)
 
-    def _execute_prompt_isolated(
-        self, prompt: dict[str, Any], state: ExecutionState
-    ) -> dict[str, Any]:
+    def _execute_prompt_isolated(self, prompt: PromptSpec, state: ExecutionState) -> dict[str, Any]:
         """Execute a single prompt with completely isolated client clone.
 
         Used by the parallel executor. Delegates to _execute_prompt_core with
@@ -764,7 +776,7 @@ class OrchestratorBase(ABC):
 
     def _execute_prompt(
         self,
-        prompt: dict[str, Any],
+        prompt: PromptSpec,
         results_by_name: dict[str, dict[str, Any]] | None = None,
     ) -> dict[str, Any]:
         """Execute a single prompt with retry logic.
@@ -788,9 +800,7 @@ class OrchestratorBase(ABC):
         """Replace {{variable}} placeholders with values from data row."""
         return resolve_variables(text, data_row)
 
-    def _resolve_prompt_variables(
-        self, prompt: dict[str, Any], data_row: dict[str, Any]
-    ) -> dict[str, Any]:
+    def _resolve_prompt_variables(self, prompt: PromptSpec, data_row: dict[str, Any]) -> PromptSpec:
         """Resolve all {{variable}} placeholders in a prompt."""
         return resolve_prompt_variables(prompt, data_row)
 
@@ -803,7 +813,7 @@ class OrchestratorBase(ABC):
         batch_id: int,
         data_row: dict[str, Any],
         batch_name: str,
-        batch_history: list[dict[str, Any]] | None = None,
+        batch_history: list[Interaction] | None = None,
         batch_history_lock: threading.Lock | None = None,
     ) -> list[dict[str, Any]]:
         """Execute all prompts for a single batch with resolved variables.
@@ -848,11 +858,11 @@ class OrchestratorBase(ABC):
 
     def _execute_prompt_with_batch(
         self,
-        prompt: dict[str, Any],
+        prompt: PromptSpec,
         batch_id: int,
         batch_name: str,
         results_by_name: dict[str, dict[str, Any]] | None = None,
-        batch_history: list[dict[str, Any]] | None = None,
+        batch_history: list[Interaction] | None = None,
         batch_history_lock: threading.Lock | None = None,
     ) -> dict[str, Any]:
         """Execute a single prompt and tag with batch info.
@@ -946,7 +956,7 @@ class OrchestratorBase(ABC):
     def _resolve_shared_document(
         document_path: str,
         reference_name: str | None = None,
-    ) -> dict[str, Any]:
+    ) -> DocumentSpec:
         """Create a document definition for a shared document file.
 
         Args:
@@ -992,7 +1002,7 @@ class OrchestratorBase(ABC):
         """
         from ..discovery import create_data_rows_from_documents, discover_documents
 
-        discovered_docs: list[dict[str, Any]] = []
+        discovered_docs: list[DocumentSpec] = []
 
         if self._shared_document_path:
             shared_doc = self._resolve_shared_document(
@@ -1129,6 +1139,7 @@ class OrchestratorBase(ABC):
                         self.results = self.execute_parallel()
                     else:
                         self.results = self.execute()
+                self._results_frame = None
 
             if self.has_scoring:
                 self._aggregate_scores()
@@ -1169,68 +1180,9 @@ class OrchestratorBase(ABC):
         if not self.results:
             return {"status": "not_run"}
 
-        summary: dict[str, Any] = {
-            "total_prompts": len(self.results),
-            "successful": sum(1 for r in self.results if r["status"] == "success"),
-            "failed": sum(1 for r in self.results if r["status"] == "failed"),
-            "skipped": sum(1 for r in self.results if r["status"] == "skipped"),
-            "total_attempts": sum(r["attempts"] for r in self.results),
-        }
-
-        total_input = sum(r.get("input_tokens", 0) for r in self.results)
-        total_output = sum(r.get("output_tokens", 0) for r in self.results)
-        total_tokens = sum(r.get("total_tokens", 0) for r in self.results)
-        total_cost = sum(r.get("cost_usd", 0.0) for r in self.results)
-        if total_tokens > 0 or total_cost > 0:
-            summary["tokens"] = {
-                "input": total_input,
-                "output": total_output,
-                "total": total_tokens,
-            }
-            summary["cost_usd"] = round(total_cost, 6)
-
-        condition_count = sum(1 for r in self.results if r.get("condition"))
-        if condition_count > 0:
-            summary["prompts_with_conditions"] = condition_count
-
-        if self.is_batch_mode:
-            batch_ids = {r.get("batch_id", 0) for r in self.results}
-            summary["total_batches"] = len(batch_ids)
-            summary["batch_mode"] = True
-
-            batch_failures: dict[int, int] = {}
-            for r in self.results:
-                if r["status"] == "failed":
-                    batch_id = r.get("batch_id", 0)
-                    batch_failures[batch_id] = batch_failures.get(batch_id, 0) + 1
-            if batch_failures:
-                summary["batches_with_failures"] = batch_failures
-
-        if self.has_scoring:
-            scored = [r for r in self.results if r.get("scoring_status")]
-            scoring_block: dict[str, Any] = {
-                "total_scored": len(scored),
-                "ok": sum(1 for r in scored if r["scoring_status"] == "ok"),
-                "partial": sum(1 for r in scored if r["scoring_status"] == "partial"),
-                "failed": sum(1 for r in scored if r["scoring_status"] == "failed"),
-                "skipped": sum(1 for r in scored if r["scoring_status"] == "skipped"),
-                "strategy": self.evaluation_strategy,
-            }
-            composites = [
-                r["composite_score"] for r in scored if r.get("composite_score") is not None
-            ]
-            if composites:
-                scoring_block["avg_composite"] = round(sum(composites) / len(composites), 2)
-                scoring_block["max_composite"] = max(composites)
-                scoring_block["min_composite"] = min(composites)
-            summary["scoring"] = scoring_block
-
-        if self.has_synthesis:
-            synth = [r for r in self.results if r.get("result_type") == "synthesis"]
-            summary["synthesis"] = {
-                "count": len(synth),
-                "successful": sum(1 for r in synth if r["status"] == "success"),
-                "failed": sum(1 for r in synth if r["status"] == "failed"),
-            }
-
-        return summary
+        return ResultsFrame(self.results).summary(
+            is_batch_mode=self.is_batch_mode,
+            evaluation_strategy=self.evaluation_strategy,
+            has_scoring=self.has_scoring,
+            has_synthesis=self.has_synthesis,
+        )

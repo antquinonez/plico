@@ -15,6 +15,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from .condition_evaluator import ConditionEvaluator
+from .models import PromptSpec
 from .state import ExecutionState, PromptNode
 
 
@@ -53,7 +54,7 @@ class ExecutionGraph:
 
 
 def build_execution_graph(
-    prompts: list[dict[str, Any]],
+    prompts: list[PromptSpec],
 ) -> dict[int, PromptNode]:
     """Build dependency graph for parallel execution.
 
@@ -76,7 +77,7 @@ def build_execution_graph(
 
 
 def build_execution_graph_with_edges(
-    prompts: list[dict[str, Any]],
+    prompts: list[PromptSpec],
 ) -> ExecutionGraph:
     """Build execution graph with full edge source metadata.
 
@@ -188,7 +189,7 @@ def get_ready_prompts(state: ExecutionState, nodes: dict[int, PromptNode]) -> li
 
 
 def evaluate_condition(
-    prompt: dict[str, Any],
+    prompt: PromptSpec,
     results_by_name: dict[str, dict[str, Any]],
 ) -> tuple[bool, str | None, str | None]:
     """Evaluate a prompt's condition.
@@ -213,7 +214,7 @@ def evaluate_condition(
 
 
 def evaluate_condition_with_trace(
-    prompt: dict[str, Any],
+    prompt: PromptSpec,
     results_by_name: dict[str, dict[str, Any]],
 ) -> tuple[bool, str | None, str | None, str | None]:
     """Evaluate a prompt's condition and return the resolved trace.

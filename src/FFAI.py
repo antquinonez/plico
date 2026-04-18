@@ -15,7 +15,7 @@ import logging
 import os
 import threading
 import time
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import polars as pl
 
@@ -31,6 +31,9 @@ from .core.response_result import ResponseResult
 from .core.response_utils import clean_response as _clean_response_impl
 from .core.response_utils import extract_json
 from .core.usage import TokenUsage
+
+if TYPE_CHECKING:
+    from .orchestrator.models import Interaction
 
 __all__ = ["FFAI", "extract_json_field", "interpolate_prompt"]
 
@@ -65,7 +68,7 @@ class FFAI:
         persist_dir: str | None = None,
         persist_name: str | None = None,
         auto_persist: bool = False,
-        shared_prompt_attr_history: list[dict[str, Any]] | None = None,
+        shared_prompt_attr_history: list[Interaction] | None = None,
         history_lock: threading.Lock | None = None,
     ) -> None:
         """Initialize the FFAI wrapper.
@@ -90,8 +93,8 @@ class FFAI:
         self.client = client
         self._client_history_lock = threading.Lock()
 
-        self.history: list[dict[str, Any]] = []
-        self.clean_history: list[dict[str, Any]] = []
+        self.history: list[Interaction] = []
+        self.clean_history: list[Interaction] = []
 
         self._context = ResponseContext(
             shared_prompt_attr_history=shared_prompt_attr_history,
@@ -113,12 +116,12 @@ class FFAI:
         )
 
     @property
-    def prompt_attr_history(self) -> list[dict[str, Any]]:
+    def prompt_attr_history(self) -> list[Interaction]:
         """Shared prompt attribute history (delegates to ResponseContext)."""
         return self._context.prompt_attr_history
 
     @prompt_attr_history.setter
-    def prompt_attr_history(self, value: list[dict[str, Any]]) -> None:
+    def prompt_attr_history(self, value: list[Interaction]) -> None:
         """Allow external reassignment for backward compatibility."""
         self._context.prompt_attr_history = value
 
@@ -299,15 +302,15 @@ class FFAI:
     # History accessors
     # ===========================================================================
 
-    def get_interaction_history(self) -> list[dict[str, Any]]:
+    def get_interaction_history(self) -> list[Interaction]:
         """Get complete history."""
         return self.history
 
-    def get_clean_interaction_history(self) -> list[dict[str, Any]]:
+    def get_clean_interaction_history(self) -> list[Interaction]:
         """Get complete clean history."""
         return self.clean_history
 
-    def get_prompt_attr_history(self) -> list[dict[str, Any]]:
+    def get_prompt_attr_history(self) -> list[Interaction]:
         """Get prompt attribute history."""
         return self.prompt_attr_history
 
@@ -315,7 +318,7 @@ class FFAI:
         """Get all interactions as dictionaries."""
         return self.ordered_history.get_all_interactions()
 
-    def get_latest_interaction_by_prompt_name(self, prompt_name: str) -> dict[str, Any] | None:
+    def get_latest_interaction_by_prompt_name(self, prompt_name: str) -> Interaction | None:
         """Get most recent interaction for a prompt name."""
         matching = [e for e in self.history if e.get("prompt_name") == prompt_name]
         return matching[-1] if matching else None

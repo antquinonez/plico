@@ -7,7 +7,8 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+
+from ..models import PromptSpec
 
 
 @dataclass
@@ -23,7 +24,7 @@ class PromptNode:
     """
 
     sequence: int
-    prompt: dict[str, Any]
+    prompt: PromptSpec
     dependencies: set[int] = field(default_factory=set)
     level: int = 0
 

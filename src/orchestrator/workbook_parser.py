@@ -20,39 +20,15 @@ from typing import Any
 from openpyxl import Workbook, load_workbook
 
 from ..config import get_config
+from .models import ConfigSpec, DocumentSpec, PromptSpec
+from .results.frame import (
+    PIVOT_COLUMNS,
+    RESULTS_COLUMNS,
+    _serialize_for_excel,
+)
 from .workbook_formatter import WorkbookFormatter
 
 logger = logging.getLogger(__name__)
-
-JSON_SERIALIZE_COLUMNS = frozenset(
-    {"history", "references", "tool_calls", "scores", "extraction_trace"}
-)
-
-
-def _serialize_result_value(header: str, value: Any) -> Any:
-    """JSON-serialize complex result values for output.
-
-    Converts list/dict values in JSON_SERIALIZE_COLUMNS and response
-    to JSON strings. All other values pass through unchanged, including None.
-    """
-    if header in JSON_SERIALIZE_COLUMNS:
-        if value is not None:
-            return json.dumps(value)
-        return value
-    if header == "response" and isinstance(value, list | dict):
-        return json.dumps(value)
-    return value
-
-
-def _prepare_result_value(header: str, value: Any) -> Any:
-    """Convert a raw result value for Excel output.
-
-    Like _serialize_result_value but also converts None to empty string
-    for Excel cells where null is not desired.
-    """
-    if value is None:
-        return ""
-    return _serialize_result_value(header, value)
 
 
 def parse_history_string(history_str: Any) -> list[str] | None:
@@ -231,43 +207,7 @@ class WorkbookParser:
     RESULTS_HEADERS = [
         "batch_id",
         "batch_name",
-        "sequence",
-        "prompt_name",
-        "prompt",
-        "resolved_prompt",
-        "history",
-        "client",
-        "condition",
-        "condition_result",
-        "condition_error",
-        "condition_trace",
-        "response",
-        "status",
-        "attempts",
-        "error",
-        "references",
-        "semantic_query",
-        "semantic_filter",
-        "query_expansion",
-        "rerank",
-        "agent_mode",
-        "tool_calls",
-        "total_rounds",
-        "total_llm_calls",
-        "validation_passed",
-        "validation_attempts",
-        "validation_critique",
-        "scores",
-        "composite_score",
-        "scoring_status",
-        "extraction_trace",
-        "strategy",
-        "result_type",
-        "input_tokens",
-        "output_tokens",
-        "total_tokens",
-        "cost_usd",
-        "duration_ms",
+        *[c for c in RESULTS_COLUMNS if c not in ("batch_id", "batch_name")],
     ]
     TOOLS_HEADERS = [
         "name",
@@ -484,7 +424,7 @@ class WorkbookParser:
         logger.info(f"Workbook validated: {self.workbook_path}")
         return True
 
-    def load_config(self) -> dict[str, Any]:
+    def load_config(self) -> ConfigSpec:
         """Load configuration from config sheet.
 
         Handles both 2-column format (field, value) and 3-column format
@@ -518,7 +458,7 @@ class WorkbookParser:
         logger.debug(f"Loaded config: {config}")
         return config
 
-    def validate_config(self, config: dict[str, Any]) -> list[str]:
+    def validate_config(self, config: ConfigSpec) -> list[str]:
         """Validate config values and return list of error messages.
 
         Args:
@@ -570,7 +510,7 @@ class WorkbookParser:
 
         return errors
 
-    def load_prompts(self) -> list[dict[str, Any]]:
+    def load_prompts(self) -> list[PromptSpec]:
         """Load prompts from prompts sheet."""
         wb = load_workbook(self.workbook_path)
         ws = wb[self.PROMPTS_SHEET]
@@ -742,7 +682,7 @@ class WorkbookParser:
         logger.info(f"Loaded {len(clients)} client configurations")
         return clients
 
-    def load_documents(self) -> list[dict[str, Any]]:
+    def load_documents(self) -> list[DocumentSpec]:
         """Load document definitions from documents sheet.
 
         Returns:
@@ -1044,7 +984,7 @@ class WorkbookParser:
                 ws.cell(
                     row=row_idx,
                     column=col_idx,
-                    value=_prepare_result_value(header, result.get(header)),
+                    value=_serialize_for_excel(header, result.get(header)),
                 )
 
         self.formatter.apply_formatting(ws, "results")
@@ -1080,7 +1020,7 @@ class WorkbookParser:
                 ws.cell(
                     row=row_idx,
                     column=col_idx,
-                    value=_prepare_result_value(header, result.get(header)),
+                    value=_serialize_for_excel(header, result.get(header)),
                 )
 
         self.formatter.apply_formatting(ws, "results")
@@ -1089,91 +1029,7 @@ class WorkbookParser:
         logger.info(f"Batch results written to sheet: {sheet_name}")
         return sheet_name
 
-    PIVOT_HEADERS = [
-        "batch_name",
-        "criteria_name",
-        "normalized_score",
-        "weight",
-        "weighted_score",
-        "rank",
-        "percentile",
-        "scale_min",
-        "scale_max",
-        "description",
-    ]
-
-    @staticmethod
-    def _compute_per_criteria_ranks(
-        rows: list[dict[str, Any]],
-    ) -> dict[tuple[str, str], tuple[int, int]]:
-        """Compute per-criteria dense rank and percentile for each row.
-
-        Rows are grouped by criteria_name. Within each group, candidates are
-        ranked by normalized_score. The key is (batch_name, criteria_name)
-        and the value is (rank, percentile).
-
-        Rows with non-numeric normalized_score are excluded from ranking.
-
-        Args:
-            rows: List of row dicts with batch_name, criteria_name, normalized_score.
-
-        Returns:
-            Mapping of (batch_name, criteria_name) to (rank, percentile).
-
-        """
-        groups: dict[str, list[tuple[str, float]]] = {}
-        for row in rows:
-            score = row.get("normalized_score")
-            if not isinstance(score, int | float):
-                continue
-            cname = row["criteria_name"]
-            groups.setdefault(cname, []).append((row["batch_name"], score))
-
-        result: dict[tuple[str, str], tuple[int, int]] = {}
-        for cname, entries in groups.items():
-            total = len(entries)
-            if total == 0:
-                continue
-            sorted_scores = sorted({s for _, s in entries}, reverse=True)
-            score_to_rank = {s: i + 1 for i, s in enumerate(sorted_scores)}
-            for batch_name, score in entries:
-                rank = score_to_rank[score]
-                percentile = 100 if total == 1 else round((total - rank) / (total - 1) * 100)
-                result[(batch_name, cname)] = (rank, percentile)
-
-        return result
-
-    @staticmethod
-    def _compute_composite_ranks(
-        composites: dict[str, float | None],
-    ) -> dict[str, tuple[int, int]]:
-        """Compute dense rank and percentile from composite scores.
-
-        Args:
-            composites: Mapping of batch_name to composite_score (may be None).
-
-        Returns:
-            Mapping of batch_name to (rank, percentile).
-
-        """
-        scored = {
-            name: score for name, score in composites.items() if isinstance(score, int | float)
-        }
-        total = len(scored)
-
-        if total == 0:
-            return {}
-
-        sorted_scores = sorted(set(scored.values()), reverse=True)
-        score_to_rank = {score: i + 1 for i, score in enumerate(sorted_scores)}
-
-        result: dict[str, tuple[int, int]] = {}
-        for name, score in scored.items():
-            rank = score_to_rank[score]
-            percentile = 100 if total == 1 else round((total - rank) / (total - 1) * 100)
-            result[name] = (rank, percentile)
-
-        return result
+    PIVOT_HEADERS = PIVOT_COLUMNS
 
     def write_scores_pivot(
         self,
@@ -1181,13 +1037,11 @@ class WorkbookParser:
         scoring_criteria: list[dict[str, Any]],
         sheet_name: str = "scores_pivot",
     ) -> str | None:
-        """Write a flattened pivot sheet for heatmap-eligible scores.
+        """Write a scores pivot sheet using ResultsFrame for computation.
 
         Only criteria with score_type='normalized_score' are included.
-        Each row contains one (batch_name, criteria_name) pair with the
-        extracted numeric score, weight, weighted score, scale bounds, and
-        human description. A ``_composite`` summary row is appended per
-        batch_name carrying the weighted composite score.
+        Delegates pivot computation to ResultsFrame.scores_pivot() and
+        writes the resulting DataFrame to an Excel worksheet.
 
         Args:
             results: List of result dictionaries (must include batch_name, scores).
@@ -1198,75 +1052,13 @@ class WorkbookParser:
             Name of the pivot sheet created, or None if no pivot-eligible criteria exist.
 
         """
-        pivot_criteria = [c for c in scoring_criteria if c.get("score_type") == "normalized_score"]
-        if not pivot_criteria:
+        from .results import ResultsFrame
+
+        frame = ResultsFrame(results)
+        pivot_df = frame.scores_pivot(scoring_criteria)
+
+        if pivot_df.is_empty():
             return None
-
-        criteria_map = {c["criteria_name"]: c for c in pivot_criteria}
-
-        rows: list[dict[str, Any]] = []
-        seen = set()
-        composites: dict[str, float | None] = {}
-
-        for r in results:
-            batch_name = r.get("batch_name")
-            scores = r.get("scores")
-            if not batch_name or not isinstance(scores, dict):
-                continue
-
-            for criteria_name, value in scores.items():
-                if criteria_name not in criteria_map:
-                    continue
-                key = (batch_name, criteria_name)
-                if key in seen:
-                    continue
-                seen.add(key)
-                composites.setdefault(batch_name, r.get("composite_score"))
-                crit = criteria_map[criteria_name]
-                weight = crit.get("weight", 1.0)
-                rows.append(
-                    {
-                        "batch_name": batch_name,
-                        "criteria_name": criteria_name,
-                        "normalized_score": value if isinstance(value, int | float) else "",
-                        "weight": weight,
-                        "weighted_score": (value * weight)
-                        if isinstance(value, int | float)
-                        else "",
-                        "scale_min": crit.get("scale_min", 1),
-                        "scale_max": crit.get("scale_max", 10),
-                        "description": crit.get("description", ""),
-                    }
-                )
-
-        if not rows:
-            return None
-
-        criteria_ranks = self._compute_per_criteria_ranks(rows)
-        composite_ranks = self._compute_composite_ranks(composites)
-
-        for row in rows:
-            key = (row["batch_name"], row["criteria_name"])
-            rank, percentile = criteria_ranks.get(key, (0, 0))
-            row["rank"] = rank
-            row["percentile"] = percentile
-
-        for batch_name, composite in composites.items():
-            rank, percentile = composite_ranks.get(batch_name, (0, 0))
-            rows.append(
-                {
-                    "batch_name": batch_name,
-                    "criteria_name": "_composite",
-                    "normalized_score": "",
-                    "weight": "",
-                    "weighted_score": composite if isinstance(composite, int | float) else "",
-                    "rank": rank,
-                    "percentile": percentile,
-                    "scale_min": "",
-                    "scale_max": "",
-                    "description": "Weighted composite score (sum of weighted scores / sum of weights)",
-                }
-            )
 
         wb = load_workbook(self.workbook_path)
 
@@ -1279,12 +1071,15 @@ class WorkbookParser:
         for col_idx, header in enumerate(self.PIVOT_HEADERS, start=1):
             ws.cell(row=1, column=col_idx, value=header)
 
-        for row_idx, row_data in enumerate(rows, start=2):
+        for row_idx, row_data in enumerate(pivot_df.iter_rows(named=True), start=2):
             for col_idx, header in enumerate(self.PIVOT_HEADERS, start=1):
-                ws.cell(row=row_idx, column=col_idx, value=row_data.get(header, ""))
+                val = row_data.get(header)
+                if val is None:
+                    val = ""
+                ws.cell(row=row_idx, column=col_idx, value=val)
 
         self.formatter.apply_formatting(ws, "scoring")
 
         wb.save(self.workbook_path)
-        logger.info(f"Scores pivot written to sheet: {sheet_name} ({len(rows)} rows)")
+        logger.info(f"Scores pivot written to sheet: {sheet_name}")
         return sheet_name

@@ -20,13 +20,10 @@ dependencies = [
     "azure-ai-inference>=1.0.0b9,<2.0.0",
     "azure-core>=1.38.0,<2.0.0",
     "google-auth>=2.48.0,<3.0.0",
-    "duckdb>=1.4.0,<2.0.0",
     "requests>=2.32.0,<3.0.0",
-    "pandas>=3.0.0,<4.0.0",
     "polars[rtcompat]>=1.38.0,<2.0.0",
     "python-dotenv>=1.2.0,<2.0.0",
     "nest_asyncio>=1.6.0,<2.0.0",
-    "matplotlib>=3.10.0,<4.0.0",
     "openpyxl>=3.1.0,<4.0.0",
     "pyarrow>=23.0.0,<25.0.0",
     "litellm>=1.81.0,<2.0.0",
@@ -49,6 +46,11 @@ otel = [
     "opentelemetry-api>=1.40.0",
     "opentelemetry-sdk>=1.40.0",
     "opentelemetry-exporter-otlp-proto-grpc>=1.40.0",
+]
+
+scripts = [
+    "pandas>=3.0.0,<4.0.0",
+    "matplotlib>=3.10.0,<4.0.0",
 ]
 
 [tool.pytest.ini_options]

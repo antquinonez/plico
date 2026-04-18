@@ -29,10 +29,8 @@ Examples:
 from __future__ import annotations
 
 import argparse
-import json
 import os
 import sys
-from datetime import datetime
 from pathlib import Path
 
 import polars as pl
@@ -41,6 +39,8 @@ from openpyxl.styles import Alignment, Font, PatternFill
 from openpyxl.utils import get_column_letter
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from src.orchestrator.results.frame import _serialize_for_excel
 
 COLUMN_WIDTHS = {
     "batch_id": 10,
@@ -123,16 +123,7 @@ def export_to_excel(
     for row_idx, row in enumerate(df.iter_rows(named=True), start=2):
         for col_idx, col_name in enumerate(headers, start=1):
             value = row.get(col_name)
-
-            if value is None:
-                cell_value = ""
-            elif isinstance(value, list):
-                cell_value = json.dumps(value)
-            elif isinstance(value, dict):
-                cell_value = json.dumps(value)
-            else:
-                cell_value = str(value)
-
+            cell_value = _serialize_for_excel(col_name, value)
             cell = ws.cell(row=row_idx, column=col_idx, value=cell_value)
 
             if col_name in WRAP_COLUMNS:
@@ -149,6 +140,11 @@ def export_to_excel(
     ws.auto_filter.ref = f"A1:{get_column_letter(len(headers))}{len(df) + 1}"
 
     wb.save(output_path)
+
+    print(f"\nExcel exported to: {output_path}")
+    print(f"  Rows: {len(df)}")
+    print(f"  Columns: {len(df.columns)}")
+    print()
 
     return output_path
 
@@ -194,24 +190,13 @@ def main():
         columns = [c.strip() for c in args.columns.split(",")]
 
     try:
-        output_path = export_to_excel(
+        export_to_excel(
             parquet_path=args.parquet,
             output_path=args.output,
             columns=columns,
             status_filter=args.status,
             batch_ids=args.batch_id,
         )
-
-        df = pl.read_parquet(args.parquet)
-        if args.status:
-            df = df.filter(pl.col("status").is_in(args.status))
-        if args.batch_id:
-            df = df.filter(pl.col("batch_id").is_in(args.batch_id))
-
-        print(f"\nExcel exported to: {output_path}")
-        print(f"  Rows: {len(df)}")
-        print(f"  Columns: {len(df.columns)}")
-        print()
 
         return 0
 

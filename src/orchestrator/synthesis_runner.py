@@ -16,6 +16,8 @@ import time
 from typing import Any
 
 from ..config import get_config
+from .results import ResultBuilder, ResultsFrame
+from .results.frame import _deserialize_json_columns
 from .scoring import ScoreAggregator
 from .synthesis import SynthesisExecutor, build_entry_results_map
 
@@ -36,63 +38,31 @@ def _build_synthesis_result(
     cost_usd: float = 0.0,
     duration_ms: float = 0.0,
 ) -> dict[str, Any]:
-    """Build a synthesis result dictionary.
+    """Build a synthesis result dictionary via ResultBuilder."""
+    builder = ResultBuilder(synth_prompt).as_synthesis()
 
-    Consolidates the duplicated result dict construction from success and
-    failure paths into a single helper.
+    if status == "success":
+        builder.with_response(response)
+        builder.with_resolved_prompt(resolved_prompt)
+        builder.with_attempts(1)
+    else:
+        builder.with_error(error or "unknown error", attempts=1)
+        builder.with_response("")
+        builder.with_resolved_prompt("")
 
-    Args:
-        synth_prompt: Source synthesis prompt dictionary.
-        status: "success" or "failed".
-        evaluation_strategy: Active evaluation strategy name.
-        has_scoring: Whether scoring is enabled.
-        response: LLM response text (empty for failure).
-        resolved_prompt: Full resolved prompt text (empty for failure).
-        error: Error message (None for success).
+    if input_tokens or output_tokens or total_tokens:
+        builder.with_usage(input_tokens, output_tokens, total_tokens)
+    if cost_usd:
+        builder.with_cost(cost_usd)
+    if duration_ms:
+        builder.with_duration(duration_ms)
 
-    Returns:
-        Result dictionary with all synthesis fields.
+    if has_scoring and evaluation_strategy:
+        builder.with_scoring(
+            scores=None, composite_score=None, scoring_status="", strategy=evaluation_strategy
+        )
 
-    """
-    return {
-        "sequence": synth_prompt["sequence"],
-        "prompt_name": synth_prompt.get("prompt_name"),
-        "prompt": synth_prompt["prompt"],
-        "resolved_prompt": resolved_prompt,
-        "response": response,
-        "status": status,
-        "attempts": 1,
-        "batch_id": -1,
-        "batch_name": "",
-        "history": synth_prompt.get("history"),
-        "condition": synth_prompt.get("condition"),
-        "condition_result": None,
-        "condition_error": None,
-        "error": error,
-        "references": None,
-        "result_type": "synthesis",
-        "scores": None,
-        "composite_score": None,
-        "scoring_status": "",
-        "strategy": evaluation_strategy if has_scoring else None,
-        "client": synth_prompt.get("client"),
-        "agent_mode": False,
-        "tool_calls": None,
-        "total_rounds": None,
-        "total_llm_calls": None,
-        "validation_passed": None,
-        "validation_attempts": None,
-        "validation_critique": None,
-        "semantic_query": None,
-        "semantic_filter": None,
-        "query_expansion": None,
-        "rerank": None,
-        "input_tokens": input_tokens,
-        "output_tokens": output_tokens,
-        "total_tokens": total_tokens,
-        "cost_usd": cost_usd,
-        "duration_ms": duration_ms,
-    }
+    return builder.build_dict()
 
 
 class SynthesisRunner:
@@ -210,15 +180,12 @@ class SynthesisRunner:
 
         executor = SynthesisExecutor(max_context_chars=max_context)
 
-        grouped: dict[int, list[dict[str, Any]]] = {}
-        for r in orchestrator.results:
-            batch_id = r.get("batch_id", 0)
-            if batch_id not in grouped:
-                grouped[batch_id] = []
-            grouped[batch_id].append(r)
-
-        sorted_batch_ids = sorted(grouped.keys())
-        batch_results_list = [grouped[bid] for bid in sorted_batch_ids]
+        frame = ResultsFrame(orchestrator.results)
+        batch_groups = frame.by_batch()
+        sorted_batch_ids = sorted(batch_groups.keys())
+        batch_results_list = [
+            _deserialize_json_columns(batch_groups[bid].df.to_dicts()) for bid in sorted_batch_ids
+        ]
 
         entry_results_map = build_entry_results_map(batch_results_list)
 

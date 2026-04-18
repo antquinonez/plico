@@ -20,6 +20,7 @@ from typing import Any
 
 from ..config import get_config
 from ..FFAI import FFAI
+from .models import ConfigSpec, PromptSpec
 from .results import ResultBuilder
 from .tool_registry import ToolRegistry
 
@@ -49,8 +50,8 @@ class AgentExecutor:
     def __init__(
         self,
         tool_registry: ToolRegistry,
-        config: dict[str, Any],
-        record_history_fn: Callable[[dict[str, Any], str | None], None],
+        config: ConfigSpec,
+        record_history_fn: Callable[[PromptSpec, str | None], None],
     ) -> None:
         self.tool_registry = tool_registry
         self.config = config
@@ -58,11 +59,11 @@ class AgentExecutor:
 
     def execute(
         self,
-        prompt: dict[str, Any],
+        prompt: PromptSpec,
         ffai: FFAI,
         builder: ResultBuilder,
         seq_label: str,
-        inject_references_fn: Callable[[dict[str, Any]], str],
+        inject_references_fn: Callable[[PromptSpec], str],
         get_isolated_ffai_fn: Callable[[str | None], FFAI],
     ) -> dict[str, Any] | None:
         """Execute a prompt using the agentic tool-call loop.
@@ -181,7 +182,7 @@ class AgentExecutor:
 
     def validate_response(
         self,
-        prompt: dict[str, Any],
+        prompt: PromptSpec,
         builder: Any,
         agent_result: Any,
         tool_names: list[str],

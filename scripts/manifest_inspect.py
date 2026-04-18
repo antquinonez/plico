@@ -45,6 +45,8 @@ import polars as pl
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from src.orchestrator.results import ResultsFrame
+
 
 def inspect_parquet(
     parquet_path: str,
@@ -112,11 +114,13 @@ def inspect_parquet(
     print("\nSTATISTICS:")
     print("-" * 70)
 
-    status_counts = df.group_by("status").len()
-    for row in status_counts.iter_rows(named=True):
-        status = row["status"]
-        count = row["len"]
-        pct = (count / len(df) * 100) if len(df) > 0 else 0
+    frame = ResultsFrame.from_parquet(parquet_path)
+    summary = frame.summary(is_batch_mode=True)
+
+    for status in ("success", "failed", "skipped"):
+        count = summary.get(status, 0)
+        total = summary.get("total_prompts", len(df))
+        pct = (count / total * 100) if total > 0 else 0
         print(f"  {status}: {count} ({pct:.1f}%)")
 
     attempts_stats = df.select(
@@ -131,8 +135,7 @@ def inspect_parquet(
     )
 
     if "batch_id" in df.columns and df["batch_id"].null_count() < len(df):
-        batch_ids = df.filter(pl.col("batch_id").is_not_null()).select("batch_id").n_unique()
-        print(f"  Batches: {batch_ids}")
+        print(f"  Batches: {summary.get('total_batches', 'n/a')}")
 
     if "client" in df.columns and df["client"].null_count() < len(df):
         clients = df.filter(pl.col("client").is_not_null()).select("client").unique()
@@ -165,40 +168,60 @@ def inspect_parquet(
         ]
 
     def format_table(dataframe, cols, is_full=False, is_extended=False):
-        pd_df = dataframe.select(cols).to_pandas()
+        result = dataframe.select(cols)
         for col in cols:
-            if col not in pd_df.columns:
+            if col not in result.columns:
                 continue
             if col == "batch_name":
-                pd_df[col] = pd_df[col].fillna("-").astype(str).str[:12]
+                result = result.with_columns(
+                    pl.col(col).fill_null("-").cast(pl.Utf8).str.slice(0, 12)
+                )
             elif col == "prompt_name":
-                pd_df[col] = pd_df[col].fillna("-").astype(str).str[:22]
+                result = result.with_columns(
+                    pl.col(col).fill_null("-").cast(pl.Utf8).str.slice(0, 22)
+                )
             elif col == "prompt":
-                pd_df[col] = pd_df[col].fillna("-").astype(str).str[:40]
+                result = result.with_columns(
+                    pl.col(col).fill_null("-").cast(pl.Utf8).str.slice(0, 40)
+                )
             elif col == "response":
                 max_len = 80 if is_extended else 50
-                pd_df[col] = pd_df[col].fillna("-").astype(str).str[:max_len]
+                result = result.with_columns(
+                    pl.col(col).fill_null("-").cast(pl.Utf8).str.slice(0, max_len)
+                )
             elif col == "history":
-                pd_df[col] = pd_df[col].fillna("-").astype(str).str[:30]
-            elif col == "condition" or col == "references":
-                pd_df[col] = pd_df[col].fillna("-").astype(str).str[:25]
+                result = result.with_columns(
+                    pl.col(col).fill_null("-").cast(pl.Utf8).str.slice(0, 30)
+                )
+            elif col in ("condition", "references"):
+                result = result.with_columns(
+                    pl.col(col).fill_null("-").cast(pl.Utf8).str.slice(0, 25)
+                )
             elif col == "error":
-                pd_df[col] = pd_df[col].fillna("-").astype(str).str[:30]
+                result = result.with_columns(
+                    pl.col(col).fill_null("-").cast(pl.Utf8).str.slice(0, 30)
+                )
             elif col == "client":
-                pd_df[col] = pd_df[col].fillna("-").astype(str).str[:10]
+                result = result.with_columns(
+                    pl.col(col).fill_null("-").cast(pl.Utf8).str.slice(0, 10)
+                )
             elif col in ("batch_id", "sequence", "attempts"):
-                pd_df[col] = pd_df[col].fillna("-").astype(str)
+                result = result.with_columns(pl.col(col).fill_null("-").cast(pl.Utf8))
             elif col == "condition_result":
-                pd_df[col] = pd_df[col].fillna("-").astype(str).str[:8]
+                result = result.with_columns(
+                    pl.col(col).fill_null("-").cast(pl.Utf8).str.slice(0, 8)
+                )
             else:
-                pd_df[col] = pd_df[col].fillna("-").astype(str).str[:15]
-        return pd_df
+                result = result.with_columns(
+                    pl.col(col).fill_null("-").cast(pl.Utf8).str.slice(0, 15)
+                )
+        return result
 
     if show_all:
         print("\nDATA (ALL ROWS):")
         print("-" * 120)
         formatted = format_table(df, available_cols, is_full=full, is_extended=extended)
-        print(formatted.to_string(index=False))
+        print(formatted)
         print(f"\nTotal rows: {len(df)}")
     else:
         view_name = "FULL" if full else "EXTENDED" if extended else ""
@@ -206,14 +229,14 @@ def inspect_parquet(
         print("-" * 120)
         first_10 = df.head(10)
         formatted = format_table(first_10, available_cols, is_full=full, is_extended=extended)
-        print(formatted.to_string(index=False))
+        print(formatted)
 
         if len(df) > 20:
             print(f"\nDATA PREVIEW {view_name}(LAST 10 ROWS):".strip())
             print("-" * 120)
             last_10 = df.tail(10)
             formatted = format_table(last_10, available_cols, is_full=full, is_extended=extended)
-            print(formatted.to_string(index=False))
+            print(formatted)
         elif len(df) > 10:
             remaining = len(df) - 10
             print(f"\n... and {remaining} more rows")

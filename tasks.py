@@ -668,10 +668,13 @@ def wb_conditional(
 
 
 @task
-def wb_documents(c: Context, client: str | None = None, explain: bool = False):
+def wb_documents(
+    c: Context, concurrency: str = "3", client: str | None = None, explain: bool = False
+):
     """Create, run, and validate documents workbook.
 
     Args:
+        concurrency: Parallel execution concurrency
         client: Client type from clients.yaml (e.g., 'anthropic', 'gemini')
         explain: Show execution plan instead of running (no API calls)
 
@@ -685,10 +688,13 @@ def wb_documents(c: Context, client: str | None = None, explain: bool = False):
     if explain:
         _run_cmd(
             c,
-            f"python scripts/run_orchestrator.py {config.sample.workbooks.documents} --explain",
+            f"python scripts/run_orchestrator.py {config.sample.workbooks.documents} --explain -c {concurrency}",
         )
         return
-    _run_cmd(c, f"python scripts/run_orchestrator.py {config.sample.workbooks.documents}")
+    _run_cmd(
+        c,
+        f"python scripts/run_orchestrator.py {config.sample.workbooks.documents} -c {concurrency}",
+    )
     _run_cmd(c, f"python {_get_validate_script('documents')} {config.sample.workbooks.documents}")
     print("Documents workbook complete!")
 
@@ -752,10 +758,11 @@ def wb_max(c: Context, concurrency: str = "3", client: str | None = None, explai
 
 
 @task
-def wb_agent(c: Context, client: str | None = None, explain: bool = False):
+def wb_agent(c: Context, concurrency: str = "1", client: str | None = None, explain: bool = False):
     """Create, run, and validate agent workbook.
 
     Args:
+        concurrency: Parallel execution concurrency
         client: Client type from clients.yaml (e.g., 'anthropic', 'gemini')
         explain: Show execution plan instead of running (no API calls)
 
@@ -769,19 +776,25 @@ def wb_agent(c: Context, client: str | None = None, explain: bool = False):
     if explain:
         _run_cmd(
             c,
-            f"python scripts/run_orchestrator.py {config.sample.workbooks.agent} --explain -c 1",
+            f"python scripts/run_orchestrator.py {config.sample.workbooks.agent} --explain -c {concurrency}",
         )
         return
-    _run_cmd(c, f"python scripts/run_orchestrator.py {config.sample.workbooks.agent} -c 1")
+    _run_cmd(
+        c,
+        f"python scripts/run_orchestrator.py {config.sample.workbooks.agent} -c {concurrency}",
+    )
     _run_cmd(c, f"python {_get_validate_script('agent')} {config.sample.workbooks.agent}")
     print("Agent workbook complete!")
 
 
 @task
-def wb_screening(c: Context, client: str | None = None, explain: bool = False):
+def wb_screening(
+    c: Context, concurrency: str = "1", client: str | None = None, explain: bool = False
+):
     """Create, run, and validate screening workbook.
 
     Args:
+        concurrency: Parallel execution concurrency
         client: Client type from clients.yaml (e.g., 'anthropic', 'gemini')
         explain: Show execution plan instead of running (no API calls)
 
@@ -795,12 +808,12 @@ def wb_screening(c: Context, client: str | None = None, explain: bool = False):
     if explain:
         _run_cmd(
             c,
-            f"python scripts/run_orchestrator.py {config.sample.workbooks.screening} --explain -c 1",
+            f"python scripts/run_orchestrator.py {config.sample.workbooks.screening} --explain -c {concurrency}",
         )
         return
     _run_cmd(
         c,
-        f"python scripts/run_orchestrator.py {config.sample.workbooks.screening} -c 1{client_flag}",
+        f"python scripts/run_orchestrator.py {config.sample.workbooks.screening} -c {concurrency}{client_flag}",
     )
     _run_cmd(c, f"python {_get_validate_script('screening')} {config.sample.workbooks.screening}")
     print("Screening workbook complete!")
