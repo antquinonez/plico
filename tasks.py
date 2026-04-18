@@ -571,12 +571,13 @@ def wb_all(
 
 
 @task
-def wb_basic(c: Context, concurrency: str = "3", client: str | None = None):
+def wb_basic(c: Context, concurrency: str = "3", client: str | None = None, explain: bool = False):
     """Create, run, and validate basic workbook.
 
     Args:
         concurrency: Parallel execution concurrency
         client: Client type from clients.yaml (e.g., 'anthropic', 'gemini')
+        explain: Show execution plan instead of running (no API calls)
 
     """
     config = get_config()
@@ -585,6 +586,12 @@ def wb_basic(c: Context, concurrency: str = "3", client: str | None = None):
         print(f"  Using client: {client}")
     client_flag = f" --client {client}" if client else ""
     _run_cmd(c, f"python {_get_create_script('basic')}{client_flag}")
+    if explain:
+        _run_cmd(
+            c,
+            f"python scripts/run_orchestrator.py {config.sample.workbooks.basic} --explain -c {concurrency}",
+        )
+        return
     _run_cmd(
         c, f"python scripts/run_orchestrator.py {config.sample.workbooks.basic} -c {concurrency}"
     )
@@ -593,12 +600,15 @@ def wb_basic(c: Context, concurrency: str = "3", client: str | None = None):
 
 
 @task
-def wb_multiclient(c: Context, concurrency: str = "2", client: str | None = None):
+def wb_multiclient(
+    c: Context, concurrency: str = "2", client: str | None = None, explain: bool = False
+):
     """Create, run, and validate multiclient workbook.
 
     Args:
         concurrency: Parallel execution concurrency
         client: Client type from clients.yaml (e.g., 'anthropic', 'gemini')
+        explain: Show execution plan instead of running (no API calls)
 
     """
     config = get_config()
@@ -607,6 +617,12 @@ def wb_multiclient(c: Context, concurrency: str = "2", client: str | None = None
         print(f"  Using client: {client}")
     client_flag = f" --client {client}" if client else ""
     _run_cmd(c, f"python {_get_create_script('multiclient')}{client_flag}")
+    if explain:
+        _run_cmd(
+            c,
+            f"python scripts/run_orchestrator.py {config.sample.workbooks.multiclient} --explain -c {concurrency}",
+        )
+        return
     _run_cmd(
         c,
         f"python scripts/run_orchestrator.py {config.sample.workbooks.multiclient} -c {concurrency}",
@@ -618,12 +634,15 @@ def wb_multiclient(c: Context, concurrency: str = "2", client: str | None = None
 
 
 @task
-def wb_conditional(c: Context, concurrency: str = "3", client: str | None = None):
+def wb_conditional(
+    c: Context, concurrency: str = "3", client: str | None = None, explain: bool = False
+):
     """Create, run, and validate conditional workbook.
 
     Args:
         concurrency: Parallel execution concurrency
         client: Client type from clients.yaml (e.g., 'anthropic', 'gemini')
+        explain: Show execution plan instead of running (no API calls)
 
     """
     config = get_config()
@@ -632,6 +651,12 @@ def wb_conditional(c: Context, concurrency: str = "3", client: str | None = None
         print(f"  Using client: {client}")
     client_flag = f" --client {client}" if client else ""
     _run_cmd(c, f"python {_get_create_script('conditional')}{client_flag}")
+    if explain:
+        _run_cmd(
+            c,
+            f"python scripts/run_orchestrator.py {config.sample.workbooks.conditional} --explain -c {concurrency}",
+        )
+        return
     _run_cmd(
         c,
         f"python scripts/run_orchestrator.py {config.sample.workbooks.conditional} -c {concurrency}",
@@ -643,11 +668,12 @@ def wb_conditional(c: Context, concurrency: str = "3", client: str | None = None
 
 
 @task
-def wb_documents(c: Context, client: str | None = None):
+def wb_documents(c: Context, client: str | None = None, explain: bool = False):
     """Create, run, and validate documents workbook.
 
     Args:
         client: Client type from clients.yaml (e.g., 'anthropic', 'gemini')
+        explain: Show execution plan instead of running (no API calls)
 
     """
     config = get_config()
@@ -656,18 +682,25 @@ def wb_documents(c: Context, client: str | None = None):
         print(f"  Using client: {client}")
     client_flag = f" --client {client}" if client else ""
     _run_cmd(c, f"python {_get_create_script('documents')}{client_flag}")
+    if explain:
+        _run_cmd(
+            c,
+            f"python scripts/run_orchestrator.py {config.sample.workbooks.documents} --explain",
+        )
+        return
     _run_cmd(c, f"python scripts/run_orchestrator.py {config.sample.workbooks.documents}")
     _run_cmd(c, f"python {_get_validate_script('documents')} {config.sample.workbooks.documents}")
     print("Documents workbook complete!")
 
 
 @task
-def wb_batch(c: Context, concurrency: str = "3", client: str | None = None):
+def wb_batch(c: Context, concurrency: str = "3", client: str | None = None, explain: bool = False):
     """Create, run, and validate batch workbook.
 
     Args:
         concurrency: Parallel execution concurrency
         client: Client type from clients.yaml (e.g., 'anthropic', 'gemini')
+        explain: Show execution plan instead of running (no API calls)
 
     """
     config = get_config()
@@ -676,6 +709,12 @@ def wb_batch(c: Context, concurrency: str = "3", client: str | None = None):
         print(f"  Using client: {client}")
     client_flag = f" --client {client}" if client else ""
     _run_cmd(c, f"python {_get_create_script('batch')}{client_flag}")
+    if explain:
+        _run_cmd(
+            c,
+            f"python scripts/run_orchestrator.py {config.sample.workbooks.batch} --explain -c {concurrency}",
+        )
+        return
     _run_cmd(
         c, f"python scripts/run_orchestrator.py {config.sample.workbooks.batch} -c {concurrency}"
     )
@@ -684,12 +723,13 @@ def wb_batch(c: Context, concurrency: str = "3", client: str | None = None):
 
 
 @task
-def wb_max(c: Context, concurrency: str = "3", client: str | None = None):
+def wb_max(c: Context, concurrency: str = "3", client: str | None = None, explain: bool = False):
     """Create, run, and validate max workbook.
 
     Args:
         concurrency: Parallel execution concurrency
         client: Client type from clients.yaml (e.g., 'anthropic', 'gemini')
+        explain: Show execution plan instead of running (no API calls)
 
     """
     config = get_config()
@@ -698,6 +738,12 @@ def wb_max(c: Context, concurrency: str = "3", client: str | None = None):
         print(f"  Using client: {client}")
     client_flag = f" --client {client}" if client else ""
     _run_cmd(c, f"python {_get_create_script('max')}{client_flag}")
+    if explain:
+        _run_cmd(
+            c,
+            f"python scripts/run_orchestrator.py {config.sample.workbooks.max} --explain -c {concurrency}",
+        )
+        return
     _run_cmd(
         c, f"python scripts/run_orchestrator.py {config.sample.workbooks.max} -c {concurrency}"
     )
@@ -706,11 +752,12 @@ def wb_max(c: Context, concurrency: str = "3", client: str | None = None):
 
 
 @task
-def wb_agent(c: Context, client: str | None = None):
+def wb_agent(c: Context, client: str | None = None, explain: bool = False):
     """Create, run, and validate agent workbook.
 
     Args:
         client: Client type from clients.yaml (e.g., 'anthropic', 'gemini')
+        explain: Show execution plan instead of running (no API calls)
 
     """
     config = get_config()
@@ -719,17 +766,24 @@ def wb_agent(c: Context, client: str | None = None):
         print(f"  Using client: {client}")
     client_flag = f" --client {client}" if client else ""
     _run_cmd(c, f"python {_get_create_script('agent')}{client_flag}")
+    if explain:
+        _run_cmd(
+            c,
+            f"python scripts/run_orchestrator.py {config.sample.workbooks.agent} --explain -c 1",
+        )
+        return
     _run_cmd(c, f"python scripts/run_orchestrator.py {config.sample.workbooks.agent} -c 1")
     _run_cmd(c, f"python {_get_validate_script('agent')} {config.sample.workbooks.agent}")
     print("Agent workbook complete!")
 
 
 @task
-def wb_screening(c: Context, client: str | None = None):
+def wb_screening(c: Context, client: str | None = None, explain: bool = False):
     """Create, run, and validate screening workbook.
 
     Args:
         client: Client type from clients.yaml (e.g., 'anthropic', 'gemini')
+        explain: Show execution plan instead of running (no API calls)
 
     """
     config = get_config()
@@ -738,6 +792,12 @@ def wb_screening(c: Context, client: str | None = None):
         print(f"  Using client: {client}")
     client_flag = f" --client {client}" if client else ""
     _run_cmd(c, f"python {_get_create_script('screening')}{client_flag}")
+    if explain:
+        _run_cmd(
+            c,
+            f"python scripts/run_orchestrator.py {config.sample.workbooks.screening} --explain -c 1",
+        )
+        return
     _run_cmd(
         c,
         f"python scripts/run_orchestrator.py {config.sample.workbooks.screening} -c 1{client_flag}",
