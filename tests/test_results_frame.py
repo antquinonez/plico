@@ -311,6 +311,7 @@ class TestResultsFrameScoresPivot:
         assert "batch_name" in pivot.columns
         assert "rank" in pivot.columns
         assert "percentile" in pivot.columns
+        assert "percent_rank" in pivot.columns
 
     def test_pivot_returns_empty_for_no_normalized_criteria(self):
         from src.orchestrator.results import ResultsFrame
@@ -412,6 +413,259 @@ class TestResultsFrameScoresPivot:
         names = pivot["criteria_name"].to_list()
         assert "skills_match" in names
         assert "raw_years" not in names
+
+
+class TestResultsFrameCompositePipeline:
+    """Tests for composite score computation via Polars pipeline."""
+
+    def _criteria(self, names: list[str] | None = None) -> list[dict]:
+        if names is None:
+            names = ["skills"]
+        return [
+            {
+                "criteria_name": n,
+                "description": f"{n} desc",
+                "scale_min": 1,
+                "scale_max": 10,
+                "weight": 1.0,
+                "source_prompt": "eval",
+                "score_type": "normalized_score",
+            }
+            for n in names
+        ]
+
+    def _get_composite(self, pivot: pl.DataFrame, name: str) -> dict:
+        row = pivot.filter(
+            (pl.col("criteria_name") == "_composite") & (pl.col("batch_name") == name)
+        )
+        return {
+            "rank": row["rank"].item(),
+            "percentile": row["percentile"].item(),
+            "percent_rank": row["percent_rank"].item(),
+            "weighted_score": row["weighted_score"].item(),
+        }
+
+    def test_composite_dense_rank_distinct_scores(self):
+        from src.orchestrator.results import ResultsFrame
+
+        results = [
+            _make_result(
+                batch_id=1, batch_name="alice", scores={"skills": 8.0}, composite_score=9.0
+            ),
+            _make_result(batch_id=2, batch_name="bob", scores={"skills": 5.0}, composite_score=6.0),
+            _make_result(
+                batch_id=3, batch_name="carol", scores={"skills": 3.0}, composite_score=3.0
+            ),
+        ]
+        frame = ResultsFrame(results)
+        pivot = frame.scores_pivot(self._criteria())
+
+        assert self._get_composite(pivot, "alice")["rank"] == 1
+        assert self._get_composite(pivot, "bob")["rank"] == 2
+        assert self._get_composite(pivot, "carol")["rank"] == 3
+
+    def test_composite_dense_rank_tied_scores(self):
+        from src.orchestrator.results import ResultsFrame
+
+        results = [
+            _make_result(
+                batch_id=1, batch_name="alice", scores={"skills": 8.0}, composite_score=7.0
+            ),
+            _make_result(batch_id=2, batch_name="bob", scores={"skills": 5.0}, composite_score=7.0),
+            _make_result(
+                batch_id=3, batch_name="carol", scores={"skills": 3.0}, composite_score=4.0
+            ),
+        ]
+        frame = ResultsFrame(results)
+        pivot = frame.scores_pivot(self._criteria())
+
+        assert self._get_composite(pivot, "alice")["rank"] == 1
+        assert self._get_composite(pivot, "bob")["rank"] == 1
+        assert self._get_composite(pivot, "carol")["rank"] == 2
+
+    def test_composite_percentile_distinct_scores(self):
+        from src.orchestrator.results import ResultsFrame
+
+        results = [
+            _make_result(
+                batch_id=1, batch_name="alice", scores={"skills": 8.0}, composite_score=9.0
+            ),
+            _make_result(batch_id=2, batch_name="bob", scores={"skills": 5.0}, composite_score=6.0),
+            _make_result(
+                batch_id=3, batch_name="carol", scores={"skills": 3.0}, composite_score=3.0
+            ),
+        ]
+        frame = ResultsFrame(results)
+        pivot = frame.scores_pivot(self._criteria())
+
+        assert self._get_composite(pivot, "alice")["percentile"] == 100
+        assert self._get_composite(pivot, "bob")["percentile"] == 50
+        assert self._get_composite(pivot, "carol")["percentile"] == 0
+
+    def test_composite_percentile_tied_scores(self):
+        from src.orchestrator.results import ResultsFrame
+
+        results = [
+            _make_result(
+                batch_id=1, batch_name="alice", scores={"skills": 8.0}, composite_score=7.0
+            ),
+            _make_result(batch_id=2, batch_name="bob", scores={"skills": 5.0}, composite_score=7.0),
+            _make_result(
+                batch_id=3, batch_name="carol", scores={"skills": 3.0}, composite_score=4.0
+            ),
+        ]
+        frame = ResultsFrame(results)
+        pivot = frame.scores_pivot(self._criteria())
+
+        assert self._get_composite(pivot, "alice")["percentile"] == 100
+        assert self._get_composite(pivot, "bob")["percentile"] == 100
+        assert self._get_composite(pivot, "carol")["percentile"] == 50
+
+    def test_composite_percent_rank_distinct_scores(self):
+        from src.orchestrator.results import ResultsFrame
+
+        results = [
+            _make_result(
+                batch_id=1, batch_name="alice", scores={"skills": 8.0}, composite_score=9.0
+            ),
+            _make_result(batch_id=2, batch_name="bob", scores={"skills": 5.0}, composite_score=6.0),
+            _make_result(
+                batch_id=3, batch_name="carol", scores={"skills": 3.0}, composite_score=3.0
+            ),
+        ]
+        frame = ResultsFrame(results)
+        pivot = frame.scores_pivot(self._criteria())
+
+        assert self._get_composite(pivot, "alice")["percent_rank"] == 100
+        assert self._get_composite(pivot, "bob")["percent_rank"] == 50
+        assert self._get_composite(pivot, "carol")["percent_rank"] == 0
+
+    def test_composite_percent_rank_tied_scores(self):
+        from src.orchestrator.results import ResultsFrame
+
+        results = [
+            _make_result(
+                batch_id=1, batch_name="alice", scores={"skills": 8.0}, composite_score=7.0
+            ),
+            _make_result(batch_id=2, batch_name="bob", scores={"skills": 5.0}, composite_score=7.0),
+            _make_result(
+                batch_id=3, batch_name="carol", scores={"skills": 3.0}, composite_score=4.0
+            ),
+        ]
+        frame = ResultsFrame(results)
+        pivot = frame.scores_pivot(self._criteria())
+
+        assert self._get_composite(pivot, "alice")["percent_rank"] == 50
+        assert self._get_composite(pivot, "bob")["percent_rank"] == 50
+        assert self._get_composite(pivot, "carol")["percent_rank"] == 0
+
+    def test_composite_single_candidate(self):
+        from src.orchestrator.results import ResultsFrame
+
+        results = [
+            _make_result(
+                batch_id=1, batch_name="alice", scores={"skills": 8.0}, composite_score=8.0
+            ),
+        ]
+        frame = ResultsFrame(results)
+        pivot = frame.scores_pivot(self._criteria())
+
+        c = self._get_composite(pivot, "alice")
+        assert c["rank"] == 1
+        assert c["percentile"] == 100
+        assert c["percent_rank"] == 100
+
+    def test_composite_two_candidates_distinct(self):
+        from src.orchestrator.results import ResultsFrame
+
+        results = [
+            _make_result(
+                batch_id=1, batch_name="alice", scores={"skills": 8.0}, composite_score=9.0
+            ),
+            _make_result(batch_id=2, batch_name="bob", scores={"skills": 5.0}, composite_score=4.0),
+        ]
+        frame = ResultsFrame(results)
+        pivot = frame.scores_pivot(self._criteria())
+
+        assert self._get_composite(pivot, "alice")["rank"] == 1
+        assert self._get_composite(pivot, "alice")["percentile"] == 100
+        assert self._get_composite(pivot, "alice")["percent_rank"] == 100
+        assert self._get_composite(pivot, "bob")["rank"] == 2
+        assert self._get_composite(pivot, "bob")["percentile"] == 0
+        assert self._get_composite(pivot, "bob")["percent_rank"] == 0
+
+    def test_composite_null_scores_excluded(self):
+        from src.orchestrator.results import ResultsFrame
+
+        results = [
+            _make_result(
+                batch_id=1, batch_name="alice", scores={"skills": 8.0}, composite_score=8.0
+            ),
+            _make_result(
+                batch_id=2, batch_name="bob", scores={"skills": 5.0}, composite_score=None
+            ),
+        ]
+        frame = ResultsFrame(results)
+        pivot = frame.scores_pivot(self._criteria())
+
+        composites = pivot.filter(pl.col("criteria_name") == "_composite")
+        assert composites.height == 1
+        assert composites["batch_name"].to_list() == ["alice"]
+
+    def test_composite_weighted_score_preserved(self):
+        from src.orchestrator.results import ResultsFrame
+
+        results = [
+            _make_result(
+                batch_id=1, batch_name="alice", scores={"skills": 8.0}, composite_score=7.5
+            ),
+        ]
+        frame = ResultsFrame(results)
+        pivot = frame.scores_pivot(self._criteria())
+
+        c = self._get_composite(pivot, "alice")
+        assert c["weighted_score"] == 7.5
+
+    def test_composite_metadata_columns_null(self):
+        from src.orchestrator.results import ResultsFrame
+
+        results = [
+            _make_result(
+                batch_id=1, batch_name="alice", scores={"skills": 8.0}, composite_score=8.0
+            ),
+        ]
+        frame = ResultsFrame(results)
+        pivot = frame.scores_pivot(self._criteria())
+
+        row = pivot.filter(
+            (pl.col("criteria_name") == "_composite") & (pl.col("batch_name") == "alice")
+        )
+        assert row["normalized_score"].item() is None
+        assert row["weight"].item() is None
+        assert row["scale_min"].item() is None
+        assert row["scale_max"].item() is None
+        assert "Weighted composite" in str(row["description"].item())
+
+    def test_composite_all_tied_same_rank(self):
+        from src.orchestrator.results import ResultsFrame
+
+        results = [
+            _make_result(
+                batch_id=1, batch_name="alice", scores={"skills": 5.0}, composite_score=6.0
+            ),
+            _make_result(batch_id=2, batch_name="bob", scores={"skills": 5.0}, composite_score=6.0),
+            _make_result(
+                batch_id=3, batch_name="carol", scores={"skills": 5.0}, composite_score=6.0
+            ),
+        ]
+        frame = ResultsFrame(results)
+        pivot = frame.scores_pivot(self._criteria())
+
+        for name in ["alice", "bob", "carol"]:
+            c = self._get_composite(pivot, name)
+            assert c["rank"] == 1
+            assert c["percentile"] == 100
+            assert c["percent_rank"] == 0
 
 
 class TestResultsFrameByBatch:

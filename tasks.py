@@ -181,8 +181,8 @@ def _validate_single_workbook(name: str) -> tuple[str, bool, str]:
 
 
 @task
-def help(c: Context) -> None:
-    """Show detailed help information."""
+def guide(c: Context) -> None:
+    """Show a project-level guide to available tasks and workflows."""
     print("""
 FFClients Invoke Tasks
 ======================
@@ -192,7 +192,8 @@ A Python-based task runner for managing test workbooks and orchestration.
 USAGE:
     inv <task> [options]
     inv --list              # Show all available tasks
-    inv --help <task>       # Show help for specific task
+    inv --help <task>       # Show args and docstring for a specific task
+    inv guide               # Show this guide
 
 WORKBOOK TASKS (inv wb.<task>):
     inv wb.create           # Create all test workbooks
@@ -203,18 +204,20 @@ WORKBOOK TASKS (inv wb.<task>):
     inv wb.all              # Full pipeline: clean, create, run, validate
 
 INDIVIDUAL WORKBOOKS (create + run + validate):
-    inv wb.basic            # Create, run, and validate basic workbook
-    inv wb.multiclient      # Create, run, and validate multiclient workbook
-    inv wb.conditional      # Create, run, and validate conditional workbook
-    inv wb.documents        # Create, run, and validate documents workbook
-    inv wb.batch            # Create, run, and validate batch workbook
-    inv wb.max              # Create, run, and validate max workbook
-    inv wb.agent            # Create, run, and validate agent workbook
-    inv wb.screening        # Create, run, and validate screening workbook
+    Each supports: -c CONCURRENCY, --client CLIENT, --explain
+    inv wb.basic            # Basic workbook (parallel execution, dependency chains)
+    inv wb.multiclient      # Multi-client workbook (named client configurations)
+    inv wb.conditional      # Conditional workbook (expression-based skip logic)
+    inv wb.documents        # Documents workbook (document injection, RAG search)
+    inv wb.batch            # Batch workbook (variable templating, per-row execution)
+    inv wb.max              # Max workbook (batch + conditional + multi-client)
+    inv wb.agent            # Agent workbook (agentic tool-call loop)
+    inv wb.screening        # Screening workbook (per-row docs, scoring, synthesis)
 
 SCREENING TASKS (inv screening.<task>):
-    inv screening.create    # Create screening workbook from a folder of resumes
+    inv screening.create    # Create screening workbook
     inv screening.run       # Create and run screening workbook
+    inv screening.manifest  # Create manifest (YAML) and run
 
 RAG TASKS (inv rag.<task>):
     inv rag.status          # Show RAG indexing status
@@ -223,38 +226,38 @@ RAG TASKS (inv rag.<task>):
     inv rag.rebuild         # Rebuild indexes from workbook
     inv rag.stats           # Show detailed RAG statistics
 
-MCP TASKS:
-    (removed — MCP server shelved until protocol stabilizes)
-
 OTHER TASKS:
+    inv explain WORKBOOK    # Preview execution plan (no API calls)
     inv lint                # Run linting (ruff)
     inv format              # Run code formatting (ruff format)
     inv test                # Run tests (excludes integration)
     inv test-all            # Run all tests including integration
     inv config-check        # Display current configuration
 
-OPTIONS:
-    -c, --concurrency N     # Set parallel execution concurrency (default: varies by workbook)
-    --parallel              # Enable parallel execution for create/run tasks
-    --client CLIENT        # Client type from clients.yaml (e.g., 'anthropic', 'gemini')
+COMMON OPTIONS:
+    --explain               # Show execution plan instead of running (wb.* only)
+    -c, --concurrency N     # Parallel execution concurrency (default varies by workbook)
+    --client CLIENT         # Client type from clients.yaml (e.g., 'gemini', 'mistral-small')
+    --parallel              # Enable parallel execution for bulk create/run tasks
     -q, --quiet             # Suppress detailed output
 
 EXAMPLES:
-    inv wb.create --parallel                     # Create all workbooks in parallel
-    inv wb.create --client anthropic              # Create all workbooks with anthropic
-    inv wb.run -c 4                           # Run with concurrency=4
-    inv wb.run --parallel                     # Run all workbooks in parallel
-    inv wb.all --parallel --client gemini      # Full pipeline with gemini client
-    inv wb.basic -c 2 --client anthropic     # Run basic workbook with anthropic
+    inv wb.basic --explain                          # Preview execution plan (no API calls)
+    inv wb.max -c 2 --client gemini                 # Run max workbook with gemini, concurrency 2
+    inv wb.create --parallel                        # Create all workbooks in parallel
+    inv wb.all --parallel --client gemini           # Full pipeline with gemini client
+    inv explain ./workbooks/my_prompts.xlsx         # Preview any workbook's execution DAG
 
 SCREENING EXAMPLES:
-    inv screening.run -r ./resumes/ -j ./jd.md                    # Create and run
-    inv screening.run -r ./resumes/ -j ./jd.md --planning         # Planning mode
-    inv screening.create -r ./resumes/ -j ./jd.md -o ./out.xlsx   # Create only
+    inv screening.run --resumes-path ./resumes/ --jd ./jd.md
+    inv screening.run --resumes-path ./resumes/ --jd ./jd.md --planning
+    inv screening.manifest --resumes-path ./resumes/ --jd ./jd.md
+    inv screening.create --jd ./jd.md --output ./template.xlsx
 
 CONFIGURATION:
-    Workbook paths and client configurations are loaded from config/test.yaml
-    Access via: config.sample.workbooks.basic, config.sample.sample_clients, etc.
+    Settings are loaded from config/main.yaml and config/clients.yaml.
+    Use 'inv config-check' to display current values.
+    Use 'inv --help <task>' to see all arguments for any specific task.
 """)
 
 
@@ -1274,7 +1277,7 @@ screening.add_task(screening_manifest, name="manifest")
 
 # Root namespace
 ns = Collection()
-ns.add_task(help)
+ns.add_task(guide)
 ns.add_task(config_check, name="config-check")
 ns.add_task(explain)
 ns.add_task(lint)

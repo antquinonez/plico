@@ -2,6 +2,12 @@
 
 Guidelines for AI coding agents working in this repository.
 
+## Git Operations
+
+**Never commit, push, or submit a pull request unless the user explicitly asks.**
+This includes `git commit`, `git push`, `gh pr create`, and any other remote-submitted action.
+Wait for the user to request each of these steps individually.
+
 ## Build/Lint/Test Commands
 
 ### Testing
@@ -1312,4 +1318,4 @@ AZURE_PHI_KEY=your-key-here
 - This is proprietary code - do not share externally
 - Integration tests require real API keys in `.env`
 - Use `inv --list` to see all available commands
-- Use `inv help` for detailed task documentation
+- Use `inv guide` for a project-level task overview
