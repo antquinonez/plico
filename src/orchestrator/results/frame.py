@@ -57,6 +57,7 @@ PIVOT_COLUMNS = [
     "weighted_score",
     "rank",
     "percentile",
+    "percent_rank",
     "scale_min",
     "scale_max",
     "description",
@@ -334,6 +335,26 @@ class ResultsFrame:
             .alias("percentile")
         )
 
+        pivot_df = pivot_df.with_columns(
+            pl.when(pl.col("normalized_score").is_not_null())
+            .then(
+                pl.when(pl.col("normalized_score").count().over("criteria_name") == 1)
+                .then(pl.lit(100))
+                .otherwise(
+                    (
+                        (pl.col("normalized_score").rank(method="min").over("criteria_name") - 1)
+                        / pl.max_horizontal(
+                            pl.col("normalized_score").count().over("criteria_name") - 1,
+                            pl.lit(1),
+                        )
+                        * 100
+                    ).cast(pl.Int64)
+                )
+            )
+            .otherwise(pl.lit(0))
+            .alias("percent_rank")
+        )
+
         scored_composites = {
             name: score for name, score in composites.items() if isinstance(score, int | float)
         }
@@ -342,10 +363,16 @@ class ResultsFrame:
             sorted_scores = sorted(set(scored_composites.values()), reverse=True)
             score_to_rank = {s: i + 1 for i, s in enumerate(sorted_scores)}
 
+            n_below_composite = {
+                name: sum(1 for s in scored_composites.values() if s < score)
+                for name, score in scored_composites.items()
+            }
+
             composite_rows: list[dict[str, Any]] = []
             for name, score in scored_composites.items():
                 rank = score_to_rank[score]
                 pct = 100 if total == 1 else round((total - rank) / (total - 1) * 100)
+                pct_rank = 100 if total == 1 else round(n_below_composite[name] / (total - 1) * 100)
                 composite_rows.append(
                     {
                         "batch_name": name,
@@ -355,6 +382,7 @@ class ResultsFrame:
                         "weighted_score": score,
                         "rank": rank,
                         "percentile": pct,
+                        "percent_rank": pct_rank,
                         "scale_min": None,
                         "scale_max": None,
                         "description": "Weighted composite score (sum of weighted scores / sum of weights)",

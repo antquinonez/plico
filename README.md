@@ -698,7 +698,7 @@ inv explain ./analysis.xlsx
 **Output includes:**
 
 1. **Execution DAG** — prompts grouped by dependency level with annotations for history, references, client routing, conditions, and agent mode
-2. **Dependency Edges** — every edge labeled `[history]` or `[condition]`, with a `⚠` warning on implicit edges created by condition variable references (e.g., `{{fetch.status}}` silently creates a dependency on `fetch`)
+2. **Dependency Edges** — shows which prompts must finish before others can start. Each edge is labeled `[history]` (you explicitly declared it via the `history` field) or `[condition]` (the system inferred it because your condition references another prompt's output, e.g., `{{fetch.status}}` means `fetch` must run first). Implicit `⚠` edges are flagged so you can spot undeclared dependencies.
 3. **Cost Estimate** — total LLM calls and estimated input tokens
 
 ```

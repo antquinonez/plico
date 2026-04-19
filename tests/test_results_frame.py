@@ -311,6 +311,7 @@ class TestResultsFrameScoresPivot:
         assert "batch_name" in pivot.columns
         assert "rank" in pivot.columns
         assert "percentile" in pivot.columns
+        assert "percent_rank" in pivot.columns
 
     def test_pivot_returns_empty_for_no_normalized_criteria(self):
         from src.orchestrator.results import ResultsFrame
