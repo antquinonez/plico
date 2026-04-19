@@ -359,39 +359,50 @@ class ResultsFrame:
             name: score for name, score in composites.items() if isinstance(score, int | float)
         }
         if scored_composites:
-            total = len(scored_composites)
-            sorted_scores = sorted(set(scored_composites.values()), reverse=True)
-            score_to_rank = {s: i + 1 for i, s in enumerate(sorted_scores)}
-
-            n_below_composite = {
-                name: sum(1 for s in scored_composites.values() if s < score)
-                for name, score in scored_composites.items()
-            }
-
-            composite_rows: list[dict[str, Any]] = []
-            for name, score in scored_composites.items():
-                rank = score_to_rank[score]
-                pct = 100 if total == 1 else round((total - rank) / (total - 1) * 100)
-                pct_rank = 100 if total == 1 else round(n_below_composite[name] / (total - 1) * 100)
-                composite_rows.append(
+            composite_df = (
+                pl.DataFrame(
                     {
-                        "batch_name": name,
-                        "criteria_name": "_composite",
-                        "normalized_score": None,
-                        "weight": None,
-                        "weighted_score": score,
-                        "rank": rank,
-                        "percentile": pct,
-                        "percent_rank": pct_rank,
-                        "scale_min": None,
-                        "scale_max": None,
-                        "description": "Weighted composite score (sum of weighted scores / sum of weights)",
+                        "batch_name": list(scored_composites.keys()),
+                        "weighted_score": list(scored_composites.values()),
                     }
                 )
-
-            if composite_rows:
-                composite_df = pl.DataFrame(composite_rows, schema=pivot_df.schema)
-                pivot_df = pl.concat([pivot_df, composite_df], how="diagonal")
+                .with_columns(
+                    pl.lit("_composite").alias("criteria_name"),
+                    pl.lit(None).cast(pl.Float64).alias("normalized_score"),
+                    pl.lit(None).cast(pl.Float64).alias("weight"),
+                    pl.lit(None).cast(pl.Int64).alias("scale_min"),
+                    pl.lit(None).cast(pl.Int64).alias("scale_max"),
+                    pl.lit(
+                        "Weighted composite score (sum of weighted scores / sum of weights)"
+                    ).alias("description"),
+                )
+                .with_columns(
+                    pl.col("weighted_score").rank(method="dense", descending=True).alias("rank"),
+                )
+                .with_columns(
+                    pl.when(pl.col("weighted_score").count() == 1)
+                    .then(pl.lit(100))
+                    .otherwise(
+                        (
+                            (pl.col("weighted_score").count() - pl.col("rank"))
+                            / pl.max_horizontal(pl.col("weighted_score").count() - 1, pl.lit(1))
+                            * 100
+                        ).cast(pl.Int64)
+                    )
+                    .alias("percentile"),
+                    pl.when(pl.col("weighted_score").count() == 1)
+                    .then(pl.lit(100))
+                    .otherwise(
+                        (
+                            (pl.col("weighted_score").rank(method="min") - 1)
+                            / pl.max_horizontal(pl.col("weighted_score").count() - 1, pl.lit(1))
+                            * 100
+                        ).cast(pl.Int64)
+                    )
+                    .alias("percent_rank"),
+                )
+            )
+            pivot_df = pl.concat([pivot_df, composite_df], how="diagonal")
 
         result = pivot_df.select(PIVOT_COLUMNS).with_columns(
             pl.when(pl.col("criteria_name") == "_composite")
