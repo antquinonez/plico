@@ -2,6 +2,12 @@
 
 Guidelines for AI coding agents working in this repository.
 
+## Git Operations
+
+**Never commit, push, or submit a pull request unless the user explicitly asks.**
+This includes `git commit`, `git push`, `gh pr create`, and any other remote-submitted action.
+Wait for the user to request each of these steps individually.
+
 ## Build/Lint/Test Commands
 
 ### Testing
