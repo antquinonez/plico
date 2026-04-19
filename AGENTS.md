@@ -1312,4 +1312,4 @@ AZURE_PHI_KEY=your-key-here
 - This is proprietary code - do not share externally
 - Integration tests require real API keys in `.env`
 - Use `inv --list` to see all available commands
-- Use `inv help` for detailed task documentation
+- Use `inv guide` for a project-level task overview
