@@ -23,13 +23,14 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-import polars as pl
 import yaml
 
 from ..config import get_config
 from ..core.client_base import FFAIClientBase
 from .base import OrchestratorBase
-from .workbook_parser import WorkbookParser, _serialize_result_value
+from .models import ConfigSpec, DocumentSpec, PromptSpec
+from .results import ResultsFrame
+from .workbook_parser import WorkbookParser
 
 logger = logging.getLogger(__name__)
 
@@ -158,12 +159,12 @@ class WorkbookManifestExporter:
         with open(manifest_path / "manifest.yaml", "w", encoding="utf-8") as f:
             yaml.dump(manifest_data, f, default_flow_style=False, sort_keys=False)
 
-    def _write_config_yaml(self, manifest_path: Path, config: dict[str, Any]) -> None:
+    def _write_config_yaml(self, manifest_path: Path, config: ConfigSpec) -> None:
         """Write configuration to YAML file."""
         with open(manifest_path / "config.yaml", "w", encoding="utf-8") as f:
             yaml.dump(config, f, default_flow_style=False, sort_keys=False)
 
-    def _write_prompts_yaml(self, manifest_path: Path, prompts: list[dict[str, Any]]) -> None:
+    def _write_prompts_yaml(self, manifest_path: Path, prompts: list[PromptSpec]) -> None:
         """Write prompts to YAML file."""
         prompts_data = {"prompts": []}
 
@@ -221,7 +222,7 @@ class WorkbookManifestExporter:
         with open(manifest_path / "clients.yaml", "w", encoding="utf-8") as f:
             yaml.dump(clients_yaml, f, default_flow_style=False, sort_keys=False)
 
-    def _write_documents_yaml(self, manifest_path: Path, documents: list[dict[str, Any]]) -> None:
+    def _write_documents_yaml(self, manifest_path: Path, documents: list[DocumentSpec]) -> None:
         """Write document references to YAML file."""
         docs_yaml = {"documents": documents}
         with open(manifest_path / "documents.yaml", "w", encoding="utf-8") as f:
@@ -369,7 +370,7 @@ class ManifestOrchestrator(OrchestratorBase):
 
     def _init_documents(
         self,
-        documents_data: list[dict[str, Any]] | None = None,
+        documents_data: list[DocumentSpec] | None = None,
         workbook_dir: str | None = None,
     ) -> None:
         """Initialize documents from manifest (backward compatibility wrapper).
@@ -545,6 +546,9 @@ class ManifestOrchestrator(OrchestratorBase):
     def _write_results(self, results: list[dict[str, Any]]) -> str:
         """Write results to a parquet file.
 
+        Includes planning results (fixes previous omission) and delegates
+        serialization to ResultsFrame.
+
         Args:
             results: List of result dictionaries.
 
@@ -556,43 +560,16 @@ class ManifestOrchestrator(OrchestratorBase):
         manifest_name = self._get_manifest_name()
         output_prompts = self._get_output_prompts()
 
-        rows = []
-        for r in results:
-            row = {
-                header: _serialize_result_value(header, r.get(header))
-                for header in WorkbookParser.RESULTS_HEADERS
-            }
-            rows.append(row)
+        all_results = list(self.planning_results) + list(results)
+        frame = ResultsFrame(all_results)
 
-        try:
-            df = pl.DataFrame(rows)
-        except pl.ComputeError:
-            logger.warning(
-                "Polars schema inference failed, falling back to full scan. "
-                "This may happen when result rows have mixed types "
-                "(e.g., batch + synthesis results with different null patterns)."
-            )
-            df = pl.DataFrame(rows, infer_schema_length=None)
-
-        import pyarrow.parquet as pq
-
-        # Add manifest metadata as parquet key-value metadata
-        manifest_meta = {
-            b"manifest_name": manifest_name.encode("utf-8"),
-            b"output_prompts": json.dumps(output_prompts).encode("utf-8"),
-            b"source_workbook": (self._source_workbook or "").encode("utf-8"),
+        metadata = {
+            "manifest_name": manifest_name,
+            "output_prompts": json.dumps(output_prompts),
+            "source_workbook": self._source_workbook or "",
         }
 
-        # Convert to Arrow table and add metadata
-        table = df.to_arrow()
-        existing_meta = dict(table.schema.metadata or {})
-        existing_meta.update(manifest_meta)
-        table = table.replace_schema_metadata(existing_meta)
-
-        pq.write_table(table, output_path)
-
-        logger.info(f"Results written to parquet: {output_path}")
-        return str(output_path)
+        return frame.to_parquet(output_path, metadata=metadata)
 
     def _write_parquet(self, results: list[dict[str, Any]]) -> str:
         """Write results to a parquet file (backward compatibility wrapper).

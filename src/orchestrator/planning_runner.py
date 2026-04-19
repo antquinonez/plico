@@ -109,17 +109,16 @@ class PlanningPhaseRunner:
 
             if prompt.get("generator") and result.get("status") == "success":
                 response = result.get("response", "")
-                with orchestrator.history_lock:
-                    orchestrator.shared_prompt_attr_history.append(
-                        {
-                            "prompt": prompt.get("prompt", ""),
-                            "response": response,
-                            "prompt_name": prompt.get("prompt_name"),
-                            "timestamp": time.time(),
-                            "model": orchestrator.config.get("model"),
-                            "history": prompt.get("history"),
-                        }
-                    )
+                orchestrator._response_context.record_raw(
+                    {
+                        "prompt": prompt.get("prompt", ""),
+                        "response": response,
+                        "prompt_name": prompt.get("prompt_name"),
+                        "timestamp": time.time(),
+                        "model": orchestrator.config.get("model"),
+                        "history": prompt.get("history"),
+                    }
+                )
 
                 try:
                     artifact = parser.parse(response, prompt_name)

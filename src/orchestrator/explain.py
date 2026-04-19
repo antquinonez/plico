@@ -23,6 +23,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from .graph import ExecutionGraph, build_execution_graph_with_edges
+from .models import PromptSpec
 
 
 @dataclass
@@ -30,7 +31,7 @@ class LevelGroup:
     """Prompts grouped by execution level."""
 
     level: int
-    prompts: list[dict[str, Any]] = field(default_factory=list)
+    prompts: list[PromptSpec] = field(default_factory=list)
 
 
 @dataclass
@@ -56,7 +57,7 @@ class ExplainPlan:
 
 
 def build_explain_plan(
-    prompts: list[dict[str, Any]],
+    prompts: list[PromptSpec],
     *,
     batch_data: list[dict[str, Any]] | None = None,
 ) -> ExplainPlan:
@@ -246,7 +247,7 @@ def _format_edges(plan: ExplainPlan) -> str:
 
 
 def format_prompt_preview(
-    prompt: dict[str, Any],
+    prompt: PromptSpec,
     *,
     batch_row: dict[str, Any] | None = None,
     upstream_results: dict[str, dict[str, Any]] | None = None,

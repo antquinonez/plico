@@ -482,6 +482,12 @@ def _make_base(mock_ffmistralsmall):
     orch.ffai = None
     orch.shared_prompt_attr_history = []
     orch.history_lock = threading.Lock()
+    from src.core.response_context import ResponseContext
+
+    orch._response_context = ResponseContext(
+        shared_prompt_attr_history=orch.shared_prompt_attr_history,
+        history_lock=orch.history_lock,
+    )
     orch.batch_data = []
     orch.is_batch_mode = False
     orch.client_registry = None

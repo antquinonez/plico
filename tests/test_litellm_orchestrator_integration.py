@@ -120,7 +120,7 @@ class TestFFAIWithLiteLLM:
 
         response = ffai.generate_response("Hello", prompt_name="greeting")
 
-        assert response == "Test response"
+        assert response.response == "Test response"
         assert len(ffai.history) == 1
         assert ffai.history[0]["prompt_name"] == "greeting"
 
@@ -151,7 +151,7 @@ class TestFFAIWithLiteLLM:
             history=["math"],
         )
 
-        assert "math" in response.lower()
+        assert "math" in response.response.lower()
         assert call_count[0] == 2
 
 

@@ -5,6 +5,7 @@
 """Result handling for orchestrator execution."""
 
 from .builder import ResultBuilder
+from .frame import ResultsFrame
 from .result import PromptResult
 
-__all__ = ["PromptResult", "ResultBuilder"]
+__all__ = ["PromptResult", "ResultBuilder", "ResultsFrame"]

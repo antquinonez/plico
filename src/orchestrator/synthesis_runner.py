@@ -16,6 +16,8 @@ import time
 from typing import Any
 
 from ..config import get_config
+from .results import ResultBuilder, ResultsFrame
+from .results.frame import _deserialize_json_columns
 from .scoring import ScoreAggregator
 from .synthesis import SynthesisExecutor, build_entry_results_map
 
@@ -36,63 +38,31 @@ def _build_synthesis_result(
     cost_usd: float = 0.0,
     duration_ms: float = 0.0,
 ) -> dict[str, Any]:
-    """Build a synthesis result dictionary.
+    """Build a synthesis result dictionary via ResultBuilder."""
+    builder = ResultBuilder(synth_prompt).as_synthesis()
 
-    Consolidates the duplicated result dict construction from success and
-    failure paths into a single helper.
+    if status == "success":
+        builder.with_response(response)
+        builder.with_resolved_prompt(resolved_prompt)
+        builder.with_attempts(1)
+    else:
+        builder.with_error(error or "unknown error", attempts=1)
+        builder.with_response("")
+        builder.with_resolved_prompt("")
 
-    Args:
-        synth_prompt: Source synthesis prompt dictionary.
-        status: "success" or "failed".
-        evaluation_strategy: Active evaluation strategy name.
-        has_scoring: Whether scoring is enabled.
-        response: LLM response text (empty for failure).
-        resolved_prompt: Full resolved prompt text (empty for failure).
-        error: Error message (None for success).
+    if input_tokens or output_tokens or total_tokens:
+        builder.with_usage(input_tokens, output_tokens, total_tokens)
+    if cost_usd:
+        builder.with_cost(cost_usd)
+    if duration_ms:
+        builder.with_duration(duration_ms)
 
-    Returns:
-        Result dictionary with all synthesis fields.
+    if has_scoring and evaluation_strategy:
+        builder.with_scoring(
+            scores=None, composite_score=None, scoring_status="", strategy=evaluation_strategy
+        )
 
-    """
-    return {
-        "sequence": synth_prompt["sequence"],
-        "prompt_name": synth_prompt.get("prompt_name"),
-        "prompt": synth_prompt["prompt"],
-        "resolved_prompt": resolved_prompt,
-        "response": response,
-        "status": status,
-        "attempts": 1,
-        "batch_id": -1,
-        "batch_name": "",
-        "history": synth_prompt.get("history"),
-        "condition": synth_prompt.get("condition"),
-        "condition_result": None,
-        "condition_error": None,
-        "error": error,
-        "references": None,
-        "result_type": "synthesis",
-        "scores": None,
-        "composite_score": None,
-        "scoring_status": "",
-        "strategy": evaluation_strategy if has_scoring else None,
-        "client": synth_prompt.get("client"),
-        "agent_mode": False,
-        "tool_calls": None,
-        "total_rounds": None,
-        "total_llm_calls": None,
-        "validation_passed": None,
-        "validation_attempts": None,
-        "validation_critique": None,
-        "semantic_query": None,
-        "semantic_filter": None,
-        "query_expansion": None,
-        "rerank": None,
-        "input_tokens": input_tokens,
-        "output_tokens": output_tokens,
-        "total_tokens": total_tokens,
-        "cost_usd": cost_usd,
-        "duration_ms": duration_ms,
-    }
+    return builder.build_dict()
 
 
 class SynthesisRunner:
@@ -210,15 +180,12 @@ class SynthesisRunner:
 
         executor = SynthesisExecutor(max_context_chars=max_context)
 
-        grouped: dict[int, list[dict[str, Any]]] = {}
-        for r in orchestrator.results:
-            batch_id = r.get("batch_id", 0)
-            if batch_id not in grouped:
-                grouped[batch_id] = []
-            grouped[batch_id].append(r)
-
-        sorted_batch_ids = sorted(grouped.keys())
-        batch_results_list = [grouped[bid] for bid in sorted_batch_ids]
+        frame = ResultsFrame(orchestrator.results)
+        batch_groups = frame.by_batch()
+        sorted_batch_ids = sorted(batch_groups.keys())
+        batch_results_list = [
+            _deserialize_json_columns(batch_groups[bid].df.to_dicts()) for bid in sorted_batch_ids
+        ]
 
         entry_results_map = build_entry_results_map(batch_results_list)
 
@@ -238,7 +205,7 @@ class SynthesisRunner:
             bid = entry.get("batch_id", 0)
             entry["_all_results"] = entry_results_map.get(bid, {})
 
-        orchestrator.shared_prompt_attr_history = []
+        orchestrator._response_context.clear()
         synthesis_results: list[dict[str, Any]] = []
         results_by_name: dict[str, dict[str, Any]] = {}
 
@@ -275,7 +242,7 @@ class SynthesisRunner:
                     dep_response = dep_result.get("response", "") if dep_result else ""
                     resolved_history += f"--- {dep_name} ---\n{dep_response}\n\n"
                     if dep_result:
-                        orchestrator.shared_prompt_attr_history.append(dep_result)
+                        orchestrator._response_context.record_raw(dep_result)
 
                 prompt_parts = [context]
                 if resolved_history.strip():
@@ -285,24 +252,23 @@ class SynthesisRunner:
 
                 ffai = orchestrator._get_isolated_ffai(synth_prompt.get("client"))
                 call_start = time.monotonic()
-                response = ffai.generate_response(
+                synth_result = ffai.generate_response(
                     prompt=full_prompt,
                     prompt_name=synth_prompt.get("prompt_name"),
                 )
                 call_duration_ms = (time.monotonic() - call_start) * 1000
 
-                usage = getattr(ffai, "last_usage", None)
-                input_tokens = usage.input_tokens if usage else 0
-                output_tokens = usage.output_tokens if usage else 0
-                total_tokens = usage.total_tokens if usage else 0
-                cost_usd = getattr(ffai, "last_cost_usd", 0.0)
+                input_tokens = synth_result.usage.input_tokens if synth_result.usage else 0
+                output_tokens = synth_result.usage.output_tokens if synth_result.usage else 0
+                total_tokens = synth_result.usage.total_tokens if synth_result.usage else 0
+                cost_usd = synth_result.cost_usd
 
                 result = _build_synthesis_result(
                     synth_prompt,
                     status="success",
                     evaluation_strategy=orchestrator.evaluation_strategy,
                     has_scoring=orchestrator.has_scoring,
-                    response=response,
+                    response=synth_result.response,
                     resolved_prompt=full_prompt,
                     input_tokens=input_tokens,
                     output_tokens=output_tokens,

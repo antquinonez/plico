@@ -20,6 +20,7 @@ from typing import Any
 
 from ..config import get_config
 from ..FFAI import FFAI
+from .models import ConfigSpec, PromptSpec
 from .results import ResultBuilder
 from .tool_registry import ToolRegistry
 
@@ -49,8 +50,8 @@ class AgentExecutor:
     def __init__(
         self,
         tool_registry: ToolRegistry,
-        config: dict[str, Any],
-        record_history_fn: Callable[[dict[str, Any], str | None], None],
+        config: ConfigSpec,
+        record_history_fn: Callable[[PromptSpec, str | None], None],
     ) -> None:
         self.tool_registry = tool_registry
         self.config = config
@@ -58,11 +59,11 @@ class AgentExecutor:
 
     def execute(
         self,
-        prompt: dict[str, Any],
+        prompt: PromptSpec,
         ffai: FFAI,
         builder: ResultBuilder,
         seq_label: str,
-        inject_references_fn: Callable[[dict[str, Any]], str],
+        inject_references_fn: Callable[[PromptSpec], str],
         get_isolated_ffai_fn: Callable[[str | None], FFAI],
     ) -> dict[str, Any] | None:
         """Execute a prompt using the agentic tool-call loop.
@@ -97,12 +98,11 @@ class AgentExecutor:
         agent_config = get_config().agent
 
         injected_prompt = inject_references_fn(prompt)
-        resolved_prompt, _ = ffai._build_prompt(
+        resolved_prompt, _ = ffai.build_prompt(
             injected_prompt,
             prompt.get("history"),
             None,
         )
-        ffai.last_resolved_prompt = resolved_prompt
 
         logger.info(f"{seq_label} agent mode: {len(tool_names)} tool(s), max_rounds={max_rounds}")
 
@@ -182,7 +182,7 @@ class AgentExecutor:
 
     def validate_response(
         self,
-        prompt: dict[str, Any],
+        prompt: PromptSpec,
         builder: Any,
         agent_result: Any,
         tool_names: list[str],
@@ -226,7 +226,7 @@ class AgentExecutor:
         for attempt in range(1, max_val_retries + 2):
             try:
                 val_client = get_isolated_ffai_fn(prompt.get("client"))
-                val_response = val_client.generate_response(
+                val_result = val_client.generate_response(
                     validation_prompt_text,
                     prompt_name=f"{prompt.get('prompt_name', '')}_validation",
                     model=self.config.get("model"),
@@ -244,7 +244,11 @@ class AgentExecutor:
                     return
                 continue
 
-            val_response = val_response.strip()
+            val_response = (
+                val_result.response.strip()
+                if isinstance(val_result.response, str)
+                else str(val_result.response).strip()
+            )
 
             if re.match(r"^PASS\s*$", val_response, re.IGNORECASE):
                 logger.info(

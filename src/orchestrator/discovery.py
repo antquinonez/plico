@@ -20,6 +20,7 @@ from typing import Any
 from openpyxl import Workbook
 
 from ..config import get_config
+from .models import DocumentSpec
 from .workbook_formatter import WorkbookFormatter
 from .workbook_parser import WorkbookParser
 
@@ -70,7 +71,7 @@ def discover_documents(
     extensions: set[str] | None = None,
     tags: list[str] | None = None,
     absolute_paths: bool = False,
-) -> list[dict[str, Any]]:
+) -> list[DocumentSpec]:
     """Scan a folder for documents and return definitions matching DOCUMENTS_HEADERS.
 
     Files are sorted alphabetically by filename stem. Unsupported file
@@ -98,7 +99,7 @@ def discover_documents(
     exts = extensions or DEFAULT_EXTENSIONS
     tags_str = ", ".join(tags) if tags else ""
 
-    document_defs: list[dict[str, Any]] = []
+    document_defs: list[DocumentSpec] = []
     for filepath in sorted(folder.iterdir()):
         if not filepath.is_file():
             continue
@@ -137,7 +138,7 @@ def discover_documents(
 
 
 def create_data_rows_from_documents(
-    document_defs: list[dict[str, Any]],
+    document_defs: list[DocumentSpec],
     documents_column: str = "_documents",
     name_column: str = "candidate_name",
 ) -> list[dict[str, Any]]:
@@ -179,7 +180,7 @@ def create_data_rows_from_documents(
 def create_evaluation_workbook(
     output_path: str | Path,
     documents_folder: str | Path,
-    shared_documents: list[dict[str, Any]] | None = None,
+    shared_documents: list[DocumentSpec] | None = None,
     evaluation_strategy: str = "balanced",
     extensions: set[str] | None = None,
     tags: list[str] | None = None,

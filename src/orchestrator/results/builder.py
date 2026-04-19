@@ -250,16 +250,16 @@ class ResultBuilder:
 
     def with_scoring(
         self,
-        scores: dict[str, Any],
-        composite_score: float,
+        scores: dict[str, Any] | None,
+        composite_score: float | None,
         scoring_status: str,
         strategy: str,
     ) -> ResultBuilder:
         """Set scoring results.
 
         Args:
-            scores: Dictionary of criteria_name to score values.
-            composite_score: Weighted composite score.
+            scores: Dictionary of criteria_name to score values, or None.
+            composite_score: Weighted composite score, or None.
             scoring_status: Aggregation status (ok, partial, failed, skipped).
             strategy: Evaluation strategy used.
 

@@ -17,6 +17,7 @@ from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 from .document_processor import DocumentProcessor
+from .models import DocumentSpec
 
 if TYPE_CHECKING:
     from ..RAG import FFRAGClient
@@ -43,7 +44,7 @@ class DocumentRegistry:
 
     def __init__(
         self,
-        documents: list[dict[str, Any]],
+        documents: list[DocumentSpec],
         processor: DocumentProcessor,
         workbook_dir: str,
         rag_client: FFRAGClient | None = None,
@@ -118,7 +119,7 @@ class DocumentRegistry:
         """Get all registered reference names."""
         return set(self.documents.keys())
 
-    def get_document_config(self, reference_name: str) -> dict[str, Any] | None:
+    def get_document_config(self, reference_name: str) -> DocumentSpec | None:
         """Get the configuration for a document by reference name."""
         return self.documents.get(reference_name)
 

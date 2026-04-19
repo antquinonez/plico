@@ -19,6 +19,7 @@ from typing import Any
 
 from json_repair import loads as json_repair_loads
 
+from .models import PromptSpec
 from .scoring import ScoringCriteria
 
 logger = logging.getLogger(__name__)
@@ -253,7 +254,7 @@ class PlanningArtifactParser:
 
     def validate_prompts(
         self,
-        prompts: list[dict[str, Any]],
+        prompts: list[PromptSpec],
         existing_names: set[str],
         doc_refs: set[str],
         batch_keys: set[str],
@@ -331,11 +332,11 @@ class PlanningArtifactParser:
 
     def assign_sequences(
         self,
-        prompts: list[dict[str, Any]],
+        prompts: list[PromptSpec],
         existing_sequences: set[int],
         base: str | int = "auto",
         step: int = 10,
-    ) -> list[dict[str, Any]]:
+    ) -> list[PromptSpec]:
         """Assign sequence numbers to generated prompts.
 
         When base="auto": uses max(existing_sequences) rounded up to

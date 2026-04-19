@@ -18,6 +18,7 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 
 from .condition_evaluator import ConditionEvaluator
+from .models import ConfigSpec, PromptSpec
 
 logger = logging.getLogger(__name__)
 
@@ -123,8 +124,8 @@ class OrchestratorValidator:
 
     def __init__(
         self,
-        prompts: list[dict[str, Any]],
-        config: dict[str, Any],
+        prompts: list[PromptSpec],
+        config: ConfigSpec,
         *,
         manifest_meta: dict[str, Any] | None = None,
         client_names: list[str] | None = None,
@@ -138,7 +139,7 @@ class OrchestratorValidator:
         synthesis_prompts: list[dict[str, Any]] | None = None,
         skip_scoring_source_check: bool = False,
         skip_synthesis_source_check: bool = False,
-        planning_prompts: list[dict[str, Any]] | None = None,
+        planning_prompts: list[PromptSpec] | None = None,
     ) -> None:
         self.prompts = prompts
         self.config = config

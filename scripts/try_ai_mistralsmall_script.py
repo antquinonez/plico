@@ -5,7 +5,10 @@
 import logging
 import os
 
-import matplotlib.pyplot as plt
+try:
+    import matplotlib.pyplot as plt
+except ImportError:
+    plt = None
 
 from src.Clients.FFMistralSmall import FFMistralSmall as LLM
 from src.FFAI import FFAI as AI
@@ -300,13 +303,14 @@ if not history_df.is_empty():
 
     # FIX: Use a UDF (user-defined function) to calculate string length instead of the lengths() method
     try:
-        # Convert to pandas for more straightforward string length calculation
-        pd_df = history_df.to_pandas()
-        pd_df["response_length"] = pd_df["response"].str.len()
-
-        # Group by prompt_name and calculate average response length
-        response_lengths = pd_df.groupby("prompt_name")["response_length"].mean().reset_index()
-        response_lengths = response_lengths.sort_values("response_length", ascending=False)
+        response_lengths = (
+            history_df.with_columns(
+                pl.col("response").str.len_chars().alias("response_length")
+            )
+            .group_by("prompt_name")
+            .agg(pl.col("response_length").mean())
+            .sort("response_length", descending=True)
+        )
 
         logger.info("Average response length by prompt name:")
         logger.info(response_lengths)
@@ -320,30 +324,23 @@ if not history_df.is_empty():
 
     # Optional: Visualization if matplotlib is available
     try:
-        # Find the most used prompt names and their response lengths
-        pd_df = history_df.to_pandas()
-        pd_df["response_length"] = pd_df["response"].str.len()
-
-        # Filter out null prompt names and calculate average response length
         response_by_prompt = (
-            pd_df[pd_df["prompt_name"].notnull()]
-            .groupby("prompt_name")["response_length"]
-            .mean()
-            .reset_index()
+            history_df.filter(pl.col("prompt_name").is_not_null())
+            .with_columns(pl.col("response").str.len_chars().alias("response_length"))
+            .group_by("prompt_name")
+            .agg(pl.col("response_length").mean())
+            .sort("response_length", descending=True)
         )
-        response_by_prompt = response_by_prompt.sort_values("response_length", ascending=False)
 
-        if len(response_by_prompt) > 0:
-            # Create simple bar chart
+        if len(response_by_prompt) > 0 and plt is not None:
+            pdf = response_by_prompt.to_pandas()
             plt.figure(figsize=(10, 6))
-            plt.bar(response_by_prompt["prompt_name"], response_by_prompt["response_length"])
+            plt.bar(pdf["prompt_name"], pdf["response_length"])
             plt.title("Average Response Length by Prompt Name")
             plt.xlabel("Prompt Name")
             plt.ylabel("Average Response Length (chars)")
             plt.xticks(rotation=45, ha="right")
             plt.tight_layout()
-
-            # Save plot
             plt.savefig("response_length_by_prompt.png")
             logger.info("Plot saved to 'response_length_by_prompt.png'")
     except Exception as e:

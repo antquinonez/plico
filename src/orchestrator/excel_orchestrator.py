@@ -221,7 +221,6 @@ class ExcelOrchestrator(OrchestratorBase):
         """
         batch_output = self.config.get("batch_output", "combined")
 
-        # Include planning results in the combined results list
         all_results = list(self.planning_results) + list(results)
 
         if self.is_batch_mode and batch_output == "separate_sheets":
@@ -264,14 +263,12 @@ class ExcelOrchestrator(OrchestratorBase):
         """
         sheet_names: list[str] = []
 
-        # Write planning results to a separate sheet if present
         if self.planning_results:
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             planning_sheet = f"planning_{timestamp}"
             self.builder.write_results(self.planning_results, planning_sheet)
             sheet_names.append(planning_sheet)
 
-        # Filter out planning results from batch grouping
         batches: dict[int, list[dict[str, Any]]] = {}
         for result in self.results:
             if result.get("result_type") == "planning":

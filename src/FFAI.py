@@ -15,7 +15,7 @@ import logging
 import os
 import threading
 import time
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import polars as pl
 
@@ -26,9 +26,14 @@ from .core.history.permanent import PermanentHistory
 from .core.history_exporter import HistoryExporter
 from .core.prompt_builder import PromptBuilder
 from .core.prompt_utils import extract_json_field, interpolate_prompt
+from .core.response_context import ResponseContext
+from .core.response_result import ResponseResult
 from .core.response_utils import clean_response as _clean_response_impl
 from .core.response_utils import extract_json
 from .core.usage import TokenUsage
+
+if TYPE_CHECKING:
+    from .orchestrator.models import Interaction
 
 __all__ = ["FFAI", "extract_json_field", "interpolate_prompt"]
 
@@ -40,15 +45,18 @@ class FFAI:
 
     This class wraps an AI client implementation and adds:
     - Named prompt management for declarative context assembly
-    - Multiple history tracking mechanisms
+    - Multiple history tracking mechanisms via ``ResponseContext``
     - DataFrame export capabilities
     - Automatic persistence of history data
+
+    ``generate_response()`` returns a ``ResponseResult`` with the response
+    text, resolved prompt, token usage, and cost estimate.
 
     Attributes:
         client: The underlying AI client instance.
         history: Raw interaction history.
         clean_history: Cleaned interaction history.
-        prompt_attr_history: History indexed by prompt attributes.
+        prompt_attr_history: History indexed by prompt attributes (via ``ResponseContext``).
         ordered_history: Ordered prompt-response history.
         permanent_history: Chronological turn history.
 
@@ -60,7 +68,7 @@ class FFAI:
         persist_dir: str | None = None,
         persist_name: str | None = None,
         auto_persist: bool = False,
-        shared_prompt_attr_history: list[dict[str, Any]] | None = None,
+        shared_prompt_attr_history: list[Interaction] | None = None,
         history_lock: threading.Lock | None = None,
     ) -> None:
         """Initialize the FFAI wrapper.
@@ -83,48 +91,49 @@ class FFAI:
         os.makedirs(self.persist_dir, exist_ok=True)
 
         self.client = client
-        self._history_lock = history_lock
         self._client_history_lock = threading.Lock()
 
-        self.history: list[dict[str, Any]] = []
-        self.clean_history: list[dict[str, Any]] = []
+        self.history: list[Interaction] = []
+        self.clean_history: list[Interaction] = []
 
-        if shared_prompt_attr_history is not None:
-            self.prompt_attr_history = shared_prompt_attr_history
-        else:
-            self.prompt_attr_history = []
+        self._context = ResponseContext(
+            shared_prompt_attr_history=shared_prompt_attr_history,
+            history_lock=history_lock,
+        )
 
         self.permanent_history = PermanentHistory()
         self.ordered_history = OrderedPromptHistory()
-        self.last_resolved_prompt: str | None = None
-        self._last_usage: TokenUsage | None = None
-        self._last_cost_usd: float = 0.0
 
-        self._prompt_builder = PromptBuilder(self.prompt_attr_history)
+        self._prompt_builder = PromptBuilder(self._context.prompt_attr_history)
         self._exporter = HistoryExporter(
             history=self.history,
             clean_history=self.clean_history,
-            prompt_attr_history=self.prompt_attr_history,
+            prompt_attr_history=self._context.prompt_attr_history,
             ordered_history=self.ordered_history,
             persist_dir=self.persist_dir,
             persist_name=self.persist_name,
             auto_persist=self.auto_persist,
         )
 
+    @property
+    def prompt_attr_history(self) -> list[Interaction]:
+        """Shared prompt attribute history (delegates to ResponseContext)."""
+        return self._context.prompt_attr_history
+
+    @prompt_attr_history.setter
+    def prompt_attr_history(self, value: list[Interaction]) -> None:
+        """Allow external reassignment for backward compatibility."""
+        self._context.prompt_attr_history = value
+
+    @property
+    def _history_lock(self) -> threading.Lock | None:
+        """Backward-compatible access to the history lock."""
+        return self._context.history_lock
+
     def set_client(self, client: FFAIClientBase) -> None:
         """Switch to a different AI client."""
         logger.info(f"Switching client to {client.__class__.__name__}")
         self.client = client
-
-    @property
-    def last_usage(self) -> TokenUsage | None:
-        """Token usage from the most recent generate_response() call."""
-        return self._last_usage
-
-    @property
-    def last_cost_usd(self) -> float:
-        """Estimated cost in USD from the most recent generate_response() call."""
-        return self._last_cost_usd
 
     def _extract_json(self, text: str) -> Any | None:
         """Extract JSON from text, handling markdown code blocks and JSON within first 20 chars."""
@@ -147,11 +156,20 @@ class FFAI:
         dependencies: dict | None = None,
     ) -> tuple[str, set[str]]:
         """Build the final prompt with history and variable interpolation."""
-        self._prompt_builder._prompt_attr_history = (
-            self.prompt_attr_history
-        )  # sync in case list reference changed
         result, interpolated = self._prompt_builder.build_prompt(prompt, history, dependencies)
         return result, interpolated
+
+    def build_prompt(
+        self,
+        prompt: str,
+        history: list[str] | None = None,
+        dependencies: dict | None = None,
+    ) -> tuple[str, set[str]]:
+        """Public API for prompt building (delegates to PromptBuilder).
+
+        Use this instead of the private ``_build_prompt()`` method.
+        """
+        return self._build_prompt(prompt, history, dependencies)
 
     def generate_response(
         self,
@@ -162,8 +180,13 @@ class FFAI:
         dependencies: list[str] | None = None,
         system_instructions: str | None = None,
         **kwargs: Any,
-    ) -> str:
-        """Generate response using the configured AI client."""
+    ) -> ResponseResult:
+        """Generate response using the configured AI client.
+
+        Returns:
+            ``ResponseResult`` with response, resolved prompt, usage, and cost.
+
+        """
         logger.debug(
             "\n==================================================================================="
         )
@@ -181,6 +204,9 @@ class FFAI:
         logger.debug(f"Using model: {used_model}")
 
         cleaned_response = None
+        usage: TokenUsage | None = None
+        cost_usd: float = 0.0
+        resolved_prompt: str = prompt
 
         try:
             if dependencies:
@@ -188,7 +214,7 @@ class FFAI:
                 dependencies = list(dependencies_set)
 
             final_prompt, interpolated_names = self._build_prompt(prompt, history, dependencies)
-            self.last_resolved_prompt = final_prompt
+            resolved_prompt = final_prompt
             logger.debug(f"final_prompt built: {final_prompt}")
             logger.debug(f"interpolated_names: {interpolated_names}")
 
@@ -204,17 +230,19 @@ class FFAI:
                     self.client.set_conversation_history([])
                     logger.debug("Suspended client conversation history for declarative context")
 
+            call_start = time.monotonic()
             try:
                 response = self.client.generate_response(
                     prompt=final_prompt, model=used_model, **kwargs
                 )
-                self._last_usage = getattr(self.client, "last_usage", None)
-                self._last_cost_usd = getattr(self.client, "last_cost_usd", 0.0)
             finally:
                 if should_suspend_client_history and saved_client_history is not None:
                     with self._client_history_lock:
                         self.client.set_conversation_history(saved_client_history)
                         logger.debug("Restored client conversation history")
+            call_duration_ms = (time.monotonic() - call_start) * 1000
+            usage = getattr(self.client, "last_usage", None)
+            cost_usd = getattr(self.client, "last_cost_usd", 0.0)
 
             logger.debug(f"Generated response: {response}")
 
@@ -223,14 +251,6 @@ class FFAI:
 
             self.permanent_history.add_turn_user(prompt)
             self.permanent_history.add_turn_assistant(cleaned_response)
-
-            logger.debug(f"""Adding interaction:
-                            model: {used_model}
-                            prompt: {prompt}
-                            response: {cleaned_response}
-                            prompt_name: {prompt_name}
-                            history: {history}
-            """)
 
             interaction = {
                 "prompt": prompt,
@@ -242,43 +262,9 @@ class FFAI:
             }
 
             self.history.append(interaction)
-            logger.debug(f"Added new interaction to self.history: {interaction}")
-
             self.clean_history.append(interaction)
-            logger.debug(f"Added new interaction to self.clean_history: {interaction}")
 
-            if isinstance(cleaned_response, dict):
-                logger.debug("Response was JSON.")
-                for attr, value in cleaned_response.items():
-                    logger.debug(f"Response has attribute(s). attr: {attr} | value: {value}")
-
-                    attr_interaction = {
-                        "prompt": attr,
-                        "response": value,
-                        "prompt_name": attr,
-                        "timestamp": time.time(),
-                        "model": used_model,
-                        "history": history,
-                    }
-
-                    if self._history_lock:
-                        with self._history_lock:
-                            self.prompt_attr_history.append(attr_interaction)
-                    else:
-                        self.prompt_attr_history.append(attr_interaction)
-                    logger.debug(
-                        f"Added new attr interaction to self.prompt_attr_history: {attr_interaction}"
-                    )
-            else:
-                if self._history_lock:
-                    with self._history_lock:
-                        self.prompt_attr_history.append(interaction)
-                else:
-                    self.prompt_attr_history.append(interaction)
-                logger.debug(
-                    "Interaction was not JSON, saving original 'prompt' and 'response' to prompt_attr_history."
-                )
-                logger.debug(f"Added new interaction to self.prompt_attr_history: {interaction}")
+            self._context.record(prompt, cleaned_response, used_model, prompt_name, history)
 
             self.ordered_history.add_interaction(
                 model=used_model,
@@ -288,7 +274,14 @@ class FFAI:
                 history=history,
             )
 
-            return cleaned_response
+            return ResponseResult(
+                response=cleaned_response,
+                resolved_prompt=resolved_prompt,
+                usage=usage,
+                cost_usd=cost_usd,
+                model=used_model,
+                duration_ms=round(call_duration_ms, 1),
+            )
 
         except Exception as e:
             logger.error(f"Problem with response generation: {e!s}")
@@ -309,15 +302,15 @@ class FFAI:
     # History accessors
     # ===========================================================================
 
-    def get_interaction_history(self) -> list[dict[str, Any]]:
+    def get_interaction_history(self) -> list[Interaction]:
         """Get complete history."""
         return self.history
 
-    def get_clean_interaction_history(self) -> list[dict[str, Any]]:
+    def get_clean_interaction_history(self) -> list[Interaction]:
         """Get complete clean history."""
         return self.clean_history
 
-    def get_prompt_attr_history(self) -> list[dict[str, Any]]:
+    def get_prompt_attr_history(self) -> list[Interaction]:
         """Get prompt attribute history."""
         return self.prompt_attr_history
 
@@ -325,7 +318,7 @@ class FFAI:
         """Get all interactions as dictionaries."""
         return self.ordered_history.get_all_interactions()
 
-    def get_latest_interaction_by_prompt_name(self, prompt_name: str) -> dict[str, Any] | None:
+    def get_latest_interaction_by_prompt_name(self, prompt_name: str) -> Interaction | None:
         """Get most recent interaction for a prompt name."""
         matching = [e for e in self.history if e.get("prompt_name") == prompt_name]
         return matching[-1] if matching else None
