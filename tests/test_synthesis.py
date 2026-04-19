@@ -345,6 +345,23 @@ class TestSynthesisExecutorGetEntryName:
         }
         assert executor.get_entry_name(entry) == "Alice Chen"
 
+    def test_name_from_data_column_with_observability_fields(self):
+        from src.orchestrator.synthesis import SynthesisExecutor
+
+        executor = SynthesisExecutor()
+        entry = {
+            "batch_id": 1,
+            "batch_name": "siddhartha_vasudeva",
+            "candidate_name": "Siddhartha Vasudeva",
+            "input_tokens": 846,
+            "output_tokens": 937,
+            "total_tokens": 1783,
+            "cost_usd": 0.0002175,
+            "duration_ms": 7474.08,
+            "scores": {},
+        }
+        assert executor.get_entry_name(entry) == "Siddhartha Vasudeva"
+
     def test_fallback_to_batch_name(self):
         from src.orchestrator.synthesis import SynthesisExecutor
 

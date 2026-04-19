@@ -123,6 +123,13 @@ class SynthesisExecutor:
             "result_type",
             "batch_id",
             "_all_results",
+            "input_tokens",
+            "output_tokens",
+            "total_tokens",
+            "cost_usd",
+            "duration_ms",
+            "condition_trace",
+            "extraction_trace",
         }
 
         for key, value in entry.items():
