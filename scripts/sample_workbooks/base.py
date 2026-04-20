@@ -56,6 +56,7 @@ class PromptSpec:
     max_tool_rounds: int | None = None
     validation_prompt: str | None = None
     max_validation_retries: int | None = None
+    abort_condition: str | None = None
     phase: str | None = None
     generator: str | None = None
 
@@ -82,6 +83,7 @@ class PromptSpec:
             "max_tool_rounds": self.max_tool_rounds or "",
             "validation_prompt": self.validation_prompt or "",
             "max_validation_retries": self.max_validation_retries or "",
+            "abort_condition": self.abort_condition or "",
             "phase": self.phase or "",
             "generator": self.generator or "",
         }
@@ -161,6 +163,7 @@ DEFAULT_PROMPT_HEADERS = [
     "max_tool_rounds",
     "validation_prompt",
     "max_validation_retries",
+    "abort_condition",
     "phase",
     "generator",
 ]
@@ -183,8 +186,9 @@ DEFAULT_PROMPT_COLUMN_WIDTHS = {
     "O": 18,
     "P": 18,
     "Q": 20,
-    "R": 12,
+    "R": 60,
     "S": 12,
+    "T": 12,
 }
 
 DEFAULT_CONFIG_COLUMN_WIDTHS = {

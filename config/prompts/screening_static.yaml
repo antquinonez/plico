@@ -20,6 +20,37 @@ prompts:
       technical skills list.
     references: '["job_description"]'
 
+  - sequence: 15
+    prompt_name: gate_evaluation
+    prompt: |
+      Based on the profile extracted from {{candidate_name}}'s resume below,
+      perform a quick screening check against the job description.
+
+      Determine whether this candidate meets the MINIMUM qualifications for the
+      role. Consider:
+
+      1. Required years of experience — does the candidate have enough?
+      2. Required education — does the candidate meet the minimum degree?
+      3. Core domain — is the candidate in a broadly relevant field?
+      4. Deal-breakers — are there fundamental mismatches (e.g., entry-level
+         candidate for a senior role, unrelated industry with no transferable skills)?
+
+      Be GENEROUS in borderline cases. Only reject candidates who clearly do not
+      meet the minimum bar. When in doubt, set proceed to true and let the
+      detailed evaluation make the final call.
+
+      Return ONLY a JSON object:
+      {"proceed": true, "reason": "Candidate meets minimum qualifications"}
+      or
+      {"proceed": false, "reason": "<specific reason for rejection>"}
+    history: '["extract_profile"]'
+    references: '["job_description"]'
+    abort_condition: 'json_get({{gate_evaluation.response}}, "proceed") == False'
+    notes: >
+      Gate prompt: quickly screens out clearly unqualified candidates before
+      detailed evaluation. If proceed=false, all remaining prompts for this
+      candidate are aborted.
+
   - sequence: 20
     prompt_name: evaluate_skills
     prompt: |

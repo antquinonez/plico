@@ -89,7 +89,7 @@ class TestLoadPromptTemplate:
 
         result = load_prompt_template("screening_static")
         assert result is not None
-        assert len(result) == 7
+        assert len(result) == 8
         assert result[0].name == "extract_profile"
 
     def test_load_planning_template(self):
@@ -97,7 +97,7 @@ class TestLoadPromptTemplate:
 
         result = load_prompt_template("screening_planning")
         assert result is not None
-        assert len(result) == 4
+        assert len(result) == 5
         names = [p.name for p in result]
         assert "analyze_jd" in names
         assert "refine_criteria" in names
@@ -250,41 +250,41 @@ class TestScreeningFallbackIntegration:
         from sample_workbooks.screening import get_static_screening_prompts
 
         prompts = get_static_screening_prompts()
-        assert len(prompts) == 7
+        assert len(prompts) == 8
         assert prompts[0].name == "extract_profile"
 
     def test_planning_prompts_default(self):
         from sample_workbooks.screening import get_planning_screening_prompts
 
         prompts = get_planning_screening_prompts()
-        assert len(prompts) == 4
+        assert len(prompts) == 5
         assert prompts[0].name == "analyze_jd"
 
     def test_static_prompts_with_valid_template(self):
         from sample_workbooks.screening import get_static_screening_prompts
 
         prompts = get_static_screening_prompts(template_path="screening_static")
-        assert len(prompts) == 7
+        assert len(prompts) == 8
         assert prompts[0].name == "extract_profile"
 
     def test_planning_prompts_with_valid_template(self):
         from sample_workbooks.screening import get_planning_screening_prompts
 
         prompts = get_planning_screening_prompts(template_path="screening_planning")
-        assert len(prompts) == 4
+        assert len(prompts) == 5
         assert prompts[0].name == "analyze_jd"
 
     def test_static_prompts_fallback_on_missing_template(self):
         from sample_workbooks.screening import get_static_screening_prompts
 
         prompts = get_static_screening_prompts(template_path="nonexistent_xyz")
-        assert len(prompts) == 7
+        assert len(prompts) == 8
 
     def test_planning_prompts_fallback_on_missing_template(self):
         from sample_workbooks.screening import get_planning_screening_prompts
 
         prompts = get_planning_screening_prompts(template_path="nonexistent_xyz")
-        assert len(prompts) == 4
+        assert len(prompts) == 5
 
     def test_synthesis_prompts_default(self):
         from sample_workbooks.screening import get_screening_synthesis_prompts
@@ -342,7 +342,7 @@ class TestScreeningSkillsPlanningTemplate:
 
         result = load_prompt_template("screening_skills_planning")
         assert result is not None
-        assert len(result) == 4
+        assert len(result) == 5
 
     def test_skills_planning_has_correct_prompt_names(self):
         from src.prompt_templates import load_prompt_template
@@ -352,7 +352,17 @@ class TestScreeningSkillsPlanningTemplate:
         assert "analyze_jd" in names
         assert "refine_criteria" in names
         assert "extract_profile" in names
+        assert "gate_evaluation" in names
         assert "overall_assessment" in names
+
+    def test_skills_planning_gate_has_abort_condition(self):
+        from src.prompt_templates import load_prompt_template
+
+        result = load_prompt_template("screening_skills_planning")
+        gate = next(p for p in result if p.name == "gate_evaluation")
+        assert gate.abort_condition is not None
+        assert "json_get" in gate.abort_condition
+        assert "proceed" in gate.abort_condition
 
     def test_skills_planning_analyze_jd_is_generator(self):
         from src.prompt_templates import load_prompt_template
@@ -405,7 +415,7 @@ class TestScreeningSkillsPlanningTemplate:
         from sample_workbooks.screening import get_planning_screening_prompts
 
         prompts = get_planning_screening_prompts(template_path="screening_skills_planning")
-        assert len(prompts) == 4
+        assert len(prompts) == 5
         names = [p.name for p in prompts]
         assert "analyze_jd" in names
         assert "refine_criteria" in names

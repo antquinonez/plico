@@ -26,8 +26,8 @@ class DependencyEdge:
     Attributes:
         from_seq: Sequence number of the dependency (upstream prompt).
         to_seq: Sequence number of the dependent (downstream prompt).
-        source: How the edge was derived — 'history' or 'condition'.
-        condition_text: The condition expression (only set when source='condition').
+        source: How the edge was derived — 'history', 'condition', or 'abort_condition'.
+        condition_text: The condition expression (set when source='condition' or 'abort_condition').
 
     """
 
@@ -127,6 +127,8 @@ def build_execution_graph_with_edges(
         for dep_name, _ in ConditionEvaluator.extract_referenced_names(condition):
             if dep_name in prompt_by_name:
                 dep_seq = prompt_by_name[dep_name]
+                if dep_seq == seq:
+                    continue
                 nodes[seq].dependencies.add(dep_seq)
                 if dep_seq not in seen_condition_deps:
                     seen_condition_deps.add(dep_seq)
@@ -136,6 +138,29 @@ def build_execution_graph_with_edges(
                             to_seq=seq,
                             source="condition",
                             condition_text=str(condition),
+                        )
+                    )
+
+        abort_condition = prompt.get("abort_condition") or ""
+        seen_abort_deps: set[int] = set()
+        for dep_name, _ in ConditionEvaluator.extract_referenced_names(abort_condition):
+            if dep_name in prompt_by_name:
+                dep_seq = prompt_by_name[dep_name]
+                if dep_seq == seq:
+                    # Self-reference is allowed at evaluation time (the prompt
+                    # can test its own response in abort_condition, e.g.
+                    # {{check.response}} == "abort"), but excluded from the
+                    # dependency graph to avoid a false cycle detection.
+                    continue
+                nodes[seq].dependencies.add(dep_seq)
+                if dep_seq not in seen_abort_deps:
+                    seen_abort_deps.add(dep_seq)
+                    edges.append(
+                        DependencyEdge(
+                            from_seq=dep_seq,
+                            to_seq=seq,
+                            source="abort_condition",
+                            condition_text=str(abort_condition),
                         )
                     )
 
@@ -191,18 +216,21 @@ def get_ready_prompts(state: ExecutionState, nodes: dict[int, PromptNode]) -> li
 def evaluate_condition(
     prompt: PromptSpec,
     results_by_name: dict[str, dict[str, Any]],
+    condition_field: str = "condition",
 ) -> tuple[bool, str | None, str | None]:
     """Evaluate a prompt's condition.
 
     Args:
         prompt: Prompt dictionary with optional condition.
         results_by_name: Results indexed by prompt_name.
+        condition_field: Name of the field containing the condition expression.
+            Defaults to "condition". Use "abort_condition" for abort evaluation.
 
     Returns:
         Tuple of (should_execute, condition_result, condition_error).
 
     """
-    condition = prompt.get("condition")
+    condition = prompt.get(condition_field)
 
     if not condition or not str(condition).strip():
         return True, None, None
@@ -216,18 +244,21 @@ def evaluate_condition(
 def evaluate_condition_with_trace(
     prompt: PromptSpec,
     results_by_name: dict[str, dict[str, Any]],
+    condition_field: str = "condition",
 ) -> tuple[bool, str | None, str | None, str | None]:
     """Evaluate a prompt's condition and return the resolved trace.
 
     Args:
         prompt: Prompt dictionary with optional condition.
         results_by_name: Results indexed by prompt_name.
+        condition_field: Name of the field containing the condition expression.
+            Defaults to "condition". Use "abort_condition" for abort evaluation.
 
     Returns:
         Tuple of (should_execute, condition_result, condition_error, condition_trace).
 
     """
-    condition = prompt.get("condition")
+    condition = prompt.get(condition_field)
 
     if not condition or not str(condition).strip():
         return True, None, None, None
@@ -236,3 +267,19 @@ def evaluate_condition_with_trace(
     result, error, trace = evaluator.evaluate_with_trace(str(condition))
 
     return result, result, error, trace
+
+
+def is_abort_trigger(result: dict[str, Any]) -> bool:
+    """Check whether a result triggered an abort.
+
+    A prompt triggers abort when it executed successfully (status='success')
+    and its abort_condition evaluated to True (abort_trace is set).
+
+    Args:
+        result: A result dictionary from prompt execution.
+
+    Returns:
+        True if this result should trigger abort of remaining prompts.
+
+    """
+    return result.get("abort_trace") is not None and result["status"] == "success"

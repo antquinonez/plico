@@ -32,6 +32,7 @@ class PromptSpec(TypedDict, total=False):
     max_tool_rounds: int | None
     validation_prompt: str | None
     max_validation_retries: int | None
+    abort_condition: str | None
     phase: str
     generator: bool
     _generated: bool

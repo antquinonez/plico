@@ -26,6 +26,7 @@ class ExecutionState:
         success_count: Number of successful executions.
         failed_count: Number of failed executions.
         skipped_count: Number of skipped executions.
+        aborted_count: Number of aborted executions.
         results_by_name: Results indexed by prompt name.
         current_name: Name of currently executing prompt.
 
@@ -39,5 +40,7 @@ class ExecutionState:
     success_count: int = 0
     failed_count: int = 0
     skipped_count: int = 0
+    aborted_count: int = 0
     results_by_name: dict[str, dict[str, Any]] = field(default_factory=dict)
     current_name: str = ""
+    aborted: bool = False

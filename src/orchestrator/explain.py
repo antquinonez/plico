@@ -185,6 +185,13 @@ def _format_dag(plan: ExplainPlan) -> str:
                     cond_str = cond_str[:47] + "..."
                 annotations.append(f"cond: {cond_str}")
 
+            abort_condition = p.get("abort_condition")
+            if abort_condition:
+                ac_str = str(abort_condition)
+                if len(ac_str) > 50:
+                    ac_str = ac_str[:47] + "..."
+                annotations.append(f"abort: {ac_str}")
+
             agent = p.get("agent_mode")
             if agent:
                 tools = p.get("tools") or []

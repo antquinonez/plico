@@ -264,6 +264,7 @@ def main():
     print(f"Concurrency:   {args.concurrency}")
     print(f"Total prompts: {summary['total_prompts']}")
     print(f"Successful:    {summary['successful']}")
+    print(f"Aborted:       {summary['aborted']}")
     print(f"Failed:        {summary['failed']}")
     print("=" * 60 + "\n")
 

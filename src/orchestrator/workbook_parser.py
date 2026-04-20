@@ -173,6 +173,7 @@ class WorkbookParser:
         "notes",
         "client",
         "condition",
+        "abort_condition",
         "references",
         "semantic_query",
         "semantic_filter",
@@ -550,6 +551,9 @@ class WorkbookParser:
                 else None,
                 "condition": str(row_dict.get("condition", "")).strip()
                 if row_dict.get("condition")
+                else None,
+                "abort_condition": str(row_dict.get("abort_condition", "")).strip()
+                if row_dict.get("abort_condition")
                 else None,
                 "references": self._parse_history_string(row_dict.get("references"))
                 if row_dict.get("references")

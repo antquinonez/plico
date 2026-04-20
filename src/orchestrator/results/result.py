@@ -95,8 +95,9 @@ class PromptResult:
     total_tokens: int = 0
     cost_usd: float = 0.0
     duration_ms: float = 0.0
+    abort_trace: str | None = None
 
-    VALID_STATUSES = ("pending", "success", "failed", "skipped", "max_rounds_exceeded")
+    VALID_STATUSES = ("pending", "success", "failed", "skipped", "aborted", "max_rounds_exceeded")
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for backward compatibility."""
@@ -145,4 +146,5 @@ class PromptResult:
             total_tokens=data.get("total_tokens", 0),
             cost_usd=data.get("cost_usd", 0.0),
             duration_ms=data.get("duration_ms", 0.0),
+            abort_trace=data.get("abort_trace"),
         )

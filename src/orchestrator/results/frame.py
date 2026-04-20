@@ -177,6 +177,7 @@ class ResultsFrame:
             "successful": status_map.get("success", 0),
             "failed": status_map.get("failed", 0),
             "skipped": status_map.get("skipped", 0),
+            "aborted": status_map.get("aborted", 0),
             "total_attempts": df.select(pl.col("attempts").sum()).item() or 0,
         }
 
@@ -270,19 +271,41 @@ class ResultsFrame:
         if scored.is_empty():
             return pl.DataFrame()
 
+        scored_batch_names = set(scored["batch_name"].to_list())
+
+        aborted_batches: list[str] = []
+        if scored_batch_names:
+            aborted_batches = (
+                self._df.filter(
+                    pl.col("batch_name").is_in(list(scored_batch_names))
+                    & (pl.col("status") == "aborted")
+                )
+                .select("batch_name")
+                .unique()
+                .to_series()
+                .to_list()
+            )
+
         rows: list[dict[str, Any]] = []
         composites: dict[str, float | None] = {}
+        batch_names_with_scores: set[str] = set()
 
         for row_data in scored.iter_rows(named=True):
             batch_name = row_data["batch_name"]
             scores_raw = row_data.get("scores")
-            if not isinstance(scores_raw, str):
-                continue
-            try:
-                scores_dict = json.loads(scores_raw)
-            except (json.JSONDecodeError, TypeError):
-                continue
-            if not isinstance(scores_dict, dict):
+
+            scores_dict: dict[str, Any] | None = None
+            if isinstance(scores_raw, dict):
+                scores_dict = scores_raw
+            elif isinstance(scores_raw, str):
+                try:
+                    parsed = json.loads(scores_raw)
+                    if isinstance(parsed, dict):
+                        scores_dict = parsed
+                except (json.JSONDecodeError, TypeError):
+                    pass
+
+            if not scores_dict:
                 continue
 
             composites[batch_name] = row_data.get("composite_score")
@@ -305,6 +328,30 @@ class ResultsFrame:
                         "weight": weight,
                         "weight_tier": crit.get("weight_tier", ""),
                         "weighted_score": numeric * weight if numeric is not None else None,
+                        "scale_min": crit.get("scale_min", 1),
+                        "scale_max": crit.get("scale_max", 10),
+                        "description": crit.get("description", ""),
+                    }
+                )
+                batch_names_with_scores.add(batch_name)
+
+        for batch_name in aborted_batches:
+            if batch_name in batch_names_with_scores:
+                continue
+            composites[batch_name] = -1
+            for cname in criteria_names:
+                crit = criteria_map[cname]
+                rows.append(
+                    {
+                        "batch_name": batch_name,
+                        "criteria_name": cname,
+                        "label_1": crit.get("label_1", ""),
+                        "label_2": crit.get("label_2", ""),
+                        "label_3": crit.get("label_3", ""),
+                        "normalized_score": -1,
+                        "weight": crit.get("weight", 1.0),
+                        "weight_tier": crit.get("weight_tier", ""),
+                        "weighted_score": None,
                         "scale_min": crit.get("scale_min", 1),
                         "scale_max": crit.get("scale_max", 10),
                         "description": crit.get("description", ""),
