@@ -223,6 +223,9 @@ evaluation:
   default_strategy: "balanced"
   scoring_failure_threshold: 0.5
   max_synthesis_context_chars: 30000
+  weight_tier_enabled: true
+  weight_tier_num_tiers: 3
+  weight_tier_prefix: "tier_"
   strategies:
     potential:
       description: "Hire for promise and growth trajectory"

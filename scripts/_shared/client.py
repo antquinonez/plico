@@ -70,13 +70,16 @@ def get_client(client_type: str, workbook_config: dict[str, Any]) -> Any:
     if client_type_config.type == "litellm":
         provider_prefix = client_type_config.provider_prefix
         model_string = f"{provider_prefix}{model}" if provider_prefix else model
-        return client_class(
-            model_string=model_string,
-            api_key=api_key,
-            temperature=temperature,
-            max_tokens=max_tokens,
-            system_instructions=system_instructions,
-        )
+        kwargs: dict[str, Any] = {
+            "model_string": model_string,
+            "api_key": api_key,
+            "temperature": temperature,
+            "max_tokens": max_tokens,
+            "system_instructions": system_instructions,
+        }
+        if client_type_config.fallbacks:
+            kwargs["fallbacks"] = client_type_config.fallbacks
+        return client_class(**kwargs)
     else:
         return client_class(
             api_key=api_key,

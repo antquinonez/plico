@@ -57,6 +57,9 @@ def setup_logging(
         root_logger.addHandler(console_handler)
 
     if suppress_litellm:
+        import litellm
+
+        litellm.suppress_debug_info = True
         litellm_logger = logging.getLogger("LiteLLM")
         litellm_logger.setLevel(logging.WARNING)
         litellm_logger.propagate = False

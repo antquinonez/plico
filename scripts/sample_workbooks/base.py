@@ -243,6 +243,9 @@ DEFAULT_SCORING_HEADERS = [
     "weight",
     "source_prompt",
     "score_type",
+    "label_1",
+    "label_2",
+    "label_3",
 ]
 
 DEFAULT_SYNTHESIS_HEADERS = [

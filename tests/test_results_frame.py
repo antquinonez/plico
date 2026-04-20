@@ -667,6 +667,76 @@ class TestResultsFrameCompositePipeline:
             assert c["percentile"] == 100
             assert c["percent_rank"] == 0
 
+    def test_labels_in_pivot(self):
+        from src.orchestrator.results import ResultsFrame
+
+        results = [
+            _make_result(
+                batch_id=1, batch_name="alice", scores={"python": 8.0}, composite_score=8.0
+            ),
+        ]
+        criteria = [
+            {
+                "criteria_name": "python",
+                "description": "Python proficiency",
+                "scale_min": 1,
+                "scale_max": 10,
+                "weight": 2.0,
+                "source_prompt": "eval",
+                "score_type": "normalized_score",
+                "label_1": "technical",
+                "label_2": "hard_skill",
+                "label_3": "",
+                "weight_tier": "tier_1",
+            }
+        ]
+        frame = ResultsFrame(results)
+        pivot = frame.scores_pivot(criteria)
+
+        assert "label_1" in pivot.columns
+        assert "label_2" in pivot.columns
+        assert "label_3" in pivot.columns
+        assert "weight_tier" in pivot.columns
+
+        python_row = pivot.filter(pl.col("criteria_name") == "python")
+        assert python_row["label_1"].item() == "technical"
+        assert python_row["label_2"].item() == "hard_skill"
+        assert python_row["label_3"].item() == ""
+        assert python_row["weight_tier"].item() == "tier_1"
+
+        composite_row = pivot.filter(pl.col("criteria_name") == "_composite")
+        assert composite_row["label_1"].item() == ""
+        assert composite_row["label_2"].item() == ""
+        assert composite_row["weight_tier"].item() == ""
+
+    def test_labels_default_empty_in_pivot(self):
+        from src.orchestrator.results import ResultsFrame
+
+        results = [
+            _make_result(
+                batch_id=1, batch_name="alice", scores={"skills": 8.0}, composite_score=8.0
+            ),
+        ]
+        criteria = [
+            {
+                "criteria_name": "skills",
+                "description": "Skills",
+                "scale_min": 1,
+                "scale_max": 10,
+                "weight": 1.0,
+                "source_prompt": "eval",
+                "score_type": "normalized_score",
+            }
+        ]
+        frame = ResultsFrame(results)
+        pivot = frame.scores_pivot(criteria)
+
+        row = pivot.filter(pl.col("criteria_name") == "skills")
+        assert row["label_1"].item() == ""
+        assert row["label_2"].item() == ""
+        assert row["label_3"].item() == ""
+        assert row["weight_tier"].item() == ""
+
 
 class TestResultsFrameByBatch:
     """Tests for ResultsFrame.by_batch()."""

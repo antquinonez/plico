@@ -570,3 +570,49 @@ class TestResultBuilderScoring:
         assert result.response == "ok"
         assert result.scores == {"a": 9}
         assert result.strategy == "potential"
+
+
+class TestDeriveWeightTiers:
+    def test_three_tiers_five_weights(self):
+        criteria = [
+            ScoringCriteria(criteria_name=f"w{w}", description="", weight=w)
+            for w in [2.0, 1.5, 1.0, 0.7, 0.3]
+        ]
+        rubric = ScoringRubric(criteria)
+        rubric.derive_weight_tiers(num_tiers=3)
+        tiers = {c.criteria_name: c.weight_tier for c in rubric.criteria}
+        assert tiers["w2.0"] == "tier_1"
+        assert tiers["w1.5"] == "tier_1"
+        assert tiers["w1.0"] == "tier_2"
+        assert tiers["w0.7"] == "tier_2"
+        assert tiers["w0.3"] == "tier_3"
+
+    def test_same_weight_same_tier(self):
+        criteria = [
+            ScoringCriteria(criteria_name="a", description="", weight=1.5),
+            ScoringCriteria(criteria_name="b", description="", weight=1.5),
+            ScoringCriteria(criteria_name="c", description="", weight=0.7),
+        ]
+        rubric = ScoringRubric(criteria)
+        rubric.derive_weight_tiers(num_tiers=2)
+        assert rubric.criteria[0].weight_tier == rubric.criteria[1].weight_tier
+
+    def test_custom_prefix(self):
+        criteria = [
+            ScoringCriteria(criteria_name="a", description="", weight=2.0),
+            ScoringCriteria(criteria_name="b", description="", weight=1.0),
+        ]
+        rubric = ScoringRubric(criteria)
+        rubric.derive_weight_tiers(num_tiers=2, tier_prefix="priority_")
+        assert rubric.criteria[0].weight_tier == "priority_1"
+        assert rubric.criteria[1].weight_tier == "priority_2"
+
+    def test_empty_criteria(self):
+        rubric = ScoringRubric([])
+        rubric.derive_weight_tiers()
+
+    def test_single_weight(self):
+        criteria = [ScoringCriteria(criteria_name="a", description="", weight=1.0)]
+        rubric = ScoringRubric(criteria)
+        rubric.derive_weight_tiers(num_tiers=3)
+        assert rubric.criteria[0].weight_tier == "tier_1"

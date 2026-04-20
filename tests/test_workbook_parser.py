@@ -645,8 +645,12 @@ class TestWorkbookParserWriteScoresPivot:
         assert headers == [
             "batch_name",
             "criteria_name",
+            "label_1",
+            "label_2",
+            "label_3",
             "normalized_score",
             "weight",
+            "weight_tier",
             "weighted_score",
             "rank",
             "percentile",
@@ -664,12 +668,12 @@ class TestWorkbookParserWriteScoresPivot:
                 {
                     "batch_name": ws.cell(row=row, column=1).value,
                     "criteria_name": ws.cell(row=row, column=2).value,
-                    "normalized_score": ws.cell(row=row, column=3).value,
-                    "weight": ws.cell(row=row, column=4).value,
-                    "weighted_score": ws.cell(row=row, column=5).value,
-                    "rank": ws.cell(row=row, column=6).value,
-                    "percentile": ws.cell(row=row, column=7).value,
-                    "percent_rank": ws.cell(row=row, column=8).value,
+                    "normalized_score": ws.cell(row=row, column=6).value,
+                    "weight": ws.cell(row=row, column=7).value,
+                    "weighted_score": ws.cell(row=row, column=9).value,
+                    "rank": ws.cell(row=row, column=10).value,
+                    "percentile": ws.cell(row=row, column=11).value,
+                    "percent_rank": ws.cell(row=row, column=12).value,
                 }
             )
 
@@ -810,12 +814,12 @@ class TestWorkbookParserWriteScoresPivot:
         ws = wb[sheet_name]
         assert ws.max_row == 3
         assert ws.cell(row=2, column=2).value == "skills_match"
-        assert ws.cell(row=2, column=6).value == 1
-        assert ws.cell(row=2, column=7).value == 100
+        assert ws.cell(row=2, column=10).value == 1
+        assert ws.cell(row=2, column=11).value == 100
         assert ws.cell(row=3, column=2).value == "_composite"
-        assert ws.cell(row=3, column=5).value == 8.0
-        assert ws.cell(row=3, column=6).value == 1
-        assert ws.cell(row=3, column=7).value == 100
+        assert ws.cell(row=3, column=9).value == 8.0
+        assert ws.cell(row=3, column=10).value == 1
+        assert ws.cell(row=3, column=11).value == 100
 
     def test_pivot_per_criteria_ranking(self, temp_workbook_with_data):
         from src.orchestrator.workbook_parser import WorkbookParser
@@ -875,10 +879,10 @@ class TestWorkbookParserWriteScoresPivot:
             bn = ws.cell(row=row, column=1).value
             cn = ws.cell(row=row, column=2).value
             rows_by_key[(bn, cn)] = {
-                "normalized_score": ws.cell(row=row, column=3).value,
-                "rank": ws.cell(row=row, column=6).value,
-                "percentile": ws.cell(row=row, column=7).value,
-                "percent_rank": ws.cell(row=row, column=8).value,
+                "normalized_score": ws.cell(row=row, column=6).value,
+                "rank": ws.cell(row=row, column=10).value,
+                "percentile": ws.cell(row=row, column=11).value,
+                "percent_rank": ws.cell(row=row, column=12).value,
             }
 
         assert rows_by_key[("alice", "python")]["rank"] == 1
@@ -948,10 +952,10 @@ class TestWorkbookParserWriteScoresPivot:
         ws = wb[sheet_name]
         assert ws.max_row == 3
         assert ws.cell(row=2, column=2).value == "skills_match"
-        assert ws.cell(row=2, column=6).value == 1
-        assert ws.cell(row=2, column=7).value == 100
-        assert ws.cell(row=2, column=8).value == 100
+        assert ws.cell(row=2, column=10).value == 1
+        assert ws.cell(row=2, column=11).value == 100
+        assert ws.cell(row=2, column=12).value == 100
         assert ws.cell(row=3, column=2).value == "_composite"
-        assert ws.cell(row=3, column=6).value == 1
-        assert ws.cell(row=3, column=7).value == 100
-        assert ws.cell(row=3, column=8).value == 100
+        assert ws.cell(row=3, column=10).value == 1
+        assert ws.cell(row=3, column=11).value == 100
+        assert ws.cell(row=3, column=12).value == 100

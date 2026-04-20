@@ -20,9 +20,17 @@ prompts:
       1. Identify 4-6 key evaluation criteria for screening candidates.
          For each criterion, provide: criteria_name (snake_case), description,
          scale_min (always 1), scale_max (always 10), weight (0.5-2.0 based on
-         importance), and source_prompt (the prompt_name that will extract this score).
+         importance), source_prompt (the prompt_name that will extract this score),
+         and label_1 (requirement type).
 
-      2. Create an evaluation prompt template for each criterion. Each prompt must:
+      2. For each criterion, assign a label_1 value indicating the type of
+         requirement:
+         - technical: Technical skill, tool, language, or framework
+         - education: Degree, certification, or academic requirement
+         - experience: Years of experience or career-level requirement
+         - domain: Industry or domain expertise
+
+      3. Create an evaluation prompt template for each criterion. Each prompt must:
          - Include the template variable candidate_name wrapped in double curly
            braces (the orchestrator will substitute the actual candidate name at runtime)
          - Reference the job description via references: ["job_description"]
@@ -42,6 +50,8 @@ prompts:
         in the prompts array.
       - Each evaluation prompt must instruct the LLM to return a JSON object
         with the criteria_name as a top-level key containing the numeric score.
+      - Every criterion MUST have a label_1 field set to one of: technical,
+        education, experience, or domain.
     references: '["job_description"]'
     notes: "Master generator: derives criteria and evaluation prompts from JD"
     phase: planning
@@ -57,6 +67,9 @@ prompts:
       - Reliability: prompts should elicit scores that are reproducible
       - Completeness: ensure all important aspects of the JD are covered
       - Weight balance: weights should reflect the JD's priorities
+      - Label accuracy: every criterion must have label_1 set to one of:
+        technical, education, experience, or domain. Verify the
+        type assignment is correct for each criterion.
 
       Return the updated JSON with the same schema (scoring_criteria + prompts).
       You may add, remove, or modify criteria and prompts.

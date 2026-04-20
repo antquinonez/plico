@@ -190,7 +190,7 @@ class FFLiteLLMClient(FFAIClientBase):
                 retry_settings, "retry_on_status_codes", [429, 503, 502, 504]
             )
 
-            # Suppress LiteLLM's verbose INFO logging
+            litellm.suppress_debug_info = True
             litellm_logger = logging.getLogger("LiteLLM")
             litellm_logger.setLevel(logging.WARNING)
 
@@ -202,7 +202,7 @@ class FFLiteLLMClient(FFAIClientBase):
         except Exception as e:
             logger.warning(f"Failed to configure LiteLLM retry from config: {e}")
             litellm.num_retries = 3
-            # Still suppress LiteLLM logging even if config fails
+            litellm.suppress_debug_info = True
             litellm_logger = logging.getLogger("LiteLLM")
             litellm_logger.setLevel(logging.WARNING)
 

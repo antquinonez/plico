@@ -2,7 +2,7 @@
 # ==========================================
 # Planning-phase prompts that exhaustively decompose a job description
 # into individual per-skill evaluation prompts. Each discrete skill,
-# technology, soft skill, and experience requirement gets its own prompt
+# technology, and experience requirement gets its own prompt
 # and scoring criterion.
 #
 # Used by: create_screening_workbook.py --planning --planning-prompts screening_skills_planning
@@ -54,7 +54,8 @@ prompts:
             "scale_min": 1,
             "scale_max": 10,
             "weight": 2.0,
-            "source_prompt": "evaluate_python"
+            "source_prompt": "evaluate_python",
+            "label_1": "technical"
           },
           {
             "criteria_name": "docker",
@@ -62,7 +63,8 @@ prompts:
             "scale_min": 1,
             "scale_max": 10,
             "weight": 1.5,
-            "source_prompt": "evaluate_docker"
+            "source_prompt": "evaluate_docker",
+            "label_1": "technical"
           }
         ],
         "prompts": [
@@ -93,9 +95,17 @@ prompts:
       - 0.7: Preferred but not required
       - 0.3: Nice-to-have, mentioned in passing
 
+      LABEL_1 GUIDANCE (requirement type):
+      - technical: Technical skill, tool, language, framework, or platform
+      - education: Degree, certification, or academic requirement
+      - experience: Years of experience or career-level requirement
+      - domain: Industry or domain expertise (e.g., healthcare, finance)
+
       CRITICAL RULES:
       - One skill per criterion. Never combine multiple skills into one.
       - Every criterion MUST include weight as a float between 0.3 and 2.0.
+      - Every criterion MUST include label_1 set to one of: technical,
+        education, experience, or domain.
       - Each source_prompt must exactly match a prompt_name in the prompts array.
       - Each prompt text MUST explicitly state the exact JSON key the evaluator
         must use, matching criteria_name exactly. This is the most important rule.
@@ -126,6 +136,9 @@ prompts:
         mentioned in the first paragraph or in a "Required" section should be
         weighted higher than those in "Preferred" or "Nice to have". If a
         criterion is missing its weight, assign one based on JD emphasis.
+      - Label verification: EVERY criterion MUST have label_1 set to one of:
+        technical, education, experience, or domain. Verify the
+        type assignment is correct for each criterion.
       - KEY NAMING: Every prompt MUST explicitly instruct the evaluator to use
         the exact criteria_name as the JSON response key. For example, if
         criteria_name is "python", the prompt text must say:
@@ -154,7 +167,7 @@ prompts:
       Extract from {{candidate_name}}'s resume and return as structured JSON:
       full name, contact info, education history (institution, degree, year),
       employment history (company, title, dates, responsibilities), and
-      a comprehensive skills list organized by category (technical, soft skills,
+      a comprehensive skills list organized by category (technical,
       domain knowledge, certifications, methodologies).
     notes: "Static prompt: extracts structured profile for downstream per-skill evaluation"
 

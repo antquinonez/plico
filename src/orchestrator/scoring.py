@@ -31,6 +31,10 @@ class ScoringCriteria:
     weight: float = 1.0
     source_prompt: str = ""
     score_type: str = ""
+    weight_tier: str = ""
+    label_1: str = ""
+    label_2: str = ""
+    label_3: str = ""
 
 
 def extract_score(
@@ -109,6 +113,30 @@ class ScoringRubric:
     def __init__(self, criteria: list[ScoringCriteria]) -> None:
         self.criteria = criteria
         self._criteria_by_name: dict[str, ScoringCriteria] = {c.criteria_name: c for c in criteria}
+
+    def derive_weight_tiers(self, num_tiers: int = 3, tier_prefix: str = "tier_") -> None:
+        """Assign weight_tier to each criterion by ranking distinct weights.
+
+        Unique weight values are sorted descending and split into equal-sized
+        groups. All criteria sharing the same weight receive the same tier.
+
+        Args:
+            num_tiers: Number of tier groups (default 3).
+            tier_prefix: Prefix for tier names (default "tier_").
+
+        """
+        if not self.criteria or num_tiers < 1:
+            return
+
+        unique_weights = sorted({c.weight for c in self.criteria}, reverse=True)
+        n = len(unique_weights)
+        weight_to_tier: dict[float, str] = {}
+        for i, w in enumerate(unique_weights):
+            tier_idx = min(int(i * num_tiers / n), num_tiers - 1)
+            weight_to_tier[w] = f"{tier_prefix}{tier_idx + 1}"
+
+        for criteria in self.criteria:
+            criteria.weight_tier = weight_to_tier.get(criteria.weight, "")
 
     def extract_scores(
         self, results_by_name: dict[str, dict[str, Any]], batch_name: str = ""

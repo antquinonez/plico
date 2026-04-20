@@ -935,6 +935,17 @@ class OrchestratorBase(ABC):
         """
         return self._synthesis_runner.resolve_evaluation_strategy(self)
 
+    def _apply_weight_tiers(self) -> None:
+        """Derive weight_tier labels on scoring_rubric from config."""
+        if not self.scoring_rubric:
+            return
+        eval_config = get_config().evaluation
+        if eval_config.weight_tier_enabled:
+            self.scoring_rubric.derive_weight_tiers(
+                num_tiers=eval_config.weight_tier_num_tiers,
+                tier_prefix=eval_config.weight_tier_prefix,
+            )
+
     def _aggregate_scores(self) -> None:
         """Extract scores from batch results and compute composites."""
         self._synthesis_runner.aggregate_scores(self)

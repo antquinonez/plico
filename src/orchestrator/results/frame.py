@@ -52,8 +52,12 @@ RESULTS_COLUMNS: list[str] = [f.name for f in dataclass_fields(PromptResult)]
 PIVOT_COLUMNS = [
     "batch_name",
     "criteria_name",
+    "label_1",
+    "label_2",
+    "label_3",
     "normalized_score",
     "weight",
+    "weight_tier",
     "weighted_score",
     "rank",
     "percentile",
@@ -294,8 +298,12 @@ class ResultsFrame:
                     {
                         "batch_name": batch_name,
                         "criteria_name": cname,
+                        "label_1": crit.get("label_1", ""),
+                        "label_2": crit.get("label_2", ""),
+                        "label_3": crit.get("label_3", ""),
                         "normalized_score": numeric,
                         "weight": weight,
+                        "weight_tier": crit.get("weight_tier", ""),
                         "weighted_score": numeric * weight if numeric is not None else None,
                         "scale_min": crit.get("scale_min", 1),
                         "scale_max": crit.get("scale_max", 10),
@@ -368,8 +376,12 @@ class ResultsFrame:
                 )
                 .with_columns(
                     pl.lit("_composite").alias("criteria_name"),
+                    pl.lit("").alias("label_1"),
+                    pl.lit("").alias("label_2"),
+                    pl.lit("").alias("label_3"),
                     pl.lit(None).cast(pl.Float64).alias("normalized_score"),
                     pl.lit(None).cast(pl.Float64).alias("weight"),
+                    pl.lit("").alias("weight_tier"),
                     pl.lit(None).cast(pl.Int64).alias("scale_min"),
                     pl.lit(None).cast(pl.Int64).alias("scale_max"),
                     pl.lit(
