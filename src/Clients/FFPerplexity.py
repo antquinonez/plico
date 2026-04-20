@@ -140,8 +140,6 @@ class FFPerplexity(FFAIClientBase):
         if not prompt.strip():
             raise ValueError("Empty prompt provided")
 
-        logger.debug(f"Generating response for prompt: {prompt}")
-
         self._reset_usage()
 
         used_model = model or self.model or "sonar"
