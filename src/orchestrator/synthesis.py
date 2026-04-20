@@ -357,7 +357,10 @@ class SynthesisExecutor:
             if available <= 20:
                 break
 
-            if response_text and len(response_text) > available:
+            if not response_text:
+                blocks.append(f"<{tag}>\n[no response]\n</{tag}>")
+                used += len(tag) + 30
+            elif len(response_text) > available:
                 truncated_text = response_text[: available - 30]
                 blocks.append(
                     f"<{tag}>\n{truncated_text}\n[...truncated at {available} chars...]\n</{tag}>"
