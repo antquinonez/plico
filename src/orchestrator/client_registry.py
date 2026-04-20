@@ -164,6 +164,8 @@ class ClientRegistry:
                 kwargs["api_version"] = config["api_version"]
             if config.get("fallbacks"):
                 kwargs["fallbacks"] = config["fallbacks"]
+            elif client_type_config.fallbacks:
+                kwargs["fallbacks"] = client_type_config.fallbacks
         else:
             if model:
                 kwargs["model"] = model

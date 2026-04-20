@@ -64,6 +64,8 @@ client_types:
     provider_prefix: "mistral/"
     api_key_env: "MISTRAL_API_KEY"
     default_model: "mistral-small-latest"
+    fallbacks:
+      - "openai/gpt-4o-mini"
 
   litellm-mistral-large:
     client_class: "FFLiteLLMClient"

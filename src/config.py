@@ -353,6 +353,7 @@ class ClientTypeConfig(BaseSettings):
     api_key_env: str = ""
     provider_prefix: str = ""
     default_model: str = ""
+    fallbacks: list[str] = Field(default_factory=list)
 
 
 class ClientsConfig(BaseSettings):
@@ -395,6 +396,9 @@ class EvaluationConfig(BaseSettings):
     scoring_failure_threshold: float = 0.5
     max_synthesis_context_chars: int = 30000
     strategies: dict[str, StrategyConfig] = Field(default_factory=dict)
+    weight_tier_enabled: bool = True
+    weight_tier_num_tiers: int = 3
+    weight_tier_prefix: str = "tier_"
 
     model_config = SettingsConfigDict(extra="ignore")
 
