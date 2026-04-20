@@ -253,6 +253,7 @@ class PlanningPhaseRunner:
                     orchestrator.scoring_rubric = ScoringRubric(scoring_criteria_objs)
                     orchestrator.has_scoring = True
                     orchestrator.evaluation_strategy = orchestrator._resolve_evaluation_strategy()
+                    orchestrator._apply_weight_tiers()
                     logger.info(
                         f"Scoring rubric auto-derived from planning phase with "
                         f"{len(valid_criteria)} criteria, "

@@ -526,3 +526,35 @@ class TestBuildScoringCriteria:
         ]
         result = parser.build_scoring_criteria(criteria_dicts)
         assert result[0].score_type == "custom_type"
+
+    def test_labels_extracted(self):
+        parser = PlanningArtifactParser()
+        criteria_dicts = [
+            {
+                "criteria_name": "python",
+                "description": "Python proficiency",
+                "scale_min": 1,
+                "scale_max": 10,
+                "weight": 2.0,
+                "source_prompt": "eval_python",
+                "label_1": "technical",
+                "label_2": "hard_skill",
+            }
+        ]
+        result = parser.build_scoring_criteria(criteria_dicts)
+        assert result[0].label_1 == "technical"
+        assert result[0].label_2 == "hard_skill"
+        assert result[0].label_3 == ""
+
+    def test_labels_default_empty(self):
+        parser = PlanningArtifactParser()
+        criteria_dicts = [
+            {
+                "criteria_name": "x",
+                "description": "X",
+            }
+        ]
+        result = parser.build_scoring_criteria(criteria_dicts)
+        assert result[0].label_1 == ""
+        assert result[0].label_2 == ""
+        assert result[0].label_3 == ""

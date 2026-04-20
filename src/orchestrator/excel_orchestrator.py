@@ -138,12 +138,16 @@ class ExcelOrchestrator(OrchestratorBase):
                     weight=c["weight"],
                     source_prompt=c["source_prompt"],
                     score_type=c.get("score_type", ""),
+                    label_1=c.get("label_1") or "",
+                    label_2=c.get("label_2") or "",
+                    label_3=c.get("label_3") or "",
                 )
                 for c in scoring_data
             ]
             self.scoring_rubric = ScoringRubric(criteria)
             self.has_scoring = True
             self.evaluation_strategy = self._resolve_evaluation_strategy()
+            self._apply_weight_tiers()
             logger.info(
                 f"Scoring enabled with {len(criteria)} criteria, "
                 f"strategy='{self.evaluation_strategy}'"
@@ -240,8 +244,12 @@ class ExcelOrchestrator(OrchestratorBase):
                     "scale_min": c.scale_min,
                     "scale_max": c.scale_max,
                     "weight": c.weight,
+                    "weight_tier": c.weight_tier,
                     "source_prompt": c.source_prompt,
                     "score_type": c.score_type,
+                    "label_1": c.label_1,
+                    "label_2": c.label_2,
+                    "label_3": c.label_3,
                 }
                 for c in self.scoring_rubric.criteria
             ]

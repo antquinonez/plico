@@ -158,7 +158,10 @@ class TestExecutePlanningPhase:
             mock_planning_config.continue_on_parse_error = True
             mock_planning_config.generated_sequence_base = "auto"
             mock_planning_config.generated_sequence_step = 10
+            mock_eval_config = MagicMock()
+            mock_eval_config.weight_tier_enabled = False
             mock_config.return_value.planning = mock_planning_config
+            mock_config.return_value.evaluation = mock_eval_config
 
             orch._execute_planning_phase()
 

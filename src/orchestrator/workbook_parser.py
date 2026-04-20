@@ -224,6 +224,9 @@ class WorkbookParser:
         "weight",
         "source_prompt",
         "score_type",
+        "label_1",
+        "label_2",
+        "label_3",
     ]
 
     SYNTHESIS_HEADERS = [
@@ -846,6 +849,9 @@ class WorkbookParser:
                         "weight": float(weight),
                         "source_prompt": str(row_data.get("source_prompt", "")).strip(),
                         "score_type": str(row_data.get("score_type", "")).strip(),
+                        "label_1": str(row_data.get("label_1", "")).strip(),
+                        "label_2": str(row_data.get("label_2", "")).strip(),
+                        "label_3": str(row_data.get("label_3", "")).strip(),
                     }
                 )
 

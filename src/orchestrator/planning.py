@@ -417,6 +417,9 @@ class PlanningArtifactParser:
                     weight=weight,
                     source_prompt=c.get("source_prompt", ""),
                     score_type=c.get("score_type", "normalized_score"),
+                    label_1=str(c.get("label_1", "") or "").strip(),
+                    label_2=str(c.get("label_2", "") or "").strip(),
+                    label_3=str(c.get("label_3", "") or "").strip(),
                 )
             )
         return result
