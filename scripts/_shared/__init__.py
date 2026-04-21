@@ -8,4 +8,4 @@ from .client import get_client, get_client_class
 from .logging import setup_logging
 from .progress import ProgressIndicator
 
-__all__ = ["setup_logging", "get_client", "get_client_class", "ProgressIndicator"]
+__all__ = ["ProgressIndicator", "get_client", "get_client_class", "setup_logging"]

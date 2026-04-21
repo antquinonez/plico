@@ -17,6 +17,7 @@ import time
 from typing import Any
 
 from ..config import get_config
+from ..observability.log_context import log_context
 from .planning import PlanningArtifactParser
 from .scoring import ScoringRubric
 from .validation import OrchestratorValidator
@@ -97,7 +98,8 @@ class PlanningPhaseRunner:
                     current_name=f"[planning] {prompt_name}",
                 )
 
-            result = orchestrator._execute_prompt(prompt, results_by_name=results_by_name)
+            with log_context(batch_name="-", prompt_name=prompt_name):
+                result = orchestrator._execute_prompt(prompt, results_by_name=results_by_name)
 
             result["result_type"] = "planning"
             result["batch_id"] = None

@@ -16,7 +16,6 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-from src.config import get_config
 from src.orchestrator.manifest import ManifestOrchestrator
 
 MANIFEST_DIR = "./manifest_samples/observability_native_clients"
@@ -104,7 +103,7 @@ def validate_usage(client, client_name):
             print(f"  [WARN] Output tokens is 0 for {client_name}")
             return False
 
-        print(f"  [OK] Token usage extracted successfully")
+        print("  [OK] Token usage extracted successfully")
         return True
 
     except Exception as e:
@@ -151,9 +150,9 @@ def validate_manifest_run(client, client_name):
             return False
 
         if total_input > 0 or total_output > 0:
-            print(f"  [OK] Token tracking working in orchestrator")
+            print("  [OK] Token tracking working in orchestrator")
         else:
-            print(f"  [WARN] No tokens tracked in orchestrator summary")
+            print("  [WARN] No tokens tracked in orchestrator summary")
 
         return True
 
@@ -183,12 +182,12 @@ def main():
             continue
 
         # Step 1: Direct usage validation
-        print(f"  [Test 1] Direct generate_response() usage extraction:")
+        print("  [Test 1] Direct generate_response() usage extraction:")
         usage_ok = validate_usage(client, name)
         print()
 
         # Step 2: Manifest orchestrator run
-        print(f"  [Test 2] Manifest orchestrator run:")
+        print("  [Test 2] Manifest orchestrator run:")
         clone = client.clone()
         manifest_ok = validate_manifest_run(clone, name)
 

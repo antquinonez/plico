@@ -30,6 +30,7 @@ from ...core.client_base import FFAIClientBase
 from ...core.response_context import ResponseContext
 from ...FFAI import FFAI
 from ...observability import get_telemetry_manager
+from ...observability.log_context import log_context
 from ..agent_executor import AgentExecutor
 from ..client_registry import ClientRegistry
 from ..document_processor import DocumentProcessor
@@ -643,6 +644,28 @@ class OrchestratorBase(ABC):
             Result dictionary.
 
         """
+        p_name = prompt.get("prompt_name", "-")
+        with log_context(batch_name=batch_name or "-", prompt_name=p_name):
+            return self._execute_with_retry_inner(
+                prompt,
+                results_by_name,
+                results_lock,
+                batch_id,
+                batch_name,
+                batch_history,
+                batch_history_lock,
+            )
+
+    def _execute_with_retry_inner(
+        self,
+        prompt: PromptSpec,
+        results_by_name: dict[str, dict[str, Any]],
+        results_lock: threading.Lock | None,
+        batch_id: int | None,
+        batch_name: str | None,
+        batch_history: list[Interaction] | None,
+        batch_history_lock: threading.Lock | None,
+    ) -> dict[str, Any]:
         max_retries = self.config.get("max_retries", 3)
         retry_base_delay = self.config.get("retry_base_delay", 1.0)
 
