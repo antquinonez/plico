@@ -24,6 +24,8 @@ def setup_logging(
         Configured logger instance.
 
     """
+    from src.observability.log_context import ContextFormatter, LogContextFilter
+
     root_logger = logging.getLogger()
     root_logger.setLevel(logging.DEBUG if verbose else logging.INFO)
 
@@ -38,6 +40,10 @@ def setup_logging(
     os.makedirs(log_dir, exist_ok=True)
     log_file = os.path.join(log_dir, log_config.filename)
 
+    context_filter = LogContextFilter()
+    root_logger.addFilter(context_filter)
+    formatter = ContextFormatter(log_config.format)
+
     file_handler = TimedRotatingFileHandler(
         log_file,
         when=log_config.rotation.when,
@@ -47,13 +53,13 @@ def setup_logging(
     )
     file_handler.suffix = "%Y-%m-%d"
     file_handler.setLevel(logging.DEBUG)
-    file_handler.setFormatter(logging.Formatter(log_config.format))
+    file_handler.setFormatter(formatter)
     root_logger.addHandler(file_handler)
 
     if not quiet:
         console_handler = logging.StreamHandler(sys.stderr)
         console_handler.setLevel(logging.INFO)
-        console_handler.setFormatter(logging.Formatter(log_config.format))
+        console_handler.setFormatter(formatter)
         root_logger.addHandler(console_handler)
 
     if suppress_litellm:

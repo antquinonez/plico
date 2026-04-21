@@ -155,6 +155,7 @@ def _dict_to_prompt_spec(data: dict[str, Any]) -> Any:
         "notes",
         "client",
         "condition",
+        "abort_condition",
         "references",
         "semantic_query",
         "semantic_filter",

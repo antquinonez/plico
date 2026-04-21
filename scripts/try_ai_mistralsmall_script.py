@@ -316,7 +316,7 @@ if not history_df.is_empty():
         logger.info(response_lengths)
 
     except Exception as e:
-        logger.error(f"Error in response length analysis: {str(e)}")
+        logger.error(f"Error in response length analysis: {e!s}")
 
     logger.info(
         "============================================================================================================================================================================="
@@ -344,6 +344,6 @@ if not history_df.is_empty():
             plt.savefig("response_length_by_prompt.png")
             logger.info("Plot saved to 'response_length_by_prompt.png'")
     except Exception as e:
-        logger.error(f"Error creating visualization: {str(e)}")
+        logger.error(f"Error creating visualization: {e!s}")
 
 logger.info("Script execution completed")

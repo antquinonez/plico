@@ -64,6 +64,25 @@ def get_static_screening_prompts(
     )
     prompts.append(
         PromptSpec(
+            15,
+            "gate_evaluation",
+            "Based on the profile extracted from {{candidate_name}}'s resume, "
+            "perform a quick screening check against the job description. "
+            "Determine whether this candidate meets the MINIMUM qualifications. "
+            "Consider: required years of experience, required education, "
+            "core domain relevance, and fundamental deal-breakers (e.g., "
+            "entry-level candidate for a senior role, unrelated industry). "
+            "Be GENEROUS in borderline cases — only reject candidates who "
+            "clearly do not meet the minimum bar. When in doubt, proceed=true. "
+            'Return ONLY JSON: {"proceed": true/false, "reason": "..."}',
+            history='["extract_profile"]',
+            references='["job_description"]',
+            abort_condition='json_get({{gate_evaluation.response}}, "proceed") == False',
+            notes="Gate: quickly screens out clearly unqualified candidates before detailed evaluation",
+        )
+    )
+    prompts.append(
+        PromptSpec(
             20,
             "evaluate_skills",
             "Evaluate {{candidate_name}}'s technical skills against the job description. "
@@ -225,6 +244,26 @@ def get_planning_screening_prompts(
             "technical skills list.",
             references='["job_description"]',
             notes="Static prompt: extracts structured profile for downstream evaluation",
+        )
+    )
+
+    prompts.append(
+        PromptSpec(
+            150,
+            "gate_evaluation",
+            "Based on the profile extracted from {{candidate_name}}'s resume, "
+            "perform a quick screening check against the job description. "
+            "Determine whether this candidate meets the MINIMUM qualifications. "
+            "Consider: required years of experience, required education, "
+            "core domain relevance, and fundamental deal-breakers (e.g., "
+            "entry-level candidate for a senior role, unrelated industry). "
+            "Be GENEROUS in borderline cases — only reject candidates who "
+            "clearly do not meet the minimum bar. When in doubt, proceed=true. "
+            'Return ONLY JSON: {"proceed": true/false, "reason": "..."}',
+            history='["extract_profile"]',
+            references='["job_description"]',
+            abort_condition='json_get({{gate_evaluation.response}}, "proceed") == False',
+            notes="Gate: quickly screens out clearly unqualified candidates before detailed evaluation",
         )
     )
 
@@ -442,6 +481,7 @@ def prompt_spec_to_dict(spec: PromptSpec) -> dict[str, Any]:
         "notes": spec.notes,
         "client": spec.client,
         "condition": spec.condition,
+        "abort_condition": spec.abort_condition,
         "references": _parse_json_field(spec.references),
         "semantic_query": spec.semantic_query,
         "semantic_filter": _parse_json_field(spec.semantic_filter),

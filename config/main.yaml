@@ -126,6 +126,8 @@ workbook:
 orchestrator:
   default_concurrency: 2
   max_concurrency: 10
+  abort:
+    response_default: "-1"
 
 document_processor:
   checksum_length: 8

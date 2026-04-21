@@ -340,6 +340,43 @@ class ResultBuilder:
         self._result.batch_name = ""
         return self
 
+    def as_aborted(self, abort_trace: str | None = None, response: str = "-1") -> ResultBuilder:
+        """Mark as aborted due to an upstream abort_condition trigger.
+
+        Sets status to 'aborted', response to the given value (default '-1'),
+        and records the resolved abort condition trace for observability.
+
+        Args:
+            abort_trace: The resolved abort condition expression showing
+                substituted values, or None if no condition to trace.
+            response: The response value for aborted prompts. Defaults to '-1'.
+                Can be customized via config orchestrator.abort.response_default.
+
+        Returns:
+            Self for chaining.
+
+        """
+        self._result.status = "aborted"
+        self._result.response = response
+        self._result.abort_trace = abort_trace
+        return self
+
+    def with_abort_triggered(self, abort_trace: str | None) -> ResultBuilder:
+        """Record that this prompt's abort_condition evaluated to True.
+
+        The prompt itself completed successfully, but its abort condition
+        triggered, so downstream prompts should be short-circuited.
+
+        Args:
+            abort_trace: The resolved abort condition expression.
+
+        Returns:
+            Self for chaining.
+
+        """
+        self._result.abort_trace = abort_trace
+        return self
+
     def build(self) -> PromptResult:
         """Build and return the PromptResult.
 

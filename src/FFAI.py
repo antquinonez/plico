@@ -190,7 +190,11 @@ class FFAI:
         logger.debug(
             "\n==================================================================================="
         )
-        logger.info(f"Generating response for prompt: '{prompt}'")
+        prompt_preview = prompt[:80] + "..." if len(prompt) > 80 else prompt
+        logger.info(
+            f"Generating response for '{prompt_name}' ({len(prompt)} chars): '{prompt_preview}'"
+        )
+        logger.debug(f"Full prompt: '{prompt}'")
         logger.debug(f"Prompt_name: '{prompt_name}'")
         logger.debug(
             f"System instructions: '{system_instructions}'"

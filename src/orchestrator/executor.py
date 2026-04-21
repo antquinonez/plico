@@ -16,6 +16,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any
 
+from .graph import is_abort_trigger
 from .results import ResultBuilder
 from .state import ExecutionState, PromptNode
 
@@ -58,6 +59,8 @@ class Executor:
         results: list[dict[str, Any]] = []
         results_by_name: dict[str, dict[str, Any]] = {}
         total = len(orchestrator.prompts)
+        aborted = False
+        abort_response = orchestrator._get_abort_response()
 
         nodes = orchestrator._build_execution_graph()
         ready = [node for node in nodes.values() if not node.dependencies]
@@ -69,6 +72,23 @@ class Executor:
             if node.sequence in executed:
                 continue
             prompt = node.prompt
+
+            if aborted:
+                result = ResultBuilder(prompt).as_aborted(response=abort_response).build_dict()
+                results.append(result)
+                if result.get("prompt_name"):
+                    results_by_name[result["prompt_name"]] = result
+                executed.add(node.sequence)
+                for candidate in nodes.values():
+                    if candidate.sequence in executed:
+                        continue
+                    if candidate.sequence in {n.sequence for n in ready}:
+                        continue
+                    if candidate.dependencies.issubset(executed):
+                        ready.append(candidate)
+                ready.sort(key=lambda n: (n.level, n.sequence))
+                continue
+
             if orchestrator.progress_callback:
                 orchestrator.progress_callback(
                     len(results),
@@ -85,6 +105,13 @@ class Executor:
 
             if result.get("prompt_name"):
                 results_by_name[result["prompt_name"]] = result
+
+            if is_abort_trigger(result):
+                aborted = True
+                logger.info(
+                    f"Abort triggered by '{result.get('prompt_name', 'unknown')}', "
+                    f"aborting {total - len(results)} remaining prompts"
+                )
 
             for candidate in nodes.values():
                 if candidate.sequence in executed:
@@ -123,6 +150,7 @@ class Executor:
         nodes = orchestrator._build_execution_graph()
         state = ExecutionState(pending=dict(nodes))
         total = len(nodes)
+        abort_response = orchestrator._get_abort_response()
 
         def update_progress() -> None:
             if orchestrator.progress_callback:
@@ -139,6 +167,24 @@ class Executor:
 
         with ThreadPoolExecutor(max_workers=orchestrator.concurrency) as executor:
             while len(state.completed) < total:
+                if state.aborted:
+                    for seq, node in nodes.items():
+                        if seq not in state.completed and seq not in state.in_progress:
+                            aborted_result = (
+                                ResultBuilder(node.prompt)
+                                .as_aborted(response=abort_response)
+                                .build_dict()
+                            )
+                            with state.results_lock:
+                                state.results.append(aborted_result)
+                                state.completed.add(seq)
+                                state.aborted_count += 1
+                                if aborted_result.get("prompt_name"):
+                                    state.results_by_name[aborted_result["prompt_name"]] = (
+                                        aborted_result
+                                    )
+                    break
+
                 ready = orchestrator._get_ready_prompts(state, nodes)
 
                 if not ready and not state.in_progress:
@@ -166,6 +212,13 @@ class Executor:
                             self._update_state_counts(state, result)
                             if result.get("prompt_name"):
                                 state.results_by_name[result["prompt_name"]] = result
+                            if is_abort_trigger(result):
+                                state.aborted = True
+                                logger.info(
+                                    f"Abort triggered by "
+                                    f"'{result.get('prompt_name', 'unknown')}', "
+                                    f"aborting remaining prompts"
+                                )
                     except Exception as e:
                         logger.error(f"Unexpected error for sequence {seq}: {e}")
                         self._handle_execution_error(state, nodes[seq], str(e))
@@ -178,6 +231,7 @@ class Executor:
         logger.info(
             f"Parallel execution complete: {state.success_count} succeeded, "
             f"{state.failed_count} failed, {state.skipped_count} skipped"
+            + (f", {state.aborted_count} aborted" if state.aborted_count else "")
         )
 
         return state.results
@@ -260,8 +314,22 @@ class Executor:
             batch_results_by_name: dict[str, dict[str, Any]] = {}
             batch_history: list[dict[str, Any]] = list(base_history_snapshot)
             batch_history_lock = threading.Lock()
+            aborted = False
+            abort_response = orchestrator._get_abort_response()
 
             for prompt in orchestrator.prompts:
+                if aborted:
+                    result = (
+                        ResultBuilder(prompt)
+                        .with_batch(batch_idx, batch_name)
+                        .as_aborted(response=abort_response)
+                        .build_dict()
+                    )
+                    batch_results.append(result)
+                    if result.get("prompt_name"):
+                        batch_results_by_name[result["prompt_name"]] = result
+                    continue
+
                 resolved_prompt = orchestrator._resolve_prompt_variables(prompt, data_row)
 
                 result = orchestrator._execute_prompt_with_batch(
@@ -276,6 +344,15 @@ class Executor:
 
                 if result.get("prompt_name"):
                     batch_results_by_name[result["prompt_name"]] = result
+
+                if is_abort_trigger(result):
+                    aborted = True
+                    logger.info(
+                        f"Batch {batch_idx} abort triggered by "
+                        f"'{result.get('prompt_name', 'unknown')}', "
+                        f"skipping {len(orchestrator.prompts) - len(batch_results)} remaining prompts"
+                    )
+                    continue
 
                 if result["status"] == "failed":
                     on_error = orchestrator.config.get("on_batch_error", "continue")
@@ -342,6 +419,8 @@ class Executor:
             state.success_count += 1
         elif result["status"] == "skipped":
             state.skipped_count += 1
+        elif result["status"] == "aborted":
+            state.aborted_count += 1
         else:
             state.failed_count += 1
 
@@ -359,6 +438,8 @@ class Executor:
         successful = sum(1 for r in results if r["status"] == "success")
         failed = sum(1 for r in results if r["status"] == "failed")
         skipped = sum(1 for r in results if r["status"] == "skipped")
+        aborted = sum(1 for r in results if r["status"] == "aborted")
         logger.info(
-            f"{prefix} complete: {successful} succeeded, {failed} failed, {skipped} skipped"
+            f"{prefix} complete: {successful} succeeded, {failed} failed, "
+            f"{skipped} skipped" + (f", {aborted} aborted" if aborted else "")
         )

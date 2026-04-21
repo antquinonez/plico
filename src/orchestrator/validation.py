@@ -166,6 +166,7 @@ class OrchestratorValidator:
         self._validate_history_dependencies(result)
         self._validate_template_references(result)
         self._validate_condition_syntax(result)
+        self._validate_abort_condition_syntax(result)
         self._validate_client_assignments(result)
         self._validate_config_values(result)
         self._validate_document_references(result)
@@ -296,6 +297,20 @@ class OrchestratorValidator:
                 result.add_error(
                     "INVALID_CONDITION",
                     f"Condition syntax error: {error_msg}",
+                    prompt_name=prompt.get("prompt_name"),
+                    prompt_sequence=prompt.get("sequence"),
+                )
+
+    def _validate_abort_condition_syntax(self, result: ValidationResult) -> None:
+        for prompt in self.prompts:
+            abort_condition = prompt.get("abort_condition")
+            if not abort_condition or not str(abort_condition).strip():
+                continue
+            is_valid, error_msg = ConditionEvaluator.validate_syntax(abort_condition)
+            if not is_valid:
+                result.add_error(
+                    "INVALID_ABORT_CONDITION",
+                    f"abort_condition syntax error: {error_msg}",
                     prompt_name=prompt.get("prompt_name"),
                     prompt_sequence=prompt.get("sequence"),
                 )

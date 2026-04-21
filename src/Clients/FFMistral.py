@@ -169,8 +169,6 @@ class FFMistral(FFAIClientBase):
         if not prompt.strip():
             raise ValueError("Empty prompt provided")
 
-        logger.debug(f"Generating response for prompt: {prompt}")
-
         self._reset_usage()
 
         # Parameter normalization

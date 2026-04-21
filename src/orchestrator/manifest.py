@@ -177,6 +177,7 @@ class WorkbookManifestExporter:
                 "notes": prompt.get("notes"),
                 "client": prompt.get("client"),
                 "condition": prompt.get("condition"),
+                "abort_condition": prompt.get("abort_condition"),
                 "references": prompt.get("references") or [],
                 "semantic_query": prompt.get("semantic_query"),
                 "semantic_filter": prompt.get("semantic_filter"),

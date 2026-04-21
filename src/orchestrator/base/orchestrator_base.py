@@ -30,12 +30,13 @@ from ...core.client_base import FFAIClientBase
 from ...core.response_context import ResponseContext
 from ...FFAI import FFAI
 from ...observability import get_telemetry_manager
+from ...observability.log_context import log_context
 from ..agent_executor import AgentExecutor
 from ..client_registry import ClientRegistry
 from ..document_processor import DocumentProcessor
 from ..document_registry import DocumentRegistry
 from ..executor import Executor
-from ..graph import build_execution_graph, evaluate_condition, get_ready_prompts
+from ..graph import build_execution_graph, evaluate_condition, get_ready_prompts, is_abort_trigger
 from ..models import ConfigSpec, DocumentSpec, Interaction, PromptSpec
 from ..planning_runner import PlanningPhaseRunner
 from ..results import ResultBuilder, ResultsFrame
@@ -524,9 +525,9 @@ class OrchestratorBase(ABC):
         self, prompt: PromptSpec, results_by_name: dict[str, dict[str, Any]]
     ) -> tuple[bool, str | None, str | None, str | None]:
         """Evaluate a prompt's condition and return the resolved trace."""
-        from ..graph import evaluate_condition_with_trace
+        from ..graph import evaluate_condition_with_trace as _eval
 
-        return evaluate_condition_with_trace(prompt, results_by_name)
+        return _eval(prompt, results_by_name)
 
     def _execute_agent_mode(
         self,
@@ -578,6 +579,43 @@ class OrchestratorBase(ABC):
             ),
         )
 
+    def _evaluate_abort_condition(
+        self,
+        prompt: PromptSpec,
+        results_by_name: dict[str, dict[str, Any]],
+    ) -> tuple[bool, str | None]:
+        """Evaluate a prompt's abort_condition after successful execution.
+
+        The abort_condition uses the same syntax and evaluation engine as
+        the condition field, but is checked AFTER execution rather than before.
+        If True, all remaining prompts in the current scope should be
+        short-circuited with status='aborted'.
+
+        Note: evaluate_condition_with_trace returns (should_execute, ...) where
+        True means "the condition passed." For abort_condition, a passing
+        condition means "abort" — so should_abort=True = abort triggered.
+
+        Args:
+            prompt: Prompt dictionary with optional abort_condition.
+            results_by_name: Results indexed by prompt_name. Must include
+                this prompt's own result so the condition can reference it.
+
+        Returns:
+            Tuple of (abort_triggered, abort_trace). abort_triggered is True
+            if the abort_condition is present and evaluates to True.
+
+        """
+        abort_condition = prompt.get("abort_condition")
+        if not abort_condition or not str(abort_condition).strip():
+            return False, None
+
+        from ..graph import evaluate_condition_with_trace
+
+        condition_passed, _, _, abort_trace = evaluate_condition_with_trace(
+            prompt, results_by_name, condition_field="abort_condition"
+        )
+        return condition_passed, abort_trace
+
     def _execute_with_retry(
         self,
         prompt: PromptSpec,
@@ -606,6 +644,28 @@ class OrchestratorBase(ABC):
             Result dictionary.
 
         """
+        p_name = prompt.get("prompt_name", "-")
+        with log_context(batch_name=batch_name or "-", prompt_name=p_name):
+            return self._execute_with_retry_inner(
+                prompt,
+                results_by_name,
+                results_lock,
+                batch_id,
+                batch_name,
+                batch_history,
+                batch_history_lock,
+            )
+
+    def _execute_with_retry_inner(
+        self,
+        prompt: PromptSpec,
+        results_by_name: dict[str, dict[str, Any]],
+        results_lock: threading.Lock | None,
+        batch_id: int | None,
+        batch_name: str | None,
+        batch_history: list[Interaction] | None,
+        batch_history_lock: threading.Lock | None,
+    ) -> dict[str, Any]:
         max_retries = self.config.get("max_retries", 3)
         retry_base_delay = self.config.get("retry_base_delay", 1.0)
 
@@ -731,7 +791,22 @@ class OrchestratorBase(ABC):
                         logger.info(f"Retrying {seq_label} in {delay:.1f}s")
                         time.sleep(delay)
 
-        return builder.build_dict()
+            result_dict = builder.build_dict()
+
+            if result_dict["status"] == "success":
+                temp_results = dict(results_by_name)
+                prompt_name = prompt.get("prompt_name")
+                if prompt_name:
+                    temp_results[prompt_name] = result_dict
+                abort_triggered, abort_trace = self._evaluate_abort_condition(prompt, temp_results)
+                if abort_triggered:
+                    builder.with_abort_triggered(abort_trace)
+                    result_dict = builder.build_dict()
+                    prompt_span.set_attribute("prompt.abort_triggered", True)
+                    prompt_span.set_attribute("prompt.abort_trace", abort_trace)
+                    logger.info(f"{seq_label} abort triggered: {abort_trace}")
+
+        return result_dict
 
     def _execute_prompt_core(
         self,
@@ -808,6 +883,11 @@ class OrchestratorBase(ABC):
         """Generate batch name from data row or default."""
         return resolve_batch_name(data_row, batch_id)
 
+    def _get_abort_response(self) -> str:
+        """Get the configured response value for aborted prompts."""
+        config = get_config()
+        return config.orchestrator.abort.response_default
+
     def _execute_single_batch(
         self,
         batch_id: int,
@@ -831,8 +911,22 @@ class OrchestratorBase(ABC):
         """
         results: list[dict[str, Any]] = []
         results_by_name: dict[str, dict[str, Any]] = {}
+        aborted = False
+        abort_response = self._get_abort_response()
 
         for prompt in self.prompts:
+            if aborted:
+                result = (
+                    ResultBuilder(prompt)
+                    .with_batch(batch_id, batch_name)
+                    .as_aborted(response=abort_response)
+                    .build_dict()
+                )
+                results.append(result)
+                if result.get("prompt_name"):
+                    results_by_name[result["prompt_name"]] = result
+                continue
+
             resolved_prompt = self._resolve_prompt_variables(prompt, data_row)
 
             result = self._execute_prompt_with_batch(
@@ -847,6 +941,15 @@ class OrchestratorBase(ABC):
 
             if result.get("prompt_name"):
                 results_by_name[result["prompt_name"]] = result
+
+            if is_abort_trigger(result):
+                aborted = True
+                logger.info(
+                    f"Batch {batch_id} abort triggered by "
+                    f"'{result.get('prompt_name', 'unknown')}', "
+                    f"skipping {len(self.prompts) - len(results)} remaining prompts"
+                )
+                continue
 
             if result["status"] == "failed":
                 on_error = self.config.get("on_batch_error", "continue")

@@ -414,6 +414,74 @@ class TestResultsFrameScoresPivot:
         assert "skills_match" in names
         assert "raw_years" not in names
 
+    def test_pivot_includes_aborted_batches_with_sentinel_scores(self):
+        from src.orchestrator.results import ResultsFrame
+
+        results = [
+            _make_result(
+                batch_id=1,
+                batch_name="alice",
+                scores={"skills": 8.0, "education": 7.0},
+                composite_score=7.5,
+            ),
+            _make_result(
+                batch_id=2,
+                batch_name="bob",
+                sequence=2,
+                scores={"skills": 5.0, "education": 6.0},
+                composite_score=5.5,
+            ),
+            _make_result(
+                batch_id=3,
+                batch_name="rejected",
+                sequence=10,
+                prompt_name="extract_profile",
+                status="success",
+                scores={},
+                composite_score=None,
+                scoring_status="skipped",
+            ),
+            _make_result(
+                batch_id=3,
+                batch_name="rejected",
+                sequence=12,
+                prompt_name="eval_skills",
+                status="aborted",
+                scores={},
+                composite_score=None,
+                scoring_status="skipped",
+                response="-1",
+            ),
+        ]
+
+        criteria = self._criteria(
+            [("skills", "normalized_score"), ("education", "normalized_score")]
+        )
+        frame = ResultsFrame(results)
+        pivot = frame.scores_pivot(criteria)
+
+        batch_names = pivot["batch_name"].unique().to_list()
+        assert "alice" in batch_names
+        assert "bob" in batch_names
+        assert "rejected" in batch_names
+
+        rejected = pivot.filter(
+            (pl.col("batch_name") == "rejected") & (pl.col("criteria_name") != "_composite")
+        )
+        assert rejected.height == 2
+
+        skills_row = rejected.filter(pl.col("criteria_name") == "skills")
+        assert skills_row["normalized_score"].item() == -1
+        assert skills_row["weighted_score"].item() is None
+
+        edu_row = rejected.filter(pl.col("criteria_name") == "education")
+        assert edu_row["normalized_score"].item() == -1
+        assert edu_row["weighted_score"].item() is None
+
+        composites = pivot.filter(pl.col("criteria_name") == "_composite")
+        rejected_composite = composites.filter(pl.col("batch_name") == "rejected")
+        assert rejected_composite["weighted_score"].item() == -1
+
 
 class TestResultsFrameCompositePipeline:
     """Tests for composite score computation via Polars pipeline."""

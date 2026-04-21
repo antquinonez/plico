@@ -178,8 +178,6 @@ class FFGemini(FFAIClientBase):
         tool_choice: str | None = None,
         **kwargs,
     ) -> str:
-        logger.debug(f"Generating response for prompt: {prompt}")
-
         if not prompt.strip():
             logger.error("Received empty prompt")
             raise ValueError("Prompt cannot be empty")

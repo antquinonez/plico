@@ -175,11 +175,18 @@ class WorkbookConfig(BaseSettings):
     formatting: WorkbookFormattingConfig = Field(default_factory=WorkbookFormattingConfig)
 
 
+class OrchestratorAbortConfig(BaseSettings):
+    """Abort condition configuration."""
+
+    response_default: str = "-1"
+
+
 class OrchestratorConfig(BaseSettings):
     """Orchestrator configuration."""
 
     default_concurrency: int = 2
     max_concurrency: int = 10
+    abort: OrchestratorAbortConfig = Field(default_factory=OrchestratorAbortConfig)
 
 
 class RetryConfig(BaseSettings):

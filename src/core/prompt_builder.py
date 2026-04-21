@@ -55,8 +55,8 @@ class PromptBuilder:
             logger.debug("No history provided, checking for interpolation only")
             history = []
 
-        logger.info(f"Building prompt with history references: {history}")
-        logger.info(f"Current history size: {len(self._prompt_attr_history)}")
+        logger.debug(f"Building prompt with history references: {history}")
+        logger.debug(f"Current history size: {len(self._prompt_attr_history)}")
 
         for idx, entry in enumerate(self._prompt_attr_history):
             logger.debug("==================================================================")
@@ -147,5 +147,6 @@ class PromptBuilder:
         else:
             final_prompt = resolved_prompt
 
-        logger.info(f"Final constructed prompt:\n{final_prompt}")
+        logger.info(f"Final prompt constructed ({len(final_prompt)} chars)")
+        logger.debug(f"Final constructed prompt:\n{final_prompt}")
         return final_prompt, interpolated_names

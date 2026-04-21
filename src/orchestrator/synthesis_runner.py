@@ -16,6 +16,7 @@ import time
 from typing import Any
 
 from ..config import get_config
+from ..observability.log_context import log_context
 from .results import ResultBuilder, ResultsFrame
 from .results.frame import _deserialize_json_columns
 from .scoring import ScoreAggregator
@@ -210,89 +211,113 @@ class SynthesisRunner:
         results_by_name: dict[str, dict[str, Any]] = {}
 
         for synth_prompt in orchestrator.synthesis_prompts:
-            try:
-                source_scope = synth_prompt.get("source_scope", "all")
-                source_prompts = synth_prompt.get("source_prompts", [])
-                include_scores = synth_prompt.get("include_scores", True)
-
-                entries = executor.resolve_source_scope(source_scope, sorted_entries)
-
-                scale_max = 10
-                if orchestrator.scoring_rubric and orchestrator.scoring_rubric.criteria:
-                    scale_max = orchestrator.scoring_rubric.criteria[0].scale_max
-
-                context = executor.format_entry_context(
-                    entries,
-                    source_prompts,
-                    include_scores,
-                    strategy=orchestrator.evaluation_strategy if orchestrator.has_scoring else "",
-                    scale_max=scale_max,
-                )
-
-                resolved_history = ""
-                history_deps = synth_prompt.get("history") or []
-                for dep_name in history_deps:
-                    dep_result = results_by_name.get(dep_name)
-                    if dep_result and dep_result.get("status") == "failed":
-                        logger.warning(
-                            f"Synthesis prompt '{synth_prompt.get('prompt_name')}' "
-                            f"references failed prompt '{dep_name}', "
-                            f"which returned empty response"
-                        )
-                    dep_response = dep_result.get("response", "") if dep_result else ""
-                    resolved_history += f"--- {dep_name} ---\n{dep_response}\n\n"
-                    if dep_result:
-                        orchestrator._response_context.record_raw(dep_result)
-
-                prompt_parts = [context]
-                if resolved_history.strip():
-                    prompt_parts.append(resolved_history.strip())
-                prompt_parts.append(synth_prompt["prompt"])
-                full_prompt = "\n\n===\n\n".join(prompt_parts)
-
-                ffai = orchestrator._get_isolated_ffai(synth_prompt.get("client"))
-                call_start = time.monotonic()
-                synth_result = ffai.generate_response(
-                    prompt=full_prompt,
-                    prompt_name=synth_prompt.get("prompt_name"),
-                )
-                call_duration_ms = (time.monotonic() - call_start) * 1000
-
-                input_tokens = synth_result.usage.input_tokens if synth_result.usage else 0
-                output_tokens = synth_result.usage.output_tokens if synth_result.usage else 0
-                total_tokens = synth_result.usage.total_tokens if synth_result.usage else 0
-                cost_usd = synth_result.cost_usd
-
-                result = _build_synthesis_result(
+            s_name = synth_prompt.get("prompt_name", "-")
+            with log_context(batch_name="-", prompt_name=s_name):
+                self._execute_synthesis_prompt(
                     synth_prompt,
-                    status="success",
-                    evaluation_strategy=orchestrator.evaluation_strategy,
-                    has_scoring=orchestrator.has_scoring,
-                    response=synth_result.response,
-                    resolved_prompt=full_prompt,
-                    input_tokens=input_tokens,
-                    output_tokens=output_tokens,
-                    total_tokens=total_tokens,
-                    cost_usd=cost_usd,
-                    duration_ms=call_duration_ms,
+                    orchestrator,
+                    executor,
+                    sorted_entries,
+                    entry_results_map,
+                    criteria_list,
+                    results_by_name,
+                    synthesis_results,
                 )
-
-            except Exception as e:
-                logger.error(
-                    f"Synthesis prompt '{synth_prompt.get('prompt_name')}' failed: {e}",
-                    exc_info=True,
-                )
-                result = _build_synthesis_result(
-                    synth_prompt,
-                    status="failed",
-                    evaluation_strategy=orchestrator.evaluation_strategy,
-                    has_scoring=orchestrator.has_scoring,
-                    error=str(e),
-                )
-
-            synthesis_results.append(result)
-            if result.get("prompt_name"):
-                results_by_name[result["prompt_name"]] = result
 
         orchestrator.results.extend(synthesis_results)
         logger.info(f"Synthesis complete: {len(synthesis_results)} prompts executed")
+
+    def _execute_synthesis_prompt(
+        self,
+        synth_prompt: dict[str, Any],
+        orchestrator: Any,
+        executor: SynthesisExecutor,
+        sorted_entries: list[dict[str, Any]],
+        entry_results_map: dict[int, dict[str, Any]],
+        criteria_list: list[dict[str, Any]],
+        results_by_name: dict[str, dict[str, Any]],
+        synthesis_results: list[dict[str, Any]],
+    ) -> None:
+        try:
+            source_scope = synth_prompt.get("source_scope", "all")
+            source_prompts = synth_prompt.get("source_prompts", [])
+            include_scores = synth_prompt.get("include_scores", True)
+
+            entries = executor.resolve_source_scope(source_scope, sorted_entries)
+
+            scale_max = 10
+            if orchestrator.scoring_rubric and orchestrator.scoring_rubric.criteria:
+                scale_max = orchestrator.scoring_rubric.criteria[0].scale_max
+
+            context = executor.format_entry_context(
+                entries,
+                source_prompts,
+                include_scores,
+                strategy=orchestrator.evaluation_strategy if orchestrator.has_scoring else "",
+                scale_max=scale_max,
+            )
+
+            resolved_history = ""
+            history_deps = synth_prompt.get("history") or []
+            for dep_name in history_deps:
+                dep_result = results_by_name.get(dep_name)
+                if dep_result and dep_result.get("status") == "failed":
+                    logger.warning(
+                        f"Synthesis prompt '{synth_prompt.get('prompt_name')}' "
+                        f"references failed prompt '{dep_name}', "
+                        f"which returned empty response"
+                    )
+                dep_response = dep_result.get("response", "") if dep_result else ""
+                resolved_history += f"--- {dep_name} ---\n{dep_response}\n\n"
+                if dep_result:
+                    orchestrator._response_context.record_raw(dep_result)
+
+            prompt_parts = [context]
+            if resolved_history.strip():
+                prompt_parts.append(resolved_history.strip())
+            prompt_parts.append(synth_prompt["prompt"])
+            full_prompt = "\n\n===\n\n".join(prompt_parts)
+
+            ffai = orchestrator._get_isolated_ffai(synth_prompt.get("client"))
+            call_start = time.monotonic()
+            synth_result = ffai.generate_response(
+                prompt=full_prompt,
+                prompt_name=synth_prompt.get("prompt_name"),
+            )
+            call_duration_ms = (time.monotonic() - call_start) * 1000
+
+            input_tokens = synth_result.usage.input_tokens if synth_result.usage else 0
+            output_tokens = synth_result.usage.output_tokens if synth_result.usage else 0
+            total_tokens = synth_result.usage.total_tokens if synth_result.usage else 0
+            cost_usd = synth_result.cost_usd
+
+            result = _build_synthesis_result(
+                synth_prompt,
+                status="success",
+                evaluation_strategy=orchestrator.evaluation_strategy,
+                has_scoring=orchestrator.has_scoring,
+                response=synth_result.response,
+                resolved_prompt=full_prompt,
+                input_tokens=input_tokens,
+                output_tokens=output_tokens,
+                total_tokens=total_tokens,
+                cost_usd=cost_usd,
+                duration_ms=call_duration_ms,
+            )
+
+        except Exception as e:
+            logger.error(
+                f"Synthesis prompt '{synth_prompt.get('prompt_name')}' failed: {e}",
+                exc_info=True,
+            )
+            result = _build_synthesis_result(
+                synth_prompt,
+                status="failed",
+                evaluation_strategy=orchestrator.evaluation_strategy,
+                has_scoring=orchestrator.has_scoring,
+                error=str(e),
+            )
+
+        synthesis_results.append(result)
+        if result.get("prompt_name"):
+            results_by_name[result["prompt_name"]] = result

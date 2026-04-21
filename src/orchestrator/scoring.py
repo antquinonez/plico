@@ -157,9 +157,9 @@ class ScoringRubric:
 
         for criteria in self.criteria:
             source_result = results_by_name.get(criteria.source_prompt)
-            if source_result is None or source_result.get("status") == "skipped":
+            if source_result is None or source_result.get("status") in ("skipped", "aborted"):
                 skipped.append(criteria.criteria_name)
-                reason = "not found" if source_result is None else "was skipped"
+                reason = "not found" if source_result is None else f"was {source_result['status']}"
                 logger.info(
                     f"Criteria '{criteria.criteria_name}' skipped: "
                     f"source prompt '{criteria.source_prompt}' "
