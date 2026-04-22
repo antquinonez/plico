@@ -75,15 +75,13 @@ class WorkbookFormatter:
 
     def apply_vertical_top(self, ws: Worksheet) -> None:
         """Apply vertical top alignment to all data cells."""
-        for row in range(2, ws.max_row + 1):
-            for col in range(1, ws.max_column + 1):
-                cell = ws.cell(row=row, column=col)
+        for row_cells in ws.iter_rows(min_row=2, max_row=ws.max_row):
+            for cell in row_cells:
                 if cell.value is not None:
-                    current = cell.alignment
                     cell.alignment = Alignment(
-                        wrap_text=current.wrap_text,
+                        wrap_text=cell.alignment.wrap_text,
                         vertical="top",
-                        horizontal=current.horizontal or "left",
+                        horizontal="left",
                     )
 
     def apply_word_wrap(self, ws: Worksheet, sheet_name: str) -> None:
@@ -96,9 +94,11 @@ class WorkbookFormatter:
         for col_name in wrap_columns:
             col_idx = self._find_column_by_header(ws, col_name)
             if col_idx:
-                for row in range(2, ws.max_row + 1):
-                    cell = ws.cell(row=row, column=col_idx)
-                    cell.alignment = Alignment(wrap_text=True, vertical="top", horizontal="left")
+                wrap_align = Alignment(wrap_text=True, vertical="top", horizontal="left")
+                for row_cells in ws.iter_rows(
+                    min_row=2, max_row=ws.max_row, min_col=col_idx, max_col=col_idx
+                ):
+                    row_cells[0].alignment = wrap_align
 
     def freeze_header_row(self, ws: Worksheet) -> None:
         """Freeze the first row (header row)."""
@@ -155,10 +155,12 @@ class WorkbookFormatter:
 
     def _find_column_by_header(self, ws: Worksheet, header_name: str) -> int | None:
         """Find column index by header name."""
-        for col in range(1, ws.max_column + 1):
-            cell_value = ws.cell(row=1, column=col).value
-            if cell_value == header_name:
-                return col
+        header_row = list(ws.iter_rows(min_row=1, max_row=1))
+        if not header_row:
+            return None
+        for cell in header_row[0]:
+            if cell.value == header_name:
+                return cell.column
         return None
 
     def _auto_fit_columns(self, ws: Worksheet) -> None:

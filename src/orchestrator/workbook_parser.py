@@ -986,16 +986,13 @@ class WorkbookParser:
 
         ws = wb.create_sheet(title=sheet_name)
 
-        for col_idx, header in enumerate(self.RESULTS_HEADERS, start=1):
-            ws.cell(row=1, column=col_idx, value=header)
+        ws.append(self.RESULTS_HEADERS)
 
-        for row_idx, result in enumerate(ordered_results, start=2):
-            for col_idx, header in enumerate(self.RESULTS_HEADERS, start=1):
-                ws.cell(
-                    row=row_idx,
-                    column=col_idx,
-                    value=_serialize_for_excel(header, result.get(header)),
-                )
+        for result in ordered_results:
+            row = [
+                _serialize_for_excel(header, result.get(header)) for header in self.RESULTS_HEADERS
+            ]
+            ws.append(row)
 
         self.formatter.apply_formatting(ws, "results")
 
@@ -1022,16 +1019,13 @@ class WorkbookParser:
 
         ws = wb.create_sheet(title=sheet_name)
 
-        for col_idx, header in enumerate(self.RESULTS_HEADERS, start=1):
-            ws.cell(row=1, column=col_idx, value=header)
+        ws.append(self.RESULTS_HEADERS)
 
-        for row_idx, result in enumerate(ordered_results, start=2):
-            for col_idx, header in enumerate(self.RESULTS_HEADERS, start=1):
-                ws.cell(
-                    row=row_idx,
-                    column=col_idx,
-                    value=_serialize_for_excel(header, result.get(header)),
-                )
+        for result in ordered_results:
+            row = [
+                _serialize_for_excel(header, result.get(header)) for header in self.RESULTS_HEADERS
+            ]
+            ws.append(row)
 
         self.formatter.apply_formatting(ws, "results")
 
