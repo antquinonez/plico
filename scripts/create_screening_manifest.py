@@ -99,6 +99,7 @@ def build_manifest_yaml(
     planning: bool,
     prompt_count: int,
     has_documents: bool = False,
+    has_clients: bool = False,
 ) -> dict[str, Any]:
     """Build manifest.yaml metadata.
 
@@ -107,6 +108,7 @@ def build_manifest_yaml(
         planning: Whether planning phase is enabled.
         prompt_count: Number of prompts.
         has_documents: Whether documents.yaml was written.
+        has_clients: Whether clients.yaml was written.
 
     Returns:
         Manifest metadata dict.
@@ -118,7 +120,7 @@ def build_manifest_yaml(
         "version": "1.0",
         "exported_at": datetime.now().isoformat(),
         "has_data": False,
-        "has_clients": False,
+        "has_clients": has_clients,
         "has_documents": has_documents,
         "has_tools": False,
         "has_scoring": not planning,
@@ -291,6 +293,14 @@ def main() -> int:
     )
     parser.add_argument("--verbose", action="store_true", help="Enable verbose output")
     parser.add_argument(
+        "--planning-client",
+        default=None,
+        metavar="CLIENT_TYPE",
+        help="Client type from config/clients.yaml for planning-phase prompts. "
+        "Only used with --planning. Execution prompts use --client. "
+        "Example: litellm-mistral-large",
+    )
+    parser.add_argument(
         "--planning-prompts",
         default=None,
         metavar="TEMPLATE",
@@ -316,6 +326,8 @@ def main() -> int:
 
     if args.planning_prompts and not args.planning:
         print("Warning: --planning-prompts has no effect without --planning.\n")
+    if args.planning_client and not args.planning:
+        print("Warning: --planning-client has no effect without --planning.\n")
     if args.static_prompts and args.planning:
         print("Warning: --static-prompts has no effect with --planning (use --planning-prompts).\n")
 
@@ -370,6 +382,9 @@ def main() -> int:
         if args.planning
         else get_static_screening_prompts(template_path=args.static_prompts)
     )
+
+    planning_client_type = args.planning_client if args.planning else None
+
     synthesis = get_screening_synthesis_prompts(
         top_n=synthesis_top_n, template_path=args.synthesis_prompts
     )
@@ -386,7 +401,11 @@ def main() -> int:
     write_yaml(
         manifest_path / "manifest.yaml",
         build_manifest_yaml(
-            manifest_name, args.planning, len(prompts), has_documents=has_documents
+            manifest_name,
+            args.planning,
+            len(prompts),
+            has_documents=has_documents,
+            has_clients=planning_client_type is not None,
         ),
     )
     write_yaml(
@@ -416,6 +435,30 @@ def main() -> int:
         manifest_path / "synthesis.yaml",
         build_synthesis_yaml(synthesis),
     )
+
+    if planning_client_type:
+        planning_client_config = config.get_client_type_config(planning_client_type)
+        if planning_client_config is None:
+            available = config.get_available_client_types()
+            print(f"\nError: Unknown planning client type '{planning_client_type}'.")
+            print(f"  Available: {', '.join(available)}")
+            return 1
+        for p in prompts:
+            if p.phase == "planning":
+                p.client = "planner"
+        write_yaml(
+            manifest_path / "clients.yaml",
+            {
+                "clients": [
+                    {
+                        "name": "planner",
+                        "client_type": planning_client_type,
+                        "api_key_env": planning_client_config.api_key_env,
+                        "model": planning_client_config.default_model,
+                    }
+                ]
+            },
+        )
 
     if args.jd:
         jd_doc = create_jd_document(args.jd)
@@ -454,6 +497,8 @@ def main() -> int:
     )
     print(f"Synthesis:       {len(synthesis)} prompts")
     print(f"Client:          {client_type}")
+    if planning_client_type:
+        print(f"Planning client: {planning_client_type} (via named client 'planner')")
     if args.planning_prompts or args.static_prompts or args.synthesis_prompts:
         sources = []
         if args.planning and args.planning_prompts:
