@@ -126,6 +126,14 @@ def main() -> int:
     )
     parser.add_argument("--verbose", action="store_true", help="Enable verbose output")
     parser.add_argument(
+        "--planning-client",
+        default=None,
+        metavar="CLIENT_TYPE",
+        help="Client type from config/clients.yaml for planning-phase prompts. "
+        "Only used with --planning. Execution prompts use --client. "
+        "Example: litellm-mistral-large",
+    )
+    parser.add_argument(
         "--planning-prompts",
         default=None,
         metavar="TEMPLATE",
@@ -151,6 +159,8 @@ def main() -> int:
 
     if args.planning_prompts and not args.planning:
         print("Warning: --planning-prompts has no effect without --planning.\n")
+    if args.planning_client and not args.planning:
+        print("Warning: --planning-client has no effect without --planning.\n")
     if args.static_prompts and args.planning:
         print("Warning: --static-prompts has no effect with --planning (use --planning-prompts).\n")
 
@@ -220,6 +230,8 @@ def main() -> int:
         if args.planning
         else get_static_screening_prompts(template_path=args.static_prompts)
     )
+
+    planning_client_type = args.planning_client if args.planning else None
     synthesis = get_screening_synthesis_prompts(
         top_n=synthesis_top_n, template_path=args.synthesis_prompts
     )
@@ -272,6 +284,28 @@ def main() -> int:
 
     builder.add_prompts_sheet(prompts)
     builder.add_synthesis_sheet(synthesis)
+
+    if planning_client_type:
+        planning_client_config = app_config.get_client_type_config(planning_client_type)
+        if planning_client_config is None:
+            available = app_config.get_available_client_types()
+            print(f"\nError: Unknown planning client type '{planning_client_type}'.")
+            print(f"  Available: {', '.join(available)}")
+            return 1
+        for p in prompts:
+            if p.phase == "planning":
+                p.client = "planner"
+        builder.add_clients_sheet(
+            clients=[
+                {
+                    "name": "planner",
+                    "client_type": planning_client_type,
+                    "api_key_env": planning_client_config.api_key_env,
+                    "model": planning_client_config.default_model,
+                }
+            ]
+        )
+
     builder.save()
 
     total_prompts = len(prompts)
@@ -292,6 +326,8 @@ def main() -> int:
         "Synthesis prompts": str(len(synthesis)),
         "Client": client_type,
     }
+    if planning_client_type:
+        summary_extra["Planning client"] = f"{planning_client_type} (via named client 'planner')"
     if args.planning_prompts or args.static_prompts or args.synthesis_prompts:
         sources = []
         if args.planning and args.planning_prompts:
