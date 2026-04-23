@@ -2,7 +2,8 @@
 
 > **Status: ✅ IMPLEMENTED**
 >
-> This design has been fully implemented in `src/FFAI.py` and `src/orchestrator/excel_orchestrator.py`.
+> This design has been fully implemented in `src/FFAI.py`, `src/orchestrator/base/orchestrator_base.py`,
+> and is used by both `ExcelOrchestrator` and `ManifestOrchestrator`.
 > The implementation supports `shared_prompt_attr_history` and `history_lock` parameters for
 > thread-safe cross-client history sharing during parallel execution.
 
@@ -44,7 +45,8 @@ All FFAI instances share a single `OrderedPromptHistory`:
 | **Client** | API communication, per-request state | Cloned per prompt (isolated) | Unchanged |
 | **FFAI** | Prompt assembly, response handling | New instance per prompt | New instance with shared history |
 | **OrderedPromptHistory** | Stores named prompt interactions | Owned by FFAI | Shared reference |
-| **ExcelOrchestrator** | Orchestrates execution | Owns default FFAI | Owns shared history |
+| **ExcelOrchestrator** | Orchestrates execution | Owns default FFAI | Owns shared history (via OrchestratorBase) |
+| **ManifestOrchestrator** | Orchestrates execution | Inherits shared history | Same shared history mechanism |
 
 ### State Separation
 
@@ -111,9 +113,9 @@ def add_interaction(self, prompt, response, ...):
         self.ordered_history.add_interaction(...)
 ```
 
-### Phase 2: ExcelOrchestrator Changes
+### Phase 2: OrchestratorBase Changes
 
-**File: `src/orchestrator/excel_orchestrator.py`**
+**File: `src/orchestrator/base/orchestrator_base.py`** (shared by both `ExcelOrchestrator` and `ManifestOrchestrator`)
 
 1. Add `self.shared_history` and `self.history_lock` in `__init__`
 2. Modify `_get_isolated_ffai()` helper to pass shared history
@@ -136,6 +138,8 @@ def _get_isolated_ffai(self, client_name=None):
     return ffai
 ```
 
+Both `ExcelOrchestrator` and `ManifestOrchestrator` inherit this behavior from `OrchestratorBase`.
+
 ### Phase 3: Test Updates
 
 **Unit Tests:**
@@ -155,6 +159,7 @@ def _get_isolated_ffai(self, client_name=None):
    - sample_workbook_batch.xlsx (batch)
    - sample_workbook_multiclient.xlsx (multi-client)
    - sample_workbook_conditional.xlsx (conditional)
+4. Run manifest orchestrator on exported manifests
 
 ---
 

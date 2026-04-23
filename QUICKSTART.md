@@ -140,8 +140,8 @@ python scripts/run_orchestrator.py my_workbook.xlsx
 python scripts/run_orchestrator.py my_workbook.xlsx -c 4 --client litellm-openai
 
 # Export to manifest for version control
-python scripts/export_manifest.py my_workbook.xlsx
-python scripts/run_manifest.py ./manifests/manifest_my_workbook/ --client litellm-openai
+python scripts/manifest_export.py my_workbook.xlsx
+python scripts/manifest_run.py ./manifests/manifest_my_workbook/ --client litellm-openai
 ```
 
 ### Direct Manifest (YAML Authoring)
@@ -180,7 +180,7 @@ EOF
 Run it:
 
 ```bash
-python scripts/run_manifest.py ./manifests/my_first/ --client litellm-openai -c 2
+python scripts/manifest_run.py ./manifests/my_first/ --client litellm-openai -c 2
 ```
 
 ### Python API (Programmatic)
@@ -261,7 +261,7 @@ for row in df.iter_rows(named=True):
 ## Dry Run (Validate Without Calling APIs)
 
 ```bash
-python scripts/run_manifest.py ./manifests/my_first/ --dry-run
+python scripts/manifest_run.py ./manifests/my_first/ --dry-run
 python scripts/run_orchestrator.py my_workbook.xlsx --dry-run
 ```
 

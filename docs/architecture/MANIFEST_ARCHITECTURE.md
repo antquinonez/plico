@@ -223,7 +223,7 @@ Example: `outputs/20250301103000_my_prompts.parquet`
 | `condition_result` | string | Condition evaluation result |
 | `condition_error` | string | Condition evaluation error |
 | `response` | string | AI response |
-| `status` | string | `success`, `failed`, or `skipped` |
+| `status` | string | `success`, `failed`, `skipped`, or `aborted` |
 | `attempts` | int64 | Number of API attempts |
 | `error` | string | Error message if failed |
 | `references` | string | JSON array of document references |
@@ -231,6 +231,23 @@ Example: `outputs/20250301103000_my_prompts.parquet`
 | `semantic_filter` | string | JSON metadata filter |
 | `query_expansion` | string | Query expansion override |
 | `rerank` | string | Rerank override |
+| `resolved_prompt` | string | Fully-resolved prompt sent to AI |
+| `condition_trace` | string | Resolved condition expression with values |
+| `extraction_trace` | string | Scoring extraction trace (JSON) |
+| `abort_trace` | string | Abort condition trace (if triggered) |
+| `validation_passed` | bool | Validation result (null if not enabled) |
+| `validation_attempts` | int64 | Validation retry count |
+| `validation_critique` | string | Validation rejection reason |
+| `input_tokens` | int64 | Tokens in prompt sent to model |
+| `output_tokens` | int64 | Tokens in model response |
+| `total_tokens` | int64 | Sum of input + output |
+| `cost_usd` | float | Estimated cost in USD |
+| `duration_ms` | float | Wall-clock LLM call duration (ms) |
+| `scores` | string | Extracted scores per criteria (JSON) |
+| `composite_score` | float | Weighted average score |
+| `scoring_status` | string | `ok`, `partial`, `failed`, or `skipped` |
+| `strategy` | string | Evaluation strategy name |
+| `result_type` | string | `batch`, `synthesis`, or `planning` |
 
 ### Inspecting Results
 

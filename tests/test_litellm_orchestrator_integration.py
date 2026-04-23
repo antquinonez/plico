@@ -176,10 +176,18 @@ class TestParallelExecutionWithLiteLLM:
     @patch("src.Clients.FFLiteLLMClient.completion")
     def test_parallel_execution_simulation(self, mock_completion):
         """Simulate parallel execution with clones."""
-        mock_response = MagicMock()
-        mock_response.choices = [MagicMock()]
-        mock_response.choices[0].message.content = "Response"
-        mock_completion.return_value = mock_response
+        from unittest.mock import MagicMock
+
+        def make_response(**kwargs):
+            mock = MagicMock()
+            mock.choices = [MagicMock()]
+            mock.choices[0].message.content = "Response"
+            mock.usage.prompt_tokens = 10
+            mock.usage.completion_tokens = 5
+            mock.usage.total_tokens = 15
+            return mock
+
+        mock_completion.side_effect = make_response
 
         base_client = FFLiteLLMClient(model_string="openai/gpt-4")
         shared_history = []

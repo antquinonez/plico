@@ -97,12 +97,15 @@ workbook:
 orchestrator:
   default_concurrency: 2
   max_concurrency: 10
+  abort:
+    response_default: "-1"
 ```
 
 | Field | Description |
 |-------|-------------|
 | `default_concurrency` | Default concurrency for parallel execution |
 | `max_concurrency` | Maximum concurrent threads |
+| `abort.response_default` | Default response value for aborted prompts |
 
 ### Paths Configuration (`paths.yaml`)
 
@@ -322,6 +325,9 @@ agent:
   max_tool_rounds: 5             # Max tool-call rounds per prompt
   tool_timeout: 30.0             # Timeout per tool execution (seconds)
   continue_on_tool_error: true    # Continue on tool errors
+  validation:
+    enabled: true                # Enable response validation
+    max_retries: 2               # Max re-execution attempts on validation failure
 ```
 
 ### Evaluation Configuration (`main.yaml`)

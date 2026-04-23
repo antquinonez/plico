@@ -172,6 +172,10 @@
 | `test_ffperplexity.py` | 23 | Perplexity client tests |
 | `test_discovery_injection.py` | 21 | Discovery injection into orchestrator |
 | `test_planning.py` | 20 | Planning phase tests |
+| `test_explain.py` | - | Execution plan preview and observability tests |
+| `test_abort_condition.py` | - | Abort condition evaluation and dependency edge tests |
+| `test_agent_executor.py` | - | Agent executor with response validation tests |
+| `test_prompt_templates.py` | - | YAML prompt template loading tests |
 | `test_ordered_prompt_history.py` | 20 | Ordered history tests |
 | `test_ffazure_litellm.py` | 18 | Azure LiteLLM factory tests |
 | `test_ffmistral.py` | 17 | Mistral client tests |
@@ -194,6 +198,8 @@
 | `test_context_assembly.py` | 8 | Context assembly from history |
 | `test_client_isolation.py` | 7 | Client isolation in parallel execution |
 | `test_multiclient_integration.py` | 5 | Multi-client execution |
+| `test_documents_integration.py` | - | Document injection and RAG integration |
+| `test_batch_integration.py` | 8 | Batch execution with variables |
 
 ## Coverage Targets
 

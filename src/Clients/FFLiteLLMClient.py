@@ -376,10 +376,13 @@ class FFLiteLLMClient(FFAIClientBase):
         """
         usage = getattr(response, "usage", None)
         if usage:
+            raw_input = getattr(usage, "prompt_tokens", 0)
+            raw_output = getattr(usage, "completion_tokens", 0)
+            raw_total = getattr(usage, "total_tokens", 0)
             self._last_usage = TokenUsage(
-                input_tokens=getattr(usage, "prompt_tokens", 0) or 0,
-                output_tokens=getattr(usage, "completion_tokens", 0) or 0,
-                total_tokens=getattr(usage, "total_tokens", 0) or 0,
+                input_tokens=int(raw_input) if raw_input else 0,
+                output_tokens=int(raw_output) if raw_output else 0,
+                total_tokens=int(raw_total) if raw_total else 0,
             )
         try:
             self._last_cost_usd = litellm.completion_cost(response)

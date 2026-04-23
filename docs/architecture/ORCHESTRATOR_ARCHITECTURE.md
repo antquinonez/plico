@@ -161,11 +161,14 @@ Plico provides a declarative execution engine for AI prompt workflows. Workflows
 | references | No | JSON array of document reference_names for full injection |
 | semantic_query | No | Search query for RAG-based context retrieval |
 | condition | No | Conditional expression for execution |
+| abort_condition | No | Post-execution condition; if true, aborts remaining prompts |
 | phase | No | `planning` or `execution` (default) |
 | generator | No | `true` to mark prompt as returning structured JSON artifacts |
 | agent_mode | No | `true` to enable agentic tool-call loop |
 | tools | No | JSON array of tool names for agent mode |
 | max_tool_rounds | No | Max tool-call rounds for agent mode |
+| validation_prompt | No | Criteria for response validation (requires agent_mode) |
+| max_validation_retries | No | Override max validation retries (default from config: 2) |
 
 ### data Sheet (Optional)
 
@@ -215,12 +218,7 @@ Tool definitions for agent mode execution.
 
 ### results_{timestamp} Sheet (Generated)
 
-| batch_id | batch_name | sequence | prompt_name | prompt | resolved_prompt | history | client | condition | condition_result | response | status | attempts | error | references | semantic_query |
-|----------|------------|----------|-------------|--------|---------|--------|-----------|------------------|----------|--------|----------|-------|------------|----------------|
-| 1 | north_widget_a | 1 | context | I run... | | | | | Based on... | success | 1 | | | |
-| 2 | south_widget_b | 1 | context | I run... | | | | | Based on... | success | 1 | | | |
-| 3 | | 4 | spec_analysis | Summarize... | | | | | Key features are... | success | 1 | | `["product_spec", "api_guide"]` | |
-| 4 | | 5 | semantic_search | What are... | | | | | Auth methods include... | success | 1 | | | `authentication best practices` |
+Includes: `batch_id`, `batch_name`, `sequence`, `prompt_name`, `prompt` (original template), `resolved_prompt` (fully-resolved), `history`, `client`, `condition`, `condition_result`, `condition_trace`, `response`, `status` (`success`/`failed`/`skipped`/`aborted`), `attempts`, `error`, `references`, `semantic_query`, `semantic_filter`, `query_expansion`, `rerank`, `abort_trace`, `validation_passed`, `validation_attempts`, `validation_critique`, `input_tokens`, `output_tokens`, `total_tokens`, `cost_usd`, `duration_ms`, `scores`, `composite_score`, `scoring_status`, `strategy`, `result_type`.
 
 ## Data Flow
 
