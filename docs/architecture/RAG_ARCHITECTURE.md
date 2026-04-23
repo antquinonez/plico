@@ -728,15 +728,15 @@ chunks = split_text(
 
 ### Test Coverage
 
-| Module | Tests | Coverage |
-|--------|-------|----------|
-| text_splitter | 7 | split_text, split_documents, edge cases |
-| FFEmbeddings | 6 | init, embed, error handling |
-| FFVectorStore | 8 | CRUD operations, search |
-| FFRAGClient | 9 | High-level operations |
-| RAGMCPTools | 7 | Tool execution |
-| Integration | 3 | DocumentRegistry integration |
-| RAG Enhancements | 27 | Query expansion, deduplication, per-prompt overrides |
+| Module | Tests | Description |
+|--------|-------|-------------|
+| `test_rag.py` | 102 | FFRAGClient high-level operations, FFVectorStore, FFEmbeddings |
+| `test_rag_chunkers.py` | 57 | All chunking strategies (recursive, markdown, code, hierarchical, character) |
+| `test_rag_indexing.py` | 38 | BM25 index, hierarchical index, contextual embeddings, deduplication |
+| `test_rag_search.py` | 40 | Hybrid search, rerankers, query expansion |
+| `test_rag_enhancements.py` | 44 | Query expansion, deduplication, per-prompt overrides, summaries |
+| `test_text_splitter.py` | 40 | Legacy text splitter, backward compatibility |
+| **Total** | **321** | |
 
 ## Dependencies
 

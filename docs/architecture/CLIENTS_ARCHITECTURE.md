@@ -13,21 +13,39 @@ The Client Wrappers subsystem provides a unified interface to multiple AI provid
 
 ## Class Hierarchy
 
+### Active Clients
+
 ```
-                    FFAIClientBase (ABC)
+                    FFAIClientBase (ABC, in src/core/client_base.py)
                            │
-           ┌───────────────┼───────────────┬──────────────┐
-           │               │               │              │
-           ▼               ▼               ▼              ▼
-    ┌─────────────┐ ┌───────────┐ ┌─────────────┐ ┌──────────────┐
-    │  FFMistral  │ │FFAnthropic│ │ FFGemini    │ │FFNvidiaDeepSeek│
-    │FFMistralSmall│ │FFAnthropic│ │FFPerplexity │ │FFOpenAIAssistant│
-    └─────────────┘ │  Cached   │ └─────────────┘ └──────────────┘
-                    └───────────┘
+           ┌───────────────┼───────────────┐
+           │               │               │
+           ▼               ▼               ▼
+    ┌─────────────┐ ┌───────────┐ ┌─────────────┐
+    │  FFMistral  │ │ FFGemini  │ │FFPerplexity │
+    │FFMistralSmall│ │           │ │             │
+    └─────────────┘ └───────────┘ └─────────────┘
     ┌─────────────────┐
     │ FFLiteLLMClient │
     │ (Universal)     │
     └─────────────────┘
+```
+
+### Archived Clients (`src/Clients/not_maintained/`)
+
+These clients are no longer actively maintained. They lack token usage tracking, cost estimation, and OTel span integration. They are not exported from `src/Clients/__init__.py`.
+
+```
+                    FFAIClientBase (ABC)
+                           │
+           ┌───────────────┼───────────────┐
+           │               │               │
+           ▼               ▼               ▼
+    ┌─────────────┐ ┌───────────┐ ┌──────────────┐
+    │ FFAnthropic │ │FFNvidia   │ │FFOpenAI      │
+    │FFAnthropic  │ │DeepSeek   │ │Assistant     │
+    │  Cached     │ │           │ │              │
+    └─────────────┘ └───────────┘ └──────────────┘
 
                     FFAzureClientBase (ABC)
                     [Implements FFAIClientBase interface]
@@ -44,6 +62,8 @@ The Client Wrappers subsystem provides a unified interface to multiple AI provid
 
 ## FFAIClientBase Contract
 
+Located in `src/core/client_base.py`. A compatibility shim at `src/FFAIClientBase.py` re-exports for backward compatibility.
+
 ```python
 class FFAIClientBase(ABC):
     """Abstract base class defining the client interface."""
@@ -51,6 +71,10 @@ class FFAIClientBase(ABC):
     # Required attributes
     model: str
     system_instructions: str
+
+    # Token tracking (class-level defaults)
+    _last_usage: TokenUsage | None = None
+    _last_cost_usd: float = 0.0
 
     # Required methods
     @abstractmethod
@@ -75,16 +99,26 @@ class FFAIClientBase(ABC):
 
     @abstractmethod
     def clone(self) -> "FFAIClientBase":
-        """
-        Create a fresh clone of this client with empty history.
-
-        Used for thread-safe parallel execution where each thread
-        needs an isolated client instance with the same configuration.
-
-        Returns:
-            New client instance with same config, empty history.
-        """
+        """Create a fresh clone with empty history for thread-safe parallel execution."""
         pass
+
+    # Token tracking methods (provided by base class)
+    @property
+    def last_usage(self) -> TokenUsage | None:
+        """Token counts from the last generate_response() call."""
+
+    @property
+    def last_cost_usd(self) -> float:
+        """Estimated cost in USD from the last generate_response() call."""
+
+    def _reset_usage(self) -> None:
+        """Reset usage tracking before each API call."""
+
+    def _extract_token_usage(self, response, model: str) -> None:
+        """Extract token usage from provider response and estimate cost."""
+
+    def _trace_llm_call(self, prompt_name: str | None = None) -> ContextManager:
+        """Context manager for OTel span emission (NoOpSpan when disabled)."""
 ```
 
 ### Clone Method Implementation
@@ -162,23 +196,29 @@ clients:
     system_instructions: "You are a helpful assistant."
 ```
 
-### 2. Direct API Clients
-
-Connect directly to provider APIs.
+### 2. Direct API Clients (Active)
 
 | Client | Provider | Library | Auth |
 |--------|----------|---------|------|
 | `FFMistral` | Mistral AI | `mistralai` | API Key |
 | `FFMistralSmall` | Mistral AI | `mistralai` | API Key |
-| `FFAnthropic` | Anthropic | `anthropic` | API Key |
-| `FFAnthropicCached` | Anthropic | `anthropic` | API Key + Caching |
 | `FFGemini` | Google | `openai` + `google-auth` | OAuth |
 | `FFPerplexity` | Perplexity | `openai` | API Key |
-| `FFNvidiaDeepSeek` | Nvidia NIM | `openai` | API Key |
 
-### 3. Azure AI Clients
+### 2b. Direct API Clients (Archived, in `not_maintained/`)
 
-Connect via Azure AI Inference API.
+These clients are archived and lack token usage tracking and cost estimation.
+
+| Client | Provider | Library |
+|--------|----------|---------|
+| `FFAnthropic` | Anthropic | `anthropic` |
+| `FFAnthropicCached` | Anthropic | `anthropic` |
+| `FFNvidiaDeepSeek` | Nvidia NIM | `openai` |
+| `FFOpenAIAssistant` | OpenAI | `openai` |
+
+### 3. Azure AI Clients (Archived, in `not_maintained/`)
+
+These clients are archived and lack token usage tracking. They remain available for legacy use but are not exported from `src/Clients/__init__.py`.
 
 | Client | Model | Base Class |
 |--------|-------|------------|
@@ -190,9 +230,9 @@ Connect via Azure AI Inference API.
 | `FFAzureMSDeepSeekR1` | MAI-DS-R1 | - (standalone) |
 | `FFAzurePhi` | Phi-4 | `FFAzureClientBase` |
 
-### 4. Azure LiteLLM Factory
+### 4. Azure LiteLLM Factory (Archived, in `not_maintained/`)
 
-Factory function for creating Azure clients with environment-based configuration:
+Factory function for creating Azure clients with environment-based configuration. Archived alongside other Azure clients.
 
 ```python
 from src.Clients import create_azure_client
@@ -220,13 +260,15 @@ The factory reads from environment variables:
 
 **Module:** `src/Clients/FFAzureLiteLLM.py`
 
-### 5. Special Clients
+### 5. Special Clients (Archived, in `not_maintained/`)
 
 | Client | Purpose |
 |--------|---------|
 | `FFOpenAIAssistant` | Uses OpenAI Assistant API (threads, runs) |
 
 ## FFAzureClientBase Design
+
+> **Note:** `FFAzureClientBase` and all Azure clients are archived in `src/Clients/not_maintained/`. They lack token usage tracking and cost estimation. This section is preserved for reference.
 
 Azure clients share significant common code. `FFAzureClientBase` is an ABC that inherits directly from `ABC` (not `FFAIClientBase`) but implements the same interface contract:
 
@@ -295,6 +337,79 @@ class FFAzureMistral(FFAzureClientBase):
     @property
     def _provider_name(self) -> str:
         return "MistralAI"
+```
+
+## Token Usage & Cost Tracking
+
+All **active clients** (`FFMistral`, `FFMistralSmall`, `FFGemini`, `FFPerplexity`, `FFLiteLLMClient`) automatically track token usage and estimate costs after each `generate_response()` call.
+
+### TokenUsage Dataclass
+
+```python
+from src.core.usage import TokenUsage
+
+usage = TokenUsage(input_tokens=50, output_tokens=25, total_tokens=75)
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `input_tokens` | `int` | Tokens in the prompt |
+| `output_tokens` | `int` | Tokens in the response |
+| `total_tokens` | `int` | Sum of input + output |
+
+### Cost Estimation
+
+| Client | Cost Method | Source |
+|--------|-------------|--------|
+| `FFMistral`, `FFMistralSmall` | `pricing.estimate_cost()` | Static `PRICING_TABLE` in `src/core/pricing.py` |
+| `FFGemini`, `FFPerplexity` | `pricing.estimate_cost()` | Static `PRICING_TABLE` in `src/core/pricing.py` |
+| `FFLiteLLMClient` | `litellm.completion_cost()` | Live pricing from LiteLLM |
+
+### Usage After API Call
+
+```python
+client = FFMistralSmall(api_key="...")
+client.generate_response("Hello!")
+
+print(client.last_usage)       # TokenUsage(input_tokens=50, output_tokens=25, total_tokens=75)
+print(f"${client.last_cost_usd:.6f}")  # $0.000011
+```
+
+### FFAI Integration
+
+`FFAI.generate_response()` returns a `ResponseResult` dataclass that includes usage and cost:
+
+```python
+from src.FFAI import FFAI
+
+ffai = FFAI(client)
+result = ffai.generate_response("Hello!")
+print(result.response)     # The text response
+print(result.usage)        # TokenUsage or None
+print(result.cost_usd)     # Estimated cost
+print(result.duration_ms)  # Wall-clock duration
+```
+
+### Architecture
+
+```
+generate_response() called
+        │
+        ▼
+  _reset_usage()  ← Sets _last_usage=None, _last_cost_usd=0.0
+        │
+        ▼
+  Provider API call
+        │
+        ▼
+  _extract_token_usage(response, model)  ← For native clients
+  OR _extract_usage(response)            ← For FFLiteLLMClient
+        │
+        ├──► TokenUsage(input, output, total)
+        └──► estimate_cost() or litellm.completion_cost()
+        │
+        ▼
+  FFAI wraps in ResponseResult
 ```
 
 ## Message Format Conversion
@@ -429,6 +544,7 @@ class FFNewProvider(FFAIClientBase):
             raise ValueError("Empty prompt")
 
         try:
+            self._reset_usage()  # Reset token tracking
             self.conversation_history.append({"role": "user", "content": prompt})
 
             response = self.client.generate(
@@ -439,6 +555,9 @@ class FFNewProvider(FFAIClientBase):
 
             assistant_response = response.text
             self.conversation_history.append({"role": "assistant", "content": assistant_response})
+
+            # Extract token usage and estimate cost
+            self._extract_token_usage(response, self.model)
 
             return assistant_response
 
@@ -468,11 +587,20 @@ class FFNewProvider(FFAIClientBase):
 
 ### Step 2: Export in `__init__.py`
 
+Only active clients (with usage tracking) are exported:
+
 ```python
 # src/Clients/__init__.py
 from .FFNewProvider import FFNewProvider
 
-__all__ = [..., "FFNewProvider"]
+__all__ = [
+    "FFGemini",
+    "FFLiteLLMClient",
+    "FFMistral",
+    "FFMistralSmall",
+    "FFPerplexity",
+    "FFNewProvider",
+]
 ```
 
 ### Step 3: Add Tests
@@ -494,7 +622,9 @@ class TestFFNewProvider:
 
 ## Client-Specific Features
 
-### FFAzureCodestral - Code Specialization
+### FFAzureCodestral - Code Specialization (Archived)
+
+> **Note:** Archived in `src/Clients/not_maintained/`. Lacks token usage tracking.
 
 ```python
 client = FFAzureCodestral(api_key="...", endpoint="...")
@@ -512,7 +642,9 @@ review = client.review_code("def foo(): ...")
 translated = client.translate_code(code, "python", "rust")
 ```
 
-### FFAnthropicCached - Prompt Caching
+### FFAnthropicCached - Prompt Caching (Archived)
+
+> **Note:** Archived in `src/Clients/not_maintained/`. Lacks token usage tracking.
 
 ```python
 client = FFAnthropicCached(api_key="...")
@@ -521,7 +653,9 @@ client = FFAnthropicCached(api_key="...")
 response = client.generate_response("Analyze this document...")
 ```
 
-### FFOpenAIAssistant - Thread-Based
+### FFOpenAIAssistant - Thread-Based (Archived)
+
+> **Note:** Archived in `src/Clients/not_maintained/`. Lacks token usage tracking.
 
 ```python
 client = FFOpenAIAssistant(api_key="...", assistant_name="my-assistant")
@@ -532,16 +666,13 @@ response = client.generate_response("Hello!")
 # Thread is automatically managed
 ```
 
-### FFGemini - Async + OAuth
+### FFGemini - OpenAI-Compatible
 
 ```python
-client = FFGemini()  # Uses Google Application Default Credentials
+client = FFGemini()  # Uses GEMINI_KEY env var, OpenAI-compatible API
 
-# Async interface
-response = await client.generate_response("Hello!")
-
-# Sync wrapper
-response = client.generate_response_sync("Hello!")
+response = client.generate_response("Hello!")
+print(client.last_usage)  # TokenUsage with input/output/total
 ```
 
 ## Testing Strategy
