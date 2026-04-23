@@ -150,6 +150,17 @@ version control; data stays on disk. Results go to parquet.
 
 ## Two Scoring Modes
 
+### Gate Evaluation (Both Modes)
+
+Both static and planning modes include a **gate evaluation** prompt (`gate_evaluation`) that acts as an early-exit filter. It uses an `abort_condition` to short-circuit all remaining evaluation prompts for candidates who fail the initial screen:
+
+```yaml
+# The gate prompt returns JSON: {"proceed": true/false}
+abort_condition: 'json_get({{gate_evaluation.response}}, "proceed") == False'
+```
+
+When the gate triggers, downstream prompts (skill evaluation, education, experience, etc.) are set to `status: "aborted"` instead of consuming API tokens. This saves significant cost when screening large batches where many candidates don't meet minimum requirements.
+
 ### Static Scoring (Default)
 
 Predefined evaluation criteria with fixed prompts. You know exactly what
@@ -540,6 +551,7 @@ After running, the workbook contains a timestamped results sheet with:
 - **Per-candidate results**: Extracted profiles, scores per criterion, narrative assessments
 - **Scoring summary**: Composite scores with weighted aggregation
 - **Synthesis**: Cross-candidate ranking, comparison, and hiring recommendation
+- **Aborted candidates**: Candidates who failed the gate evaluation show `status: "aborted"` for downstream prompts
 
 For both static and planning scoring modes, a `scores_pivot` sheet provides a
 summary table with all criteria across all candidates. Each row is a

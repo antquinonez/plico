@@ -232,6 +232,9 @@ agent:
   max_tool_rounds: 5           # Max tool-call loop rounds
   tool_timeout: 30.0           # Seconds per tool execution
   continue_on_tool_error: true # Continue loop if a tool fails
+  validation:
+    enabled: true              # Enable response validation
+    max_retries: 2             # Max re-execution attempts on validation failure
 ```
 
 ### Per-Prompt Overrides
@@ -253,6 +256,9 @@ prompts:
 | `agent_mode` | `bool` | `false` | Enable agentic tool-call loop |
 | `tools` | `list[str]` | `[]` | Tool names to make available |
 | `max_tool_rounds` | `int` | From config | Override max rounds for this prompt |
+| `validation_prompt` | `str` | `null` | Criteria for response validation (requires `agent_mode: true`) |
+| `max_validation_retries` | `int` | From config | Override max validation retry attempts |
+| `abort_condition` | `str` | `null` | Post-execution condition; if true, aborts remaining prompts in scope |
 
 ### Result Columns
 
@@ -264,6 +270,10 @@ Agent-mode prompts produce additional columns in the output parquet:
 | `tool_calls` | `list[dict]` | Tool call records (name, arguments, result, duration_ms, error) |
 | `total_rounds` | `int` | Agentic loop rounds executed |
 | `total_llm_calls` | `int` | Total LLM API calls |
+| `validation_passed` | `bool or null` | Whether response passed validation (`null` if validation not enabled) |
+| `validation_attempts` | `int` | Number of validation attempts (0 if validation not enabled) |
+| `validation_critique` | `str or null` | Rejection reason from last failed validation |
+| `abort_trace` | `str or null` | Trace of abort condition evaluation (if abort triggered) |
 
 ---
 
@@ -323,6 +333,95 @@ Agent-mode prompts produce additional columns in the output parquet:
 
 ---
 
+## Response Validation
+
+Agent-mode prompts can opt into response validation — an automated quality gate that re-executes the agent loop if the response doesn't meet criteria.
+
+### How It Works
+
+1. After the agent loop completes, a separate validator LLM (isolated, `temperature=0.1`) evaluates the response against your `validation_prompt` criteria.
+2. The validator replies with `PASS` or `FAIL: <reason>`.
+3. On `FAIL`, the entire agent loop is re-executed with an augmented prompt that includes the rejected response and the failure reason.
+4. This repeats up to `max_validation_retries + 1` total attempts (default: 3).
+5. Results are recorded in `validation_passed`, `validation_attempts`, and `validation_critique`.
+
+### Example
+
+```yaml
+# prompts.yaml
+prompts:
+  - sequence: 1
+    prompt_name: calculate_result
+    prompt: "Calculate 2 + 3 * 4 using the available tools."
+    agent_mode: true
+    tools: ["calculate"]
+    validation_prompt: "The final response must be exactly the digits 14."
+    max_validation_retries: 2
+```
+
+### Configuration
+
+Global defaults in `config/main.yaml`:
+
+```yaml
+agent:
+  validation:
+    enabled: true       # Set false to skip validation even if validation_prompt is set
+    max_retries: 2      # Max re-execution attempts (3 total = 1 initial + 2 retries)
+```
+
+Per-prompt override: `max_validation_retries` field on the prompt entry.
+
+> **Note:** `validation_prompt` requires `agent_mode: true`. Setting `validation_prompt` without agent mode triggers a validation warning.
+
+---
+
+## Abort Conditions
+
+Any prompt (agent mode or single-shot) can define an `abort_condition` — a post-execution expression that, when true, short-circuits all remaining prompts in the current scope.
+
+Unlike `condition` (evaluated *before* execution to decide whether to run), `abort_condition` is evaluated *after* a prompt succeeds. If it evaluates to true, all remaining prompts are set to `status: "aborted"` with a configurable default response.
+
+### Example
+
+```yaml
+prompts:
+  - sequence: 10
+    prompt_name: gate_evaluation
+    prompt: |
+      Quick screening: does this candidate meet minimum requirements?
+      Return JSON: {"proceed": true/false, "reason": "..."}
+    agent_mode: true
+    tools: ["json_extract"]
+    abort_condition: 'json_get({{gate_evaluation.response}}, "proceed") == False'
+
+  - sequence: 20
+    prompt_name: detailed_evaluation
+    prompt: "Evaluate this candidate in depth."
+    # This prompt is aborted if gate_evaluation's abort_condition triggers
+```
+
+### Status Values
+
+| Status | Description |
+|--------|-------------|
+| `success` | Prompt executed successfully |
+| `failed` | Prompt execution failed (after retries) |
+| `skipped` | Pre-execution `condition` evaluated to false |
+| `aborted` | Upstream `abort_condition` triggered; prompt not executed |
+
+### Configuration
+
+The default response for aborted prompts is configured in `config/main.yaml`:
+
+```yaml
+orchestrator:
+  abort:
+    response_default: "-1"
+```
+
+---
+
 ## When to Use Agent Mode
 
 | Scenario | Agent Mode | Single-Shot |
@@ -333,5 +432,6 @@ Agent-mode prompts produce additional columns in the output parquet:
 | Fetch live data from URLs | Use `http_get` tool | N/A (not possible) |
 | Extract then transform JSON | Use `json_extract` tool | Use a single detailed prompt |
 | Mix of the above | Use multiple tools | Multiple chained prompts |
+| Quality gate on response | Use `validation_prompt` | Manual review |
 
-**Rule of thumb:** Use agent mode when the LLM needs to decide *which* tools to use and *when*. Use single-shot prompts when you already know the shape of the request.
+**Rule of thumb:** Use agent mode when the LLM needs to decide *which* tools to use and *when*. Use `validation_prompt` when the response must meet specific criteria. Use `abort_condition` when a prompt's result should short-circuit downstream work. Use single-shot prompts when you already know the shape of the request.

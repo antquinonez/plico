@@ -168,7 +168,7 @@ Results are written to a timestamped Parquet file:
 | `prompt` | Original prompt template as written (with `{{variable}}` placeholders intact) |
 | `resolved_prompt` | Fully-resolved prompt sent to the AI (all `{{}}` variables substituted, conversation history assembled) |
 | `response` | AI-generated response text |
-| `status` | `"success"`, `"failed"`, or `"skipped"` |
+| `status` | `"success"`, `"failed"`, `"skipped"`, or `"aborted"` |
 | `condition` | Condition expression (if any) |
 | `condition_result` | Evaluated condition value |
 | `error` | Error message (if failed) |
@@ -278,6 +278,9 @@ Each prompt entry is a node in the execution DAG.
 | `agent_mode` | `bool` | No | Enable agentic tool-call loop. Default: `false`. |
 | `tools` | `list[str]` | No | Tool names available to this prompt (from `tools.yaml`). |
 | `max_tool_rounds` | `int` | No | Maximum tool-call rounds. Default: from `config/main.yaml` (5). |
+| `validation_prompt` | `str` | No | Criteria for response validation. Requires `agent_mode: true`. |
+| `max_validation_retries` | `int` | No | Override max validation retry attempts. Default: from config (2). |
+| `abort_condition` | `str` | No | Post-execution condition; if true, aborts all remaining prompts in scope. |
 | `phase` | `str` | No | `"planning"` or `"execution"` (default). Planning prompts run before batch execution. |
 | `generator` | `bool` | No | Whether this planning prompt returns structured JSON artifacts. Default: `false`. |
 
@@ -481,6 +484,7 @@ Define evaluation criteria for extracting structured scores from LLM responses. 
 | `weight` | `float` | Yes | Base weight for aggregation |
 | `source_prompt` | `str` | Yes | Prompt name whose response contains this score |
 | `score_type` | `str` | No | Type hint for downstream use (e.g., `"normalized_score"` for pivot sheets) |
+| `weight_tier` | `str` | Auto | Categorical tier label auto-derived from weight (e.g., `tier_1`, `tier_2`) |
 
 **Important:** All criteria must share the same `scale_min` and `scale_max` (uniform scale, enforced by validation). Strategy-based weight overrides are configured in `config/main.yaml` under `evaluation.strategies`, not in the scoring sheet.
 
@@ -766,6 +770,59 @@ Conditions are parsed via Python's AST module with a strict whitelist — no `ev
 When a prompt is skipped (its condition evaluated to false), downstream prompts that reference it via `{{prompt_name.response}}` in their text will have those patterns replaced with an empty string in their `resolved_prompt`. The original template with `{{}}` placeholders is preserved in the `prompt` column.
 
 Example: if `force_ai_rewrite` is skipped, a prompt containing `{{force_ai_rewrite.response}}` will have that placeholder removed in `resolved_prompt` but kept in `prompt`.
+
+---
+
+## Abort Conditions
+
+Any prompt can define an `abort_condition` — a post-execution expression evaluated *after* the prompt succeeds. If it evaluates to true, all remaining prompts in the current scope (batch row, sequential run, or parallel group) are short-circuited with `status: "aborted"`.
+
+This differs from `condition`, which is evaluated *before* execution to decide whether to run the prompt at all.
+
+### Syntax
+
+Same expression language as `condition` (see [Conditional Execution](#conditional-execution)).
+
+### Example
+
+```yaml
+prompts:
+  - sequence: 10
+    prompt_name: "gate_evaluation"
+    prompt: |
+      Quick screen: does this meet minimum requirements?
+      Return JSON: {"proceed": true/false, "reason": "..."}
+    abort_condition: 'json_get({{gate_evaluation.response}}, "proceed") == False'
+
+  - sequence: 20
+    prompt_name: "detailed_analysis"
+    prompt: "Perform a detailed analysis."
+    # Aborted if gate_evaluation's abort_condition triggers
+
+  - sequence: 30
+    prompt_name: "final_report"
+    prompt: "Generate the final report."
+    # Also aborted
+```
+
+### Status Values
+
+| Status | Description |
+|--------|-------------|
+| `success` | Prompt executed successfully |
+| `failed` | Execution failed after retries |
+| `skipped` | Pre-execution `condition` was false |
+| `aborted` | Upstream `abort_condition` triggered |
+
+### Configuration
+
+Default response for aborted prompts (`config/main.yaml`):
+
+```yaml
+orchestrator:
+  abort:
+    response_default: "-1"
+```
 
 ---
 

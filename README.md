@@ -106,9 +106,9 @@ python scripts/run_orchestrator.py my_analysis.xlsx --explain
 python scripts/run_orchestrator.py my_analysis.xlsx -c 4
 
 # Option B: Export to manifest for execution
-python scripts/export_manifest.py my_analysis.xlsx
+python scripts/manifest_export.py my_analysis.xlsx
 # Creates: ./manifests/manifest_my_analysis/
-python scripts/run_manifest.py ./manifests/manifest_my_analysis/
+python scripts/manifest_run.py ./manifests/manifest_my_analysis/
 ```
 
 **When to use:** Non-developers, ad-hoc analysis, visual workflow design, stakeholders who live in spreadsheets.
@@ -462,6 +462,7 @@ Plico is declarative across multiple dimensions:
 | **Prompts** | Define what to ask, not how to chain | Automatic dependency resolution |
 | **Dependencies** | `history: ["context", "problem"]` | Context assembled automatically |
 | **Conditions** | `{{fetch.status}} == "success"` | Branching without imperative logic |
+| **Abort Conditions** | `abort_condition` on any prompt | Short-circuit downstream prompts post-execution |
 | **Batches** | Data rows with `{{variables}}` | Parallel batch execution |
 | **Clients** | Named configurations per prompt | Multi-model orchestration |
 | **Documents** | Reference names in prompts | Automatic injection/indexing |
@@ -665,7 +666,7 @@ prompts:
 The orchestrator builds a dependency DAG and executes independent prompts concurrently:
 
 ```bash
-python scripts/run_manifest.py ./manifests/my_workflow/ -c 4
+python scripts/manifest_run.py ./manifests/my_workflow/ -c 4
 ```
 
 ```
@@ -776,8 +777,9 @@ These columns map to `prompts.yaml` fields.
 | `prompt` | Original prompt template (with `{{}}` placeholders intact) |
 | `resolved_prompt` | Fully-resolved prompt sent to the AI (variables substituted, conversation history assembled) |
 | `response` | AI response text |
-| `status` | `success`, `failed`, or `skipped` |
+| `status` | `success`, `failed`, `skipped`, or `aborted` |
 | `error` / `attempts` / `condition` / `condition_result` | Execution details |
+| `condition_trace` / `extraction_trace` | Resolved condition expression and scoring extraction trace |
 | `input_tokens` / `output_tokens` / `total_tokens` | Token counts per prompt (all native and LiteLLM clients) |
 | `cost_usd` | Estimated cost in USD per prompt |
 | `duration_ms` | Wall-clock LLM call duration in milliseconds |
@@ -792,8 +794,8 @@ These columns map to `prompts.yaml` fields.
 4. **Run directly:** `python scripts/run_orchestrator.py analysis.xlsx -c 4`
    - Writes results to a timestamped workbook sheet
 5. **Or export + run manifest:**
-   - `python scripts/export_manifest.py analysis.xlsx`
-   - `python scripts/run_manifest.py ./manifests/manifest_analysis/`
+   - `python scripts/manifest_export.py analysis.xlsx`
+   - `python scripts/manifest_run.py ./manifests/manifest_analysis/`
 
 **Recommendation:** Use the manifest workflow for version control, code review, and repeatable runs.
 
@@ -822,12 +824,19 @@ For the full list of configured client types, see `config/clients.yaml.example`.
 
 ### Native Direct-API Clients
 
+Active clients (importable from `src.Clients`):
+
 | Client | Provider | SDK / Interface |
 |--------|----------|-----------------|
 | `FFMistral` / `FFMistralSmall` | Mistral AI | Mistral SDK (`mistralai`) |
-| `FFAnthropic` / `FFAnthropicCached` | Anthropic | Anthropic SDK with optional prompt caching |
 | `FFGemini` | Google Gemini | OpenAI-compatible via Vertex AI (`openai` + `google.auth`) |
 | `FFPerplexity` | Perplexity AI | OpenAI-compatible (`openai` pointed at `api.perplexity.ai`) |
+
+Archived clients (in `src/Clients/not_maintained/`, require direct import):
+
+| Client | Provider | SDK / Interface |
+|--------|----------|-----------------|
+| `FFAnthropic` / `FFAnthropicCached` | Anthropic | Anthropic SDK with optional prompt caching |
 | `FFNvidiaDeepSeek` | DeepSeek via NVIDIA NIM | OpenAI-compatible (`openai` pointed at NVIDIA NIM) |
 | `FFOpenAIAssistant` | OpenAI | OpenAI Assistants API (`openai` beta) |
 | `FFAzureMistral` / `FFAzureCodestral` / `FFAzurePhi` | Azure | Azure AI Inference SDK (`azure-ai-inference`) |
@@ -1046,11 +1055,16 @@ ffai = FFAI(client)
 ffai.generate_response("My name is Alice.", prompt_name="intro")
 ffai.generate_response("I like data science.", prompt_name="interest")
 
-ffai.generate_response(
+result = ffai.generate_response(
     "What do you know about me?",
     prompt_name="recall",
     history=["intro", "interest"]  # Automatically assembles context
 )
+
+# generate_response returns a ResponseResult dataclass
+print(result.response)       # The AI's response text
+print(result.usage)          # TokenUsage(input_tokens=50, output_tokens=25, total_tokens=75)
+print(f"${result.cost_usd:.6f}")  # Estimated cost
 ```
 
 ### Manifest Orchestration
@@ -1127,8 +1141,8 @@ Plico/
 │   ├── run_orchestrator.py            # Execute workbook directly
 │   ├── create_screening_workbook.py   # Create screening workbook from folder
 │   ├── create_screening_manifest.py   # Create screening manifest (YAML) from folder
-│   ├── export_manifest.py             # Convert workbook to manifest folder
-│   ├── run_manifest.py                # Execute manifest and write parquet
+│   ├── manifest_export.py            # Convert workbook to manifest folder
+│   ├── manifest_run.py               # Execute manifest and write parquet
 │   ├── inspect_parquet.py             # Inspect/export parquet results
 │   ├── parquet_to_excel.py            # Export parquet results to Excel workbook
 │   └── sample_workbooks/              # Shared builders and validators
@@ -1214,7 +1228,7 @@ The central configuration file. Key sections:
 | `workbook.defaults.api_key_env` | `"MISTRALSMALL_KEY"` | Default API key env var |
 | `workbook.defaults.max_retries` | `3` | Retry attempts per prompt |
 | `workbook.defaults.temperature` | `0.8` | Sampling temperature |
-| `workbook.defaults.max_tokens` | `4096` | Maximum response tokens |
+| `workbook.defaults.max_tokens` | `32000` | Maximum response tokens |
 
 **RAG** — retrieval-augmented generation settings:
 

@@ -256,8 +256,8 @@ scripts/
 ├── run_orchestrator.py        # Run Excel orchestrator
 ├── create_screening_workbook.py  # Create screening workbook from folder
 ├── create_screening_manifest.py  # Create screening manifest (YAML) from folder
-├── export_manifest.py         # Export workbook to YAML manifest
-├── run_manifest.py            # Run from manifest folder
+├── manifest_export.py         # Export workbook to YAML manifest
+├── manifest_run.py            # Run from manifest folder
 ├── inspect_parquet.py         # Inspect parquet results
 ├── parquet_to_excel.py        # Export parquet results to Excel workbook
 ├── sample_workbook_*_create_v001.py    # Workbook creation scripts
@@ -518,6 +518,9 @@ Enable agent mode by setting `agent_mode=true` in the prompts sheet and specifyi
 | `agent_mode` | Set to `true` to enable tool-call loop |
 | `tools` | JSON array of tool names (e.g., `["calculate", "json_extract"]`) |
 | `max_tool_rounds` | Max tool-call rounds (default from config, typically 5) |
+| `validation_prompt` | Criteria for response validation (requires `agent_mode=true`) |
+| `max_validation_retries` | Override max validation retry attempts (default from config: 2) |
+| `abort_condition` | Post-execution condition; if true, aborts all remaining prompts in scope |
 
 Tools are defined in a `tools` sheet with columns: `name`, `description`, `parameters` (JSON Schema), `implementation` (`builtin:<name>` or `python:<module.func>`), `enabled`.
 
@@ -539,6 +542,10 @@ Agent execution populates additional fields on the result:
 - `tool_calls`: List of tool call records (name, arguments, result, duration, errors)
 - `total_rounds`: Number of agentic loop rounds
 - `total_llm_calls`: Total LLM API calls within the loop
+- `validation_passed`: Whether response passed validation (`null` if not enabled)
+- `validation_attempts`: Number of validation attempts
+- `validation_critique`: Rejection reason from last failed validation
+- `abort_trace`: Trace of abort condition evaluation (if abort triggered)
 
 ### Condition Properties
 
@@ -558,7 +565,14 @@ agent:
   max_tool_rounds: 5
   tool_timeout: 30.0
   continue_on_tool_error: true
+  validation:
+    enabled: true
+    max_retries: 2
 ```
+
+### Abort Conditions
+
+Any prompt (agent mode or single-shot) can define `abort_condition` — a post-execution expression evaluated after the prompt succeeds. If true, all remaining prompts in scope are set to `status: "aborted"`. The abort response default is configurable: `orchestrator.abort.response_default: "-1"`.
 
 ## Planning Phase (Dynamic Prompt Generation)
 
