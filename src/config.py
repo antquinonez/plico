@@ -499,7 +499,7 @@ class PreScreeningConfig(BaseSettings):
     bm25_weight: float = 0.3
     embedding_weight: float = 0.7
     bm25_min_score: float = 0.0
-    bm25_min_overlap_ratio: float = 0.0
+    bm25_min_overlap_ratio: float = 0.05
     embedding_cache_size: int = 512
 
 
