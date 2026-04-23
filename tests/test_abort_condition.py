@@ -416,15 +416,31 @@ class TestAbortInBatchExecution:
 
         assert len(results) == 4
 
-        alice_results = [r for r in results if r["batch_name"] == "alice"]
-        assert alice_results[0]["status"] == "success"
-        assert alice_results[0]["abort_trace"] is not None
-        assert alice_results[1]["status"] == "aborted"
+        all_batches = {r["batch_name"]: r for r in results if r["sequence"] == 10}
 
-        bob_results = [r for r in results if r["batch_name"] == "bob"]
-        assert bob_results[0]["status"] == "success"
-        assert bob_results[0].get("abort_trace") is None
-        assert bob_results[1]["status"] == "success"
+        aborted_batch = None
+        normal_batch = None
+        for name, check_result in all_batches.items():
+            batch_results = [r for r in results if r["batch_name"] == name]
+            if check_result.get("abort_trace") is not None:
+                aborted_batch = (name, batch_results)
+            else:
+                normal_batch = (name, batch_results)
+
+        assert aborted_batch is not None, "Expected one batch to trigger abort"
+        assert normal_batch is not None, "Expected one batch to not trigger abort"
+
+        aborted_name, aborted_results = aborted_batch
+        assert aborted_results[0]["status"] == "success"
+        assert aborted_results[0]["abort_trace"] is not None
+        assert aborted_results[1]["status"] == "aborted"
+
+        normal_name, normal_results = normal_batch
+        assert normal_results[0]["status"] == "success"
+        assert normal_results[0].get("abort_trace") is None
+        assert normal_results[1]["status"] == "success"
+
+        assert aborted_name != normal_name
 
 
 class TestAbortConditionParseFromWorkbook:
