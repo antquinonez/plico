@@ -148,6 +148,7 @@ src/
 │   ├── document_registry.py   # Document reference management
 │   ├── document_processor.py  # Document loading and caching
 │   ├── discovery.py           # Auto-discovery of documents for evaluation
+│   ├── pre_screener.py        # Embedding-based resume pre-screening and ranking
 │   ├── planning.py            # Planning phase artifact parsing and validation
 │   ├── planning_runner.py     # Planning phase execution and injection
 │   ├── scoring.py             # Scoring rubric extraction and aggregation
@@ -220,6 +221,7 @@ tests/
 ├── test_planning_artifact_parser.py  # Planning artifact parser unit tests
 ├── test_synthesis.py          # Cross-row synthesis tests
 ├── test_discovery.py          # Auto-discovery utility tests
+├── test_pre_screener.py       # Pre-screening ranking tests
 ├── test_rag.py                # RAG client tests
 ├── test_rag_chunkers.py       # Chunking strategy tests
 ├── test_rag_search.py         # Search strategy tests
@@ -880,6 +882,40 @@ orchestrator = ManifestOrchestrator(
 orchestrator.run()
 ```
 
+### Pre-Screening (Cost Reduction)
+
+Embedding-based resume ranking filters candidates before the expensive LLM pipeline. Two-tier scoring: BM25 keyword matching on extracted named entities, then dense embedding cosine similarity. Combined with configurable weights (default 30/70 BM25/embedding).
+
+```bash
+# Pre-screen top 20 resumes before LLM evaluation
+python scripts/create_screening_manifest.py ./resumes/ --jd ./jd.md --pre-screen 20
+
+# Pre-screen top 10 with planning mode
+python scripts/create_screening_manifest.py ./resumes/ --jd ./jd.md --pre-screen 10 --planning
+
+# Use default top_k from config (20)
+python scripts/create_screening_manifest.py ./resumes/ --jd ./jd.md --pre-screen
+
+# Shell script with pre-screening
+./convenience/screening_manifest.sh --pre-screen 10 small
+```
+
+**Configuration (`config/main.yaml`):**
+
+```yaml
+pre_screening:
+  top_k: 20
+  embedding_model: "mistral/mistral-embed"
+  bm25_weight: 0.3
+  embedding_weight: 0.7
+  min_entity_overlap: 0
+  max_text_length: 8000
+  embedding_batch_size: 20
+  embedding_cache_size: 1000
+```
+
+**Outputs:** `data.yaml` (top-K batch rows), `documents.yaml` (top-K document refs), `pre_screening_report.yaml` (full ranking with scores).
+
 ## Manifest Workflow
 
 **For comprehensive manifest documentation, see [MANIFEST_README.md](./MANIFEST_README.md)**
@@ -1190,7 +1226,7 @@ Add false positives to `vulture_whitelist.py` with a `# noqa: V103` comment expl
 
 ### config/main.yaml
 
-Core application settings: workbook sheet names, orchestrator settings, document processor config, RAG settings.
+Core application settings: workbook sheet names, orchestrator settings, document processor config, RAG settings, pre-screening config.
 
 ### config/paths.yaml
 

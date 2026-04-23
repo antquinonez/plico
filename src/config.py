@@ -66,6 +66,7 @@ def _load_all_configs() -> dict[str, Any]:
         "model_defaults": _load_yaml_file("model_defaults.yaml").get("model_defaults", {}),
         "sample": _load_yaml_file("sample_workbook.yaml").get("sample_workbooks", {}),
         "observability": _load_yaml_file("main.yaml").get("observability", {}),
+        "pre_screening": _load_yaml_file("main.yaml").get("pre_screening", {}),
     }
 
 
@@ -489,6 +490,19 @@ class ObservabilityConfig(BaseSettings):
     cost_tracking: bool = True
 
 
+class PreScreeningConfig(BaseSettings):
+    """Pre-screening configuration for embedding-based resume ranking."""
+
+    enabled: bool = True
+    embedding_model: str = "mistral/mistral-embed"
+    top_k: int = 20
+    bm25_weight: float = 0.3
+    embedding_weight: float = 0.7
+    bm25_min_score: float = 0.0
+    bm25_min_overlap_ratio: float = 0.0
+    embedding_cache_size: int = 512
+
+
 class Config(BaseSettings):
     """Main configuration class."""
 
@@ -512,6 +526,7 @@ class Config(BaseSettings):
     model_defaults: ModelDefaultsConfig = Field(default_factory=ModelDefaultsConfig)
     sample: SampleConfig = Field(default_factory=SampleConfig)
     observability: ObservabilityConfig = Field(default_factory=ObservabilityConfig)
+    pre_screening: PreScreeningConfig = Field(default_factory=PreScreeningConfig)
 
     @model_validator(mode="before")
     @classmethod
