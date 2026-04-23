@@ -351,6 +351,9 @@ Agent mode is configured in the workbook `prompts` sheet:
 | `agent_mode` | `true` / `false` | Enable tool-call loop |
 | `tools` | JSON array | Tool names to use |
 | `max_tool_rounds` | integer | Max rounds (default from config) |
+| `validation_prompt` | text | Criteria for response validation (requires `agent_mode`) |
+| `max_validation_retries` | integer | Override max validation retries (default from config: 2) |
+| `abort_condition` | expression | Post-execution condition; if true, aborts remaining prompts |
 
 ### Built-in Tools
 
@@ -373,6 +376,9 @@ When agent mode is used, the result includes:
 | `tool_calls` | list | List of tool call records |
 | `total_rounds` | int | Number of agentic loop rounds |
 | `total_llm_calls` | int | Total LLM API calls |
+| `validation_passed` | bool or null | Whether response passed validation |
+| `validation_attempts` | int | Number of validation attempts |
+| `validation_critique` | str or null | Rejection reason from last failed validation |
 
 These properties are also accessible in conditional expressions:
 ```

@@ -80,6 +80,7 @@ Prompt definitions with optional dependencies, client selection, document refere
 | `client` | Named client from `clients` sheet | No |
 | `references` | JSON array of document reference names | No |
 | `condition` | Conditional expression for execution | No |
+| `abort_condition` | Post-execution condition; if true, aborts remaining prompts | No |
 | `semantic_query` | RAG search query for relevant chunks | No |
 | `semantic_filter` | JSON metadata filter for RAG search | No |
 | `query_expansion` | Enable multi-query retrieval (`true`/`false`) | No |
@@ -270,7 +271,7 @@ Batch execution allows running the same prompt chain multiple times with differe
 | `history` | Dependencies |
 | `client` | Client used |
 | `response` | AI response |
-| `status` | `success`, `failed`, or `skipped` |
+| `status` | `success`, `failed`, `skipped`, or `aborted` |
 | `attempts` | Retry attempts |
 | `error` | Error message if failed |
 
@@ -527,6 +528,9 @@ Add an `agent_mode` column and a `tools` column to your prompts sheet:
 | `agent_mode` | `true` / `false` | Enable tool-call loop for this prompt |
 | `tools` | JSON array | Tool names to make available |
 | `max_tool_rounds` | integer | Max tool-call rounds (default from config) |
+| `validation_prompt` | text | Criteria for response validation (requires `agent_mode`) |
+| `max_validation_retries` | integer | Override max validation retries (default from config: 2) |
+| `abort_condition` | expression | Post-execution condition; if true, aborts remaining prompts |
 
 **Example prompts sheet:**
 
@@ -568,6 +572,10 @@ Agent execution populates additional fields on the result:
 | `tool_calls` | List of tool call records |
 | `total_rounds` | Number of agentic loop rounds |
 | `total_llm_calls` | Total LLM API calls within the loop |
+| `validation_passed` | Whether response passed validation (`null` if not enabled) |
+| `validation_attempts` | Number of validation attempts |
+| `validation_critique` | Rejection reason from last failed validation |
+| `abort_trace` | Trace of abort condition evaluation (if triggered) |
 
 ### Configuration (`config/main.yaml`)
 
@@ -577,6 +585,19 @@ agent:
   max_tool_rounds: 5
   tool_timeout: 30.0
   continue_on_tool_error: true
+  validation:
+    enabled: true
+    max_retries: 2
+```
+
+### Abort Conditions
+
+Any prompt can define an `abort_condition` — a post-execution expression evaluated after the prompt succeeds. If it evaluates to true, all remaining prompts in the current scope are set to `status: "aborted"`. Unlike `condition` (evaluated before execution), `abort_condition` is evaluated after.
+
+```yaml
+orchestrator:
+  abort:
+    response_default: "-1"
 ```
 
 ---
@@ -889,6 +910,23 @@ Results are written to parquet files with timestamped names:
 | `semantic_filter` | String | RAG metadata filter |
 | `query_expansion` | String | Query expansion enabled |
 | `rerank` | String | Reranking enabled |
+| `resolved_prompt` | String | Fully-resolved prompt sent to AI |
+| `condition_trace` | String | Resolved condition expression with values |
+| `extraction_trace` | String | Scoring extraction trace (JSON) |
+| `abort_trace` | String | Abort condition trace (if triggered) |
+| `validation_passed` | Bool | Validation result (null if not enabled) |
+| `validation_attempts` | Int64 | Validation retry count |
+| `validation_critique` | String | Validation rejection reason |
+| `input_tokens` | Int64 | Tokens in prompt sent to model |
+| `output_tokens` | Int64 | Tokens in model response |
+| `total_tokens` | Int64 | Sum of input + output |
+| `cost_usd` | Float | Estimated cost in USD |
+| `duration_ms` | Float | Wall-clock LLM call duration (ms) |
+| `scores` | String | Extracted scores per criteria (JSON) |
+| `composite_score` | Float | Weighted average score |
+| `scoring_status` | String | `ok`, `partial`, `failed`, or `skipped` |
+| `strategy` | String | Evaluation strategy name |
+| `result_type` | String | `batch`, `synthesis`, or `planning` |
 
 ### Inspect Parquet Command
 
@@ -1044,7 +1082,7 @@ After execution, a new sheet is added to the workbook with a timestamped name (e
 | `condition_result` | Result of condition evaluation |
 | `condition_error` | Error if condition evaluation failed |
 | `response` | AI response |
-| `status` | `success`, `failed`, or `skipped` |
+| `status` | `success`, `failed`, `skipped`, or `aborted` |
 | `attempts` | Number of retry attempts |
 | `error` | Error message (if failed) |
 | `references` | Document references (JSON array) |
@@ -1052,6 +1090,14 @@ After execution, a new sheet is added to the workbook with a timestamped name (e
 | `semantic_filter` | RAG metadata filter (JSON) |
 | `query_expansion` | Whether query expansion was enabled |
 | `rerank` | Whether reranking was enabled |
+| `condition_trace` | Resolved condition expression with values |
+| `extraction_trace` | Scoring extraction trace |
+| `abort_trace` | Abort condition trace (if triggered) |
+| `input_tokens` | Tokens in prompt sent to model |
+| `output_tokens` | Tokens in model response |
+| `total_tokens` | Sum of input + output |
+| `cost_usd` | Estimated cost in USD |
+| `duration_ms` | Wall-clock LLM call duration |
 
 ---
 
@@ -1269,7 +1315,7 @@ make max
 | `inv screening.inspect` | Inspect screening results |
 
 ### Options
-- Execution status (success/failed/skipped)
+- Execution status (success/failed/skipped/aborted)
 - Dependency chain resolution
 - Condition evaluation results
 - Client assignment (for multiclient)

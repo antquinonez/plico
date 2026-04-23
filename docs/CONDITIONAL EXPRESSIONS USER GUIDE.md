@@ -43,6 +43,7 @@ The `condition` column is optional and can be added to any prompts sheet:
 | `history` | No | JSON array of prompt_name dependencies |
 | `client` | No | Named client from `clients` sheet |
 | `condition` | No | Expression determining if prompt should execute |
+| `abort_condition` | No | Post-execution condition; if true, aborts remaining prompts in scope |
 
 ### Execution Flow
 
@@ -95,7 +96,7 @@ Access previous prompt results using double-brace syntax:
 
 | Property | Type | Values | Description |
 |----------|------|--------|-------------|
-| `status` | string | `"success"`, `"failed"`, `"skipped"` | Execution status of the prompt |
+| `status` | string | `"success"`, `"failed"`, `"skipped"`, `"aborted"` | Execution status of the prompt |
 | `response` | string | Any text | The AI's response text (empty string if none) |
 | `attempts` | int | 0, 1, 2, ... | Number of retry attempts made |
 | `error` | string | Error message or empty string | Error message if the prompt failed |
@@ -105,6 +106,8 @@ Access previous prompt results using double-brace syntax:
 | `last_tool_name` | string | Tool name or empty string | Name of last tool called |
 | `total_rounds` | int | 0, 1, 2, ... | Number of rounds in agentic loop |
 | `total_llm_calls` | int | 0, 1, 2, ... | Total LLM API calls within agent loop |
+| `validation_passed` | bool or null | `true`, `false`, `null` | Whether response passed validation |
+| `validation_attempts` | int | 0, 1, 2, ... | Number of validation attempts |
 
 ### Comparison Operators
 
