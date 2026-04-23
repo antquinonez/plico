@@ -1,16 +1,39 @@
 #!/usr/bin/env bash
 set -euo pipefail
-SIZE="${1:-}"
-case "$SIZE" in
-  small)  RESUMES="./library/resumes_small/" ;;
-  medium) RESUMES="./library/resumes_medium/" ;;
-  "")     RESUMES="./library/resumes/" ;;
-  *)
-    echo "Usage: $0 [small|medium]"
-    echo "  (no argument = full resume set)"
-    exit 1
-    ;;
-esac
+RESUMES="./library/resumes/"
+PRESCREEN_FLAG=""
+
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    small|medium)
+      if [ "$1" = "small" ]; then RESUMES="./library/resumes_small/"; fi
+      if [ "$1" = "medium" ]; then RESUMES="./library/resumes_medium/"; fi
+      shift
+      ;;
+    --pre-screen)
+      PRESCREEN_FLAG="--pre-screen"
+      shift
+      if [[ $# -gt 0 ]] && [[ ! "$1" =~ ^- ]]; then
+        PRESCREEN_FLAG="--pre-screen $1"
+        shift
+      fi
+      ;;
+    *)
+      echo "Usage: $0 [small|medium] [--pre-screen [N]]"
+      echo ""
+      echo "Resume set:"
+      echo "  (no argument)      Full set (library/resumes/)"
+      echo "  small              Small set (library/resumes_small/)"
+      echo "  medium             Medium set (library/resumes_medium/)"
+      echo ""
+      echo "Pre-screening:"
+      echo "  --pre-screen       Enable pre-screening with config default (20)"
+      echo "  --pre-screen 10    Enable pre-screening with custom top-K"
+      exit 1
+      ;;
+  esac
+done
+
 WORKBOOK="screening_$(date +%Y%m%d%H%M%S).xlsx"
 python scripts/create_screening_workbook.py "./$WORKBOOK" \
   --jd ./library/job_descriptions/Sample_JD_Google_Data_Engineer.md \
@@ -18,5 +41,7 @@ python scripts/create_screening_workbook.py "./$WORKBOOK" \
   --planning \
   --planning-client litellm-mistral-large \
   --planning-prompts screening_skills_planning \
-  --synthesis-prompts screening_synthesis
+  --synthesis-prompts screening_synthesis \
+  $PRESCREEN_FLAG
+
 python scripts/run_orchestrator.py "./$WORKBOOK" -c 5

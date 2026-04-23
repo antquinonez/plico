@@ -85,6 +85,34 @@ class TestExtractEntities:
         assert "We" not in result
         assert "Knowledge" not in result
 
+    def test_technology_names_with_symbols(self):
+        from src.orchestrator.pre_screener import extract_entities
+
+        result = extract_entities("Proficient in C++, C#, .NET, and Node.js")
+        assert "C++" in result
+        assert "C#" in result
+        assert ".NET" in result
+        assert "Node.js" in result
+
+    def test_resume_noise_words_filtered(self):
+        from src.orchestrator.pre_screener import extract_entities
+
+        text = "Senior Development Engineering Manager at Company University"
+        result = extract_entities(text)
+        assert "Senior" not in result
+        assert "Development" not in result
+        assert "Engineering" not in result
+        assert "Manager" not in result
+        assert "Company" not in result
+        assert "University" not in result
+
+    def test_months_filtered(self):
+        from src.orchestrator.pre_screener import extract_entities
+
+        result = extract_entities("Started January 2020, promoted March 2021")
+        assert "January" not in result
+        assert "March" not in result
+
 
 class TestRankedResume:
     """Tests for RankedResume dataclass."""

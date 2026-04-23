@@ -990,6 +990,30 @@ The manifest is created without `data.yaml` or `documents.yaml` — those are
 injected at runtime via `--resumes-path` and `--jd`. This means the same
 manifest can screen different resume folders against different job descriptions.
 
+### Pre-Screening
+
+Use `--pre-screen [N]` to filter resumes via embedding similarity before
+creating the manifest. Only the top-K candidates are baked into `data.yaml`
+and `documents.yaml`, reducing LLM costs for large resume folders.
+
+```bash
+# Pre-screen top 20 resumes before creating manifest
+python scripts/create_screening_manifest.py ./manifests/manifest_screening \
+    --resumes-path ./resumes/ --jd ./jd.md --pre-screen 20
+
+# Pre-screen with planning mode
+python scripts/create_screening_manifest.py ./manifests/manifest_screening \
+    --resumes-path ./resumes/ --jd ./jd.md --planning --pre-screen 10
+```
+
+This produces `data.yaml`, `documents.yaml` (with filtered subset), and
+`pre_screening_report.yaml` (full ranking for all candidates). Since
+candidates are baked in, run without `--documents-path`:
+
+```bash
+python scripts/manifest_run.py ./manifests/manifest_screening -c 5
+```
+
 For full documentation, see [USE_CASES/resume_screening.md](../USE_CASES/resume_screening.md).
 
 ---
@@ -1422,6 +1446,9 @@ python scripts/manifest_export.py ./workbook.xlsx
 
 # Create screening manifest from folder (YAML-only, no baked data)
 python scripts/create_screening_manifest.py --resumes-path ./resumes/ --jd ./jd.md
+
+# Create screening manifest with pre-screening (top-20 baked in)
+python scripts/create_screening_manifest.py --resumes-path ./resumes/ --jd ./jd.md --pre-screen 20
 
 # Run manifest (outputs to ./outputs/<manifest_name>/<timestamp>.parquet)
 python scripts/manifest_run.py ./manifests/manifest_name/ -c 4

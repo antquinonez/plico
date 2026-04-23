@@ -381,6 +381,39 @@ When a rate limit or transient error occurs:
 - For free tier quotas, lower concurrency or use LiteLLM client (has built-in retry)
 - Wait 60s between runs to resets quota
 
+### Pre-Screening (`main.yaml`)
+
+Embedding-based resume ranking for cost reduction. Filters a folder of
+resumes down to a top-K subset before the expensive LLM evaluation phase.
+
+```yaml
+pre_screening:
+  enabled: true
+  embedding_model: "mistral/mistral-embed"
+  top_k: 20
+  bm25_weight: 0.3
+  embedding_weight: 0.7
+  bm25_min_score: 0.0
+  bm25_min_overlap_ratio: 0.0
+  embedding_cache_size: 512
+```
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `enabled` | `true` | Enable pre-screening |
+| `embedding_model` | `mistral/mistral-embed` | LiteLLM model string for embeddings |
+| `top_k` | `20` | Number of candidates to keep after filtering |
+| `bm25_weight` | `0.3` | Weight for BM25 keyword matching score |
+| `embedding_weight` | `0.7` | Weight for dense embedding cosine similarity |
+| `bm25_min_score` | `0.0` | Minimum BM25 score to pass Tier 1 |
+| `bm25_min_overlap_ratio` | `0.0` | Minimum entity overlap ratio to pass Tier 1 |
+| `embedding_cache_size` | `512` | LRU cache size for embedding lookups |
+
+Two-tier pipeline: Tier 1 uses BM25 keyword matching on extracted named
+entities; Tier 2 uses dense embedding cosine similarity. Scores are
+combined with configurable weights. Override `top_k` via CLI:
+`--pre-screen 10`.
+
 ### Model Defaults (`model_defaults.yaml`)
 
 ```yaml

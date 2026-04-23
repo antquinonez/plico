@@ -28,12 +28,16 @@ from .document_processor import DocumentProcessor
 logger = logging.getLogger(__name__)
 
 _ENTITY_RE = re.compile(
-    r"\b(?:"
+    r"(?:"
     r"[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+"  # multi-word: "Google Cloud Platform"
     r"|[A-Z][a-z]+[A-Z][A-Za-z]*"  # camelCase: "BigQuery", "JavaScript"
     r"|[A-Z]{2,}"  # acronyms: "GCP", "SQL"
+    r"|[A-Z]\+\+"  # C++, F++
+    r"|[A-Z]#"  # C#, F#
+    r"|\.NET"  # .NET
+    r"|[A-Z][a-z]+\.js"  # Node.js, Vue.js, React.js
     r"|[A-Z][a-z]+"  # single capitalized: "Python"
-    r")\b"
+    r")(?=\b|[^a-zA-Z0-9]|$)"
 )
 
 _STOPWORDS = frozenset(
@@ -124,6 +128,66 @@ _STOPWORDS = frozenset(
         "Looking",
         "Required",
         "Preferred",
+        "Senior",
+        "Junior",
+        "Lead",
+        "Manager",
+        "Director",
+        "Coordinator",
+        "Specialist",
+        "Analyst",
+        "Consultant",
+        "Associate",
+        "Assistant",
+        "Executive",
+        "Intern",
+        "Team",
+        "Group",
+        "Department",
+        "Division",
+        "Company",
+        "Organization",
+        "Corporation",
+        "University",
+        "College",
+        "Institute",
+        "Development",
+        "Engineering",
+        "Management",
+        "Operations",
+        "Research",
+        "Design",
+        "Analysis",
+        "Strategy",
+        "Planning",
+        "Implementation",
+        "Maintenance",
+        "Support",
+        "Service",
+        "Services",
+        "Solutions",
+        "Systems",
+        "Platform",
+        "Platforms",
+        "Technology",
+        "Technologies",
+        "Product",
+        "Products",
+        "Project",
+        "Projects",
+        "Program",
+        "Programs",
+        "January",
+        "February",
+        "March",
+        "April",
+        "June",
+        "July",
+        "August",
+        "September",
+        "October",
+        "November",
+        "December",
     }
 )
 
