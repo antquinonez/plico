@@ -17,6 +17,9 @@ inv screening.run --resumes-path ./resumes/ --jd ./jd.md
 #    Or create a manifest and run it (no Excel intermediary)
 inv screening.manifest --resumes-path ./resumes/ --jd ./jd.md
 
+#    Pre-screen top 20 resumes before expensive LLM evaluation
+inv screening.manifest --resumes-path ./resumes/ --jd ./jd.md --pre-screen 20
+
 # 3. Results are written into the workbook (Excel) or parquet (Manifest)
 ```
 
@@ -72,6 +75,53 @@ giving you control over what gets baked in vs injected at runtime.
 
 `--resumes-path` on the manifest script is optional and used only for sizing
 the synthesis `top_n` count. Resumes are always injected at runtime.
+
+### Pre-Screening (Cost Reduction)
+
+Both creation scripts accept `--pre-screen N` (required integer) to filter
+resumes before baking them into the workbook or manifest. This reduces LLM
+costs by only evaluating the top-N candidates instead of the full folder.
+
+Two-tier pipeline: Tier 1 is a **hard exclusion** gate using BM25 keyword
+matching on extracted named entities — candidates below the minimum score or
+overlap threshold are removed entirely. Tier 2 uses dense embedding cosine
+similarity to rank survivors, with BM25 and embedding scores combined using
+configurable weights (default 30/70 BM25/embedding).
+
+```bash
+# Workbook: pre-screen top 20, bake filtered set into .xlsx
+python scripts/create_screening_workbook.py ./screening.xlsx \
+    --resumes-path ./resumes/ --jd ./jd.md --planning --pre-screen 20
+
+# Manifest: pre-screen top 10, bake filtered set into data.yaml
+python scripts/create_screening_manifest.py ./manifests/manifest_screening \
+    --resumes-path ./resumes/ --jd ./jd.md --planning --pre-screen 10
+```
+
+Pre-screening is a **creation-time** filter — it runs before the workbook
+or manifest is created. The `run_orchestrator.py` and `manifest_run.py`
+scripts do not need (or accept) `--pre-screen`; they simply execute
+whatever candidates are in the artifact.
+
+For runtime injection modes (templates without baked-in resumes), control
+filtering by curating the folder contents before running.
+
+**Configuration (`config/main.yaml`):**
+
+```yaml
+pre_screening:
+  enabled: true
+  embedding_model: "mistral/mistral-embed"
+  bm25_weight: 0.3
+  embedding_weight: 0.7
+  bm25_min_score: 0.0
+  bm25_min_overlap_ratio: 0.05
+  embedding_cache_size: 512
+```
+
+**Outputs:** In addition to the workbook or manifest files, a
+`pre_screening_report.yaml` is written alongside the artifact containing
+the full ranking with scores for all candidates (not just the top-K).
 
 ---
 
@@ -359,6 +409,7 @@ python scripts/create_screening_workbook.py <output_path> [options]
 | `--client` | No | config default | Client type from `config/clients.yaml` |
 | `--system-instructions` | No | recruiter prompt | System instructions for AI |
 | `--evaluation-strategy` | No | `balanced` | Scoring strategy name |
+| `--pre-screen` | No | — | Pre-screen top-N resumes via embeddings (N required, e.g. `--pre-screen 10`) |
 | `--verbose` | No | off | Enable verbose output |
 
 **Examples:**
@@ -380,6 +431,10 @@ python scripts/create_screening_workbook.py ./screening.xlsx \
 # Template with JD baked in (resumes injected at runtime)
 python scripts/create_screening_workbook.py ./template.xlsx \
     --jd ./jd.md
+
+# Pre-screen top 10 resumes before baking in
+python scripts/create_screening_workbook.py ./screening.xlsx \
+    --resumes-path ./resumes/ --jd ./jd.md --pre-screen 10
 
 # Generic template (nothing baked in)
 python scripts/create_screening_workbook.py ./template.xlsx
@@ -407,6 +462,7 @@ python scripts/create_screening_manifest.py [output_dir] [options]
 | `--client` | No | config default | Client type from `config/clients.yaml` |
 | `--system-instructions` | No | recruiter prompt | System instructions for AI |
 | `--evaluation-strategy` | No | `balanced` | Scoring strategy name |
+| `--pre-screen` | No | — | Pre-screen top-N resumes via embeddings (N required, bakes into `data.yaml`) |
 | `--verbose` | No | off | Enable verbose output |
 
 **Examples:**
@@ -426,6 +482,10 @@ python scripts/create_screening_manifest.py ./manifests/my_screening \
 # Skills-based planning (per-skill decomposition)
 python scripts/create_screening_manifest.py ./manifests/my_screening \
     --jd ./jd.md --planning --planning-prompts screening_skills_planning
+
+# Pre-screen top 20 resumes before creating manifest
+python scripts/create_screening_manifest.py ./manifests/my_screening \
+    --resumes-path ./resumes/ --jd ./jd.md --pre-screen 20
 ```
 
 ### `run_orchestrator.py` (with discovery flags)
@@ -517,6 +577,9 @@ inv screening.run --resumes-path ./resumes/ --jd ./jd.md --planning
 
 # Create + run with planning phase (Manifest)
 inv screening.manifest --resumes-path ./resumes/ --jd ./jd.md --planning
+
+# Pre-screen top 20 resumes before LLM evaluation
+inv screening.manifest --resumes-path ./resumes/ --jd ./jd.md --pre-screen 20
 
 # Just create (don't run)
 inv screening.create --resumes-path ./resumes/ --jd ./jd.md --output ./my_screen.xlsx
@@ -679,35 +742,47 @@ resumes/               job_descriptions/
         v                      v
    discover_documents()   _resolve_shared_document()
         │                      │
-        │  reference_name      │  reference_name (derived
-        │  common_name         │    from filename stem,
-        │  file_path           │    e.g. "senior_engineer")
+        │                      │  reference_name (derived
+        │                      │    from filename stem,
+        │                      │    e.g. "senior_engineer")
         │                      │  file_path (absolute)
         │                      │  tags="shared"
         │                      │
         v                      v
-   create_data_rows_        Shared doc
-   from_documents()         (available to all
-   (one row per resume       prompts, not bound
-    with _documents          to any data row)
-    column binding)                │
-        │                          │
-         v                          v
-    ┌──────────────────────────────────────────────────────┐
-    │  OrchestratorBase._inject_discovery_overrides()       │
-    │                                                        │
-    │  1. Load workbook sheets OR manifest YAML files        │
-    │  2. If documents_path: discover & inject docs + data   │
-    │  3. If shared_document_path: inject as shared doc      │
-    │  4. Merge with any source docs                        │
-    │  5. Run validation + execution                        │
-    └──────────────────────────────────────────────────────┘
+   [--pre-screen N]          Shared doc
+   ResumePreScreener       (available to all
+   .rank_resumes()          prompts, not bound
+   → (ranked, excluded)     to any data row)
+   .filter_to_top_k()
+        │                         │
+        v                         │
+   create_data_rows_              │
+   from_documents()               │
+   (one row per resume            │
+    with _documents               │
+    column binding)               │
+        │                         │
+        v                         v
+   ┌──────────────────────────────────────────────────────┐
+   │  OrchestratorBase._inject_discovery_overrides()       │
+   │                                                        │
+   │  1. Load workbook sheets OR manifest YAML files        │
+   │  2. If documents_path: discover & inject docs + data   │
+   │  3. If shared_document_path: inject as shared doc      │
+   │  4. Merge with any source docs                        │
+   │  5. Run validation + execution                        │
+   └──────────────────────────────────────────────────────┘
 
-    Shared by both ExcelOrchestrator and ManifestOrchestrator.
+   Shared by both ExcelOrchestrator and ManifestOrchestrator.
 ```
 
 Key points:
 
+- `--pre-screen N` (N required) filters discovered resumes via a two-tier
+  pipeline: BM25 hard exclusion (removes candidates below threshold), then
+  embedding similarity ranking of survivors. Only the top-N proceed to LLM
+  evaluation. This is a creation-time filter on `create_screening_workbook.py`
+  and `create_screening_manifest.py`.
 - `--shared-document` creates a document with a `reference_name` derived
   from the filename (e.g., `senior_engineer.md` → `senior_engineer`).
   Use `--shared-document-name` to override (e.g., `--shared-document-name

@@ -65,6 +65,7 @@ from src.orchestrator.discovery import (
     create_data_rows_from_documents,
     discover_documents,
 )
+from src.orchestrator.pre_screener import ResumePreScreener
 
 load_dotenv()
 
@@ -154,6 +155,15 @@ def main() -> int:
         help="Custom synthesis prompt template (name in config/prompts/ or file path). "
         "Default: config/prompts/screening_synthesis.yaml",
     )
+    parser.add_argument(
+        "--pre-screen",
+        type=int,
+        default=None,
+        metavar="N",
+        help="Enable embedding-based pre-screening to rank and filter resumes "
+        "before baking them into the workbook. Reduces LLM costs by only evaluating "
+        "top-N candidates. Requires an explicit N value (e.g., --pre-screen 10).",
+    )
 
     args = parser.parse_args()
 
@@ -163,6 +173,12 @@ def main() -> int:
         print("Warning: --planning-client has no effect without --planning.\n")
     if args.static_prompts and args.planning:
         print("Warning: --static-prompts has no effect with --planning (use --planning-prompts).\n")
+    if args.pre_screen is not None and not args.jd:
+        print("Error: --pre-screen requires --jd (need JD text for embedding comparison).\n")
+        return 1
+    if args.pre_screen is not None and not args.resumes_path:
+        print("Error: --pre-screen requires --resumes-path.\n")
+        return 1
 
     if not args.resumes_path and not args.jd:
         print("Note: Neither --resumes-path nor --jd provided.")
@@ -196,6 +212,7 @@ def main() -> int:
     all_documents: list[dict[str, str | list[str]]] = []
     data_rows: list[dict[str, str | int]] = []
     resume_docs: list[dict[str, str | list[str]]] = []
+    pre_screen_report = None
 
     if args.jd:
         jd_doc = create_jd_document(args.jd)
@@ -215,6 +232,67 @@ def main() -> int:
             return 1
 
         print(f"  Discovered {len(resume_docs)} documents")
+
+        if args.pre_screen is not None:
+            if args.pre_screen <= 0:
+                print(
+                    "Error: --pre-screen requires a positive integer value (e.g., --pre-screen 10).\n"
+                )
+                return 1
+            top_k = args.pre_screen
+            print(f"\n  Pre-screening enabled (top-{top_k} of {len(resume_docs)})")
+            print(f"  Embedding model: {config.pre_screening.embedding_model}")
+            print(
+                f"  Weights: BM25={config.pre_screening.bm25_weight}, "
+                f"embedding={config.pre_screening.embedding_weight}"
+            )
+
+            from pathlib import Path
+
+            jd_text = Path(args.jd).read_text(encoding="utf-8")
+
+            pre_screener = ResumePreScreener(
+                embedding_model=config.pre_screening.embedding_model,
+                bm25_weight=config.pre_screening.bm25_weight,
+                embedding_weight=config.pre_screening.embedding_weight,
+                bm25_min_score=config.pre_screening.bm25_min_score,
+                bm25_min_overlap_ratio=config.pre_screening.bm25_min_overlap_ratio,
+                embedding_cache_size=config.pre_screening.embedding_cache_size,
+            )
+            ranked, bm25_excluded = pre_screener.rank_resumes(
+                jd_text, args.resumes_path, extensions=extensions
+            )
+            filtered = pre_screener.filter_to_top_k(ranked, top_k)
+            filtered_doc_specs = pre_screener.build_document_specs(filtered)
+            pre_screen_report = pre_screener.build_report(
+                ranked,
+                top_k,
+                total_discovered=len(resume_docs),
+                bm25_excluded=bm25_excluded,
+            )
+
+            resume_docs = [
+                d
+                for d in resume_docs
+                if any(d["reference_name"] == s["reference_name"] for s in filtered_doc_specs)
+            ]
+
+            print("\n  Pre-screening results:")
+            print(f"    Discovered:         {pre_screen_report['total_discovered']}")
+            print(f"    BM25 excluded:      {pre_screen_report['bm25_excluded']}")
+            print(f"    After BM25:         {pre_screen_report['after_bm25']}")
+            print(f"    Selected (top-{top_k}):  {len(filtered)}")
+            if filtered:
+                print(
+                    f"    Best match:         {filtered[0].common_name} "
+                    f"(score={filtered[0].combined_score:.4f})"
+                )
+                if len(filtered) > 1:
+                    print(
+                        f"    Worst selected:     {filtered[-1].common_name} "
+                        f"(score={filtered[-1].combined_score:.4f})"
+                    )
+
         all_documents.extend(resume_docs)
         data_rows = create_data_rows_from_documents(resume_docs)
 
@@ -308,6 +386,18 @@ def main() -> int:
 
     builder.save()
 
+    if pre_screen_report is not None:
+        from pathlib import Path
+
+        import yaml
+
+        report_path = str(Path(args.output).with_suffix(".pre_screening_report.yaml"))
+        Path(report_path).write_text(
+            yaml.dump(pre_screen_report, default_flow_style=False, sort_keys=False),
+            encoding="utf-8",
+        )
+        print(f"  Pre-screening report: {report_path}")
+
     total_prompts = len(prompts)
     if args.planning:
         planning_count = sum(1 for p in prompts if p.phase == "planning")
@@ -340,7 +430,11 @@ def main() -> int:
     if args.jd:
         summary_extra["Job description"] = jd_doc["file_path"]
     if candidate_count > 0:
-        summary_extra["Resumes discovered"] = str(candidate_count)
+        if args.pre_screen is not None and pre_screen_report:
+            summary_extra["Resumes discovered"] = str(pre_screen_report["total_discovered"])
+            summary_extra["Pre-screened (top-K)"] = str(candidate_count)
+        else:
+            summary_extra["Resumes discovered"] = str(candidate_count)
         summary_extra["Candidates (batch rows)"] = str(candidate_count)
         summary_extra["Total batch executions"] = (
             f"{total_prompts} prompts x {candidate_count} candidates = "
@@ -348,11 +442,12 @@ def main() -> int:
         )
 
     run_flags: list[str] = []
-    if args.jd and not args.resumes_path:
-        run_flags.append("--documents-path ./resumes/")
-    elif not args.jd:
-        run_flags.append("--shared-document ./jd.md --shared-document-name job_description")
-        run_flags.append("--documents-path ./resumes/")
+    if args.pre_screen is None:
+        if args.jd and not args.resumes_path:
+            run_flags.append("--documents-path ./resumes/")
+        elif not args.jd:
+            run_flags.append("--shared-document ./jd.md --shared-document-name job_description")
+            run_flags.append("--documents-path ./resumes/")
     run_command = f"python scripts/run_orchestrator.py {args.output} -c 1"
     if run_flags:
         run_command += " \\\n    " + " \\\n    ".join(run_flags)

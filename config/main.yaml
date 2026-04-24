@@ -266,3 +266,12 @@ observability:
     insecure: true
   token_tracking: true
   cost_tracking: true
+
+pre_screening:
+  enabled: true
+  embedding_model: "mistral/mistral-embed"
+  bm25_weight: 0.3
+  embedding_weight: 0.7
+  bm25_min_score: 0.0
+  bm25_min_overlap_ratio: 0.05
+  embedding_cache_size: 512

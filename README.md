@@ -1033,6 +1033,7 @@ observability:
 - Want document Q&A with semantic search
 - Need prompts that can call tools (search, calculate, fetch) at runtime
 - Want to screen resumes against a job description with AI scoring
+- Need embedding-based pre-screening to reduce LLM evaluation costs
 
 ### Consider alternatives if you need:
 

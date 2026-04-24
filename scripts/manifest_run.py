@@ -293,16 +293,55 @@ def main():
 
     summary = orchestrator.get_summary()
 
+    pre_screen_report = None
+    pre_screen_yaml = os.path.join(manifest_dir, "pre_screening_report.yaml")
+    if os.path.exists(pre_screen_yaml):
+        with open(pre_screen_yaml, encoding="utf-8") as f:
+            pre_screen_report = yaml.safe_load(f)
+
     print("\n" + "=" * 60)
     print("ORCHESTRATION COMPLETE")
     print("=" * 60)
     print(f"Manifest:      {manifest_dir}")
     print(f"Parquet:       {parquet_path}")
     print(f"Concurrency:   {args.concurrency}")
+
+    if pre_screen_report:
+        total_discovered = pre_screen_report.get("total_discovered", 0)
+        bm25_excluded = pre_screen_report.get("bm25_excluded", 0)
+        after_bm25 = pre_screen_report.get("after_bm25", 0)
+        top_k_excluded = pre_screen_report.get("top_k_excluded", 0)
+        evaluated_by_llm = pre_screen_report.get("evaluated_by_llm", 0)
+        print()
+        print("Screening Pipeline:")
+        print(f"  Discovered:         {total_discovered}")
+        print(f"  BM25 excluded:      {bm25_excluded}")
+        print(f"  After BM25:         {after_bm25}")
+        print(f"  Top-K excluded:     {top_k_excluded}")
+        print(f"  Evaluated by LLM:   {evaluated_by_llm}")
+
+    if summary.get("total_batches"):
+        candidates_with_aborted_prompts = 0
+        if hasattr(orchestrator, "results") and orchestrator.results:
+            batch_names_with_abort = set()
+            for r in orchestrator.results:
+                if r.get("status") == "aborted" and r.get("batch_name"):
+                    batch_names_with_abort.add(r["batch_name"])
+            candidates_with_aborted_prompts = len(batch_names_with_abort)
+        if candidates_with_aborted_prompts > 0:
+            print(
+                f"  LLM suspended:    {candidates_with_aborted_prompts} candidates had aborted prompts"
+            )
+
+    print()
     print(f"Total prompts: {summary['total_prompts']}")
     print(f"Successful:    {summary['successful']}")
     print(f"Aborted:       {summary['aborted']}")
     print(f"Failed:        {summary['failed']}")
+    if summary.get("tokens"):
+        print(f"Tokens:        {summary['tokens']['total']:,}")
+    if summary.get("cost_usd") is not None:
+        print(f"Cost:          ${summary['cost_usd']:.6f}")
     print("=" * 60 + "\n")
 
     print(f"Extract results: python scripts/manifest_extract.py {parquet_path} --save\n")

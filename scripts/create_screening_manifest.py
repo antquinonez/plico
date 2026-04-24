@@ -75,6 +75,7 @@ from sample_workbooks.screening import (
 
 from src.config import get_config
 from src.orchestrator.discovery import discover_documents
+from src.orchestrator.pre_screener import ResumePreScreener
 
 load_dotenv()
 
@@ -100,6 +101,7 @@ def build_manifest_yaml(
     prompt_count: int,
     has_documents: bool = False,
     has_clients: bool = False,
+    has_data: bool = False,
 ) -> dict[str, Any]:
     """Build manifest.yaml metadata.
 
@@ -109,6 +111,7 @@ def build_manifest_yaml(
         prompt_count: Number of prompts.
         has_documents: Whether documents.yaml was written.
         has_clients: Whether clients.yaml was written.
+        has_data: Whether data.yaml was written (pre-screening).
 
     Returns:
         Manifest metadata dict.
@@ -119,7 +122,7 @@ def build_manifest_yaml(
         "description": f"Screening evaluation ({'planning' if planning else 'static scoring'})",
         "version": "1.0",
         "exported_at": datetime.now().isoformat(),
-        "has_data": False,
+        "has_data": has_data,
         "has_clients": has_clients,
         "has_documents": has_documents,
         "has_tools": False,
@@ -321,6 +324,15 @@ def main() -> int:
         help="Custom synthesis prompt template (name in config/prompts/ or file path). "
         "Default: config/prompts/screening_synthesis.yaml",
     )
+    parser.add_argument(
+        "--pre-screen",
+        type=int,
+        default=None,
+        metavar="N",
+        help="Enable embedding-based pre-screening to rank and filter resumes "
+        "before creating the manifest. Reduces LLM costs by only evaluating "
+        "top-N candidates. Requires an explicit N value (e.g., --pre-screen 10).",
+    )
 
     args = parser.parse_args()
 
@@ -330,6 +342,12 @@ def main() -> int:
         print("Warning: --planning-client has no effect without --planning.\n")
     if args.static_prompts and args.planning:
         print("Warning: --static-prompts has no effect with --planning (use --planning-prompts).\n")
+    if args.pre_screen is not None and not args.jd:
+        print("Error: --pre-screen requires --jd (need JD text for embedding comparison).\n")
+        return 1
+    if args.pre_screen is not None and not args.resumes_path:
+        print("Error: --pre-screen requires --resumes-path.\n")
+        return 1
 
     if not args.resumes_path and not args.jd:
         print("Note: Neither --resumes-path nor --jd provided.")
@@ -360,6 +378,8 @@ def main() -> int:
         return 1
 
     resume_count = 0
+    pre_screen_report = None
+    filtered_doc_specs = None
     if args.resumes_path:
         resume_docs = discover_documents(
             args.resumes_path,
@@ -372,6 +392,59 @@ def main() -> int:
             print(f"  Discovered {resume_count} documents")
         else:
             print(f"  Warning: No documents found in {args.resumes_path}")
+
+        if args.pre_screen is not None and resume_count > 0:
+            if args.pre_screen <= 0:
+                print(
+                    "Error: --pre-screen requires a positive integer value (e.g., --pre-screen 10).\n"
+                )
+                return 1
+            top_k = args.pre_screen
+            print(f"\n  Pre-screening enabled (top-{top_k} of {resume_count})")
+            print(f"  Embedding model: {config.pre_screening.embedding_model}")
+            print(
+                f"  Weights: BM25={config.pre_screening.bm25_weight}, "
+                f"embedding={config.pre_screening.embedding_weight}"
+            )
+
+            jd_text = Path(args.jd).read_text(encoding="utf-8")
+
+            pre_screener = ResumePreScreener(
+                embedding_model=config.pre_screening.embedding_model,
+                bm25_weight=config.pre_screening.bm25_weight,
+                embedding_weight=config.pre_screening.embedding_weight,
+                bm25_min_score=config.pre_screening.bm25_min_score,
+                bm25_min_overlap_ratio=config.pre_screening.bm25_min_overlap_ratio,
+                embedding_cache_size=config.pre_screening.embedding_cache_size,
+            )
+            ranked, bm25_excluded = pre_screener.rank_resumes(
+                jd_text, args.resumes_path, extensions=extensions
+            )
+            filtered = pre_screener.filter_to_top_k(ranked, top_k)
+            filtered_doc_specs = pre_screener.build_document_specs(filtered)
+            pre_screen_report = pre_screener.build_report(
+                ranked,
+                top_k,
+                total_discovered=resume_count,
+                bm25_excluded=bm25_excluded,
+            )
+
+            resume_count = len(filtered)
+            print("\n  Pre-screening results:")
+            print(f"    Discovered:         {pre_screen_report['total_discovered']}")
+            print(f"    BM25 excluded:      {pre_screen_report['bm25_excluded']}")
+            print(f"    After BM25:         {pre_screen_report['after_bm25']}")
+            print(f"    Selected (top-{top_k}):  {len(filtered)}")
+            if filtered:
+                print(
+                    f"    Best match:         {filtered[0].common_name} "
+                    f"(score={filtered[0].combined_score:.4f})"
+                )
+                if len(filtered) > 1:
+                    print(
+                        f"    Worst selected:     {filtered[-1].common_name} "
+                        f"(score={filtered[-1].combined_score:.4f})"
+                    )
 
     synthesis_top_n = (
         max(resume_count, DEFAULT_SYNTHESIS_TOP_N) if resume_count > 0 else DEFAULT_SYNTHESIS_TOP_N
@@ -397,6 +470,7 @@ def main() -> int:
     )
 
     has_documents = args.jd is not None
+    has_data = filtered_doc_specs is not None
 
     write_yaml(
         manifest_path / "manifest.yaml",
@@ -406,6 +480,7 @@ def main() -> int:
             len(prompts),
             has_documents=has_documents,
             has_clients=planning_client_type is not None,
+            has_data=has_data,
         ),
     )
     write_yaml(
@@ -462,10 +537,32 @@ def main() -> int:
 
     if args.jd:
         jd_doc = create_jd_document(args.jd)
+        docs_list = [jd_doc]
+        if filtered_doc_specs is not None:
+            docs_list.extend(filtered_doc_specs)
+            write_yaml(
+                manifest_path / "data.yaml",
+                {
+                    "batches": [
+                        {
+                            "id": i,
+                            "batch_name": r["reference_name"],
+                            "candidate_name": r["common_name"],
+                            "_documents": f'["{r["reference_name"]}"]',
+                        }
+                        for i, r in enumerate(filtered_doc_specs, start=1)
+                    ]
+                },
+            )
         write_yaml(
             manifest_path / "documents.yaml",
-            build_documents_yaml([jd_doc]),
+            build_documents_yaml(docs_list),
         )
+        if pre_screen_report is not None:
+            write_yaml(
+                manifest_path / "pre_screening_report.yaml",
+                pre_screen_report,
+            )
 
     total_prompts = len(prompts)
     if args.planning:
@@ -488,7 +585,14 @@ def main() -> int:
     else:
         print("Job description: inject at runtime (--shared-document)")
     if resume_count > 0:
-        print(f"Resumes:         {resume_count} discovered (injected at runtime)")
+        if args.pre_screen is not None and pre_screen_report:
+            print(
+                f"Resumes:         {pre_screen_report['total_discovered']} discovered, "
+                f"{pre_screen_report['bm25_excluded']} excluded by BM25, "
+                f"{resume_count} selected (baked in)"
+            )
+        else:
+            print(f"Resumes:         {resume_count} discovered (injected at runtime)")
     else:
         print("Resumes:         inject at runtime (--documents-path)")
     print(f"Prompts:         {prompt_summary}")
@@ -510,8 +614,14 @@ def main() -> int:
         print(f"Templates:       {', '.join(sources)}")
 
     if args.jd:
-        print("\nRun with:")
-        print(f"  python scripts/manifest_run.py {manifest_path} --documents-path ./resumes/ -c 1")
+        if filtered_doc_specs is not None:
+            print("\nRun with:")
+            print(f"  python scripts/manifest_run.py {manifest_path} -c 5")
+        else:
+            print("\nRun with:")
+            print(
+                f"  python scripts/manifest_run.py {manifest_path} --documents-path ./resumes/ -c 1"
+            )
     else:
         print("\nRun with:")
         print(

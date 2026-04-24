@@ -381,6 +381,39 @@ When a rate limit or transient error occurs:
 - For free tier quotas, lower concurrency or use LiteLLM client (has built-in retry)
 - Wait 60s between runs to resets quota
 
+### Pre-Screening (`main.yaml`)
+
+Embedding-based resume ranking for cost reduction. Filters a folder of
+resumes down to a top-K subset before the expensive LLM evaluation phase.
+
+```yaml
+pre_screening:
+  enabled: true
+  embedding_model: "mistral/mistral-embed"
+  bm25_weight: 0.3
+  embedding_weight: 0.7
+  bm25_min_score: 0.0
+  bm25_min_overlap_ratio: 0.05
+  embedding_cache_size: 512
+```
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `enabled` | `true` | Enable pre-screening |
+| `embedding_model` | `mistral/mistral-embed` | LiteLLM model string for embeddings |
+| `bm25_weight` | `0.3` | Weight for BM25 score in combined ranking of survivors |
+| `embedding_weight` | `0.7` | Weight for embedding similarity in combined ranking of survivors |
+| `bm25_min_score` | `0.0` | Minimum BM25 score — candidates below are excluded (hard gate) |
+| `bm25_min_overlap_ratio` | `0.05` | Minimum entity overlap ratio — candidates below are excluded (hard gate) |
+| `embedding_cache_size` | `512` | LRU cache size for embedding lookups |
+
+Two-tier pipeline: Tier 1 is a **hard exclusion** gate using BM25 keyword
+matching on extracted named entities — candidates below `bm25_min_score` or
+`bm25_min_overlap_ratio` are removed entirely. Tier 2 uses dense embedding
+cosine similarity to rank survivors, with scores combined using configurable
+weights. Specify the number of candidates to keep via CLI:
+`--pre-screen 10` (required, no config default).
+
 ### Model Defaults (`model_defaults.yaml`)
 
 ```yaml

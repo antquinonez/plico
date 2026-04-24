@@ -754,6 +754,9 @@ inv screening.create -r ./resumes/ -j ./jd.md        # Create workbook
 inv screening.run -r ./resumes/ -j ./jd.md          # Create and run
 inv screening.manifest -r ./resumes/ -j ./jd.md     # Create and run manifest
 inv screening.inspect ./screening.xlsx                # Inspect results
+
+# With pre-screening (filter to top-20 before LLM evaluation)
+inv screening.manifest -r ./resumes/ -j ./jd.md --pre-screen 20
 ```
 
 ### Discovery Functions
@@ -1239,6 +1242,7 @@ inv rag.stats       # Show detailed RAG statistics
 inv screening.create -r ./resumes/ -j ./jd.md
 inv screening.run -r ./resumes/ -j ./jd.md
 inv screening.manifest -r ./resumes/ -j ./jd.md
+inv screening.manifest -r ./resumes/ -j ./jd.md --pre-screen 10  # Filter to top-10
 inv screening.inspect ./screening.xlsx
 ```
 
@@ -1405,6 +1409,7 @@ python scripts/sample_workbook_screening_validate_v001.py [workbook_path]
 ```
 
 Document evaluation pipeline with per-row documents, scoring rubric, and synthesis ranking.
+Supports `--pre-screen N` (N required) on creation scripts for embedding-based cost reduction.
 
 #### Screening v002 Sample Workbook (Planning Phase)
 

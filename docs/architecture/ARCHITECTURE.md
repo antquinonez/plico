@@ -218,6 +218,7 @@ Same manifest. Same execution engine. Same audit trail.
 - Shared document support (e.g., a job description for all rows)
 - Integration with ExcelOrchestrator and ManifestOrchestrator via `documents_path`/`shared_document_path`
 - Resume screening use case with dedicated invoke tasks
+- Pre-screening via embedding similarity and BM25 ranking for cost reduction
 
 **See:** [ORCHESTRATOR README.md](../ORCHESTRATOR%20README.md) for discovery usage.
 
