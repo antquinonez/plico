@@ -495,7 +495,6 @@ class PreScreeningConfig(BaseSettings):
 
     enabled: bool = True
     embedding_model: str = "mistral/mistral-embed"
-    top_k: int = 20
     bm25_weight: float = 0.3
     embedding_weight: float = 0.7
     bm25_min_score: float = 0.0

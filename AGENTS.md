@@ -884,7 +884,7 @@ orchestrator.run()
 
 ### Pre-Screening (Cost Reduction)
 
-Embedding-based resume ranking filters candidates before the expensive LLM pipeline. Two-tier scoring: BM25 keyword matching on extracted named entities, then dense embedding cosine similarity. Combined with configurable weights (default 30/70 BM25/embedding).
+Embedding-based resume ranking filters candidates before the expensive LLM pipeline. Two-tier pipeline: Tier 1 is a **hard exclusion** gate using BM25 keyword matching — candidates below threshold are removed entirely. Tier 2 uses dense embedding cosine similarity to rank survivors, with scores combined using configurable weights (default 30/70 BM25/embedding).
 
 ```bash
 # Pre-screen top 20 resumes before LLM evaluation
@@ -892,9 +892,6 @@ python scripts/create_screening_manifest.py ./resumes/ --jd ./jd.md --pre-screen
 
 # Pre-screen top 10 with planning mode
 python scripts/create_screening_manifest.py ./resumes/ --jd ./jd.md --pre-screen 10 --planning
-
-# Use default top_k from config (20)
-python scripts/create_screening_manifest.py ./resumes/ --jd ./jd.md --pre-screen
 
 # Shell script with pre-screening
 ./convenience/screening_manifest.sh --pre-screen 10 small
@@ -904,14 +901,13 @@ python scripts/create_screening_manifest.py ./resumes/ --jd ./jd.md --pre-screen
 
 ```yaml
 pre_screening:
-  top_k: 20
+  enabled: true
   embedding_model: "mistral/mistral-embed"
   bm25_weight: 0.3
   embedding_weight: 0.7
-  min_entity_overlap: 0
-  max_text_length: 8000
-  embedding_batch_size: 20
-  embedding_cache_size: 1000
+  bm25_min_score: 0.0
+  bm25_min_overlap_ratio: 0.05
+  embedding_cache_size: 512
 ```
 
 **Outputs:** `data.yaml` (top-K batch rows), `documents.yaml` (top-K document refs), `pre_screening_report.yaml` (full ranking with scores).

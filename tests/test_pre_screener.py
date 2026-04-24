@@ -267,7 +267,7 @@ class TestResumePreScreenerFiltering:
                 bm25_score=2.0,
                 entity_overlap=3,
                 entity_overlap_ratio=0.15,
-                passed_bm25_filter=False,
+                passed_bm25_filter=True,
                 rank=2,
             ),
         ]
@@ -277,10 +277,13 @@ class TestResumePreScreenerFiltering:
             with patch("src.orchestrator.pre_screener.DocumentProcessor"):
                 screener = ResumePreScreener(embedding_model="mistral/mistral-embed")
 
-        report = screener.build_report(resumes, top_k=1)
-        assert report["total_candidates"] == 2
-        assert report["bm25_filtered"] == 1
+        report = screener.build_report(resumes, top_k=1, total_discovered=3, bm25_excluded=1)
+        assert report["total_discovered"] == 3
+        assert report["bm25_excluded"] == 1
+        assert report["after_bm25"] == 2
         assert report["top_k_selected"] == 1
+        assert report["top_k_excluded"] == 1
+        assert report["evaluated_by_llm"] == 1
         assert len(report["selected_candidates"]) == 1
         assert report["selected_candidates"][0]["reference_name"] == "alice"
         assert len(report["all_candidates"]) == 2
@@ -294,8 +297,8 @@ class TestResumePreScreenerFiltering:
             with patch("src.orchestrator.pre_screener.DocumentProcessor"):
                 screener = ResumePreScreener(embedding_model="mistral/mistral-embed")
 
-        report = screener.build_report([], top_k=5)
-        assert report["total_candidates"] == 0
+        report = screener.build_report([], top_k=5, total_discovered=0, bm25_excluded=0)
+        assert report["total_discovered"] == 0
         assert report["selected_candidates"] == []
 
 
@@ -351,19 +354,19 @@ class TestResumePreScreenerRanking:
 
     def test_rank_resumes_returns_all(self, resume_folder):
         screener = self._create_screener()
-        ranked = screener.rank_resumes(self.JD_TEXT, resume_folder)
+        ranked, bm25_excluded = screener.rank_resumes(self.JD_TEXT, resume_folder)
         assert len(ranked) == 3
         assert all(isinstance(r, RankedResume) for r in ranked)
 
     def test_rank_resumes_assigns_ranks(self, resume_folder):
         screener = self._create_screener()
-        ranked = screener.rank_resumes(self.JD_TEXT, resume_folder)
+        ranked, _ = screener.rank_resumes(self.JD_TEXT, resume_folder)
         ranks = [r.rank for r in ranked]
         assert sorted(ranks) == [1, 2, 3]
 
     def test_rank_resumes_populates_entity_overlap(self, resume_folder):
         screener = self._create_screener()
-        ranked = screener.rank_resumes(self.JD_TEXT, resume_folder)
+        ranked, _ = screener.rank_resumes(self.JD_TEXT, resume_folder)
 
         alice = next(r for r in ranked if r.reference_name == "alice_strong")
         assert alice.entity_overlap > 0
@@ -373,19 +376,19 @@ class TestResumePreScreenerRanking:
 
     def test_rank_resumes_populates_combined_score(self, resume_folder):
         screener = self._create_screener()
-        ranked = screener.rank_resumes(self.JD_TEXT, resume_folder)
+        ranked, _ = screener.rank_resumes(self.JD_TEXT, resume_folder)
         for r in ranked:
             assert r.combined_score >= 0.0
 
     def test_filter_after_ranking(self, resume_folder):
         screener = self._create_screener()
-        ranked = screener.rank_resumes(self.JD_TEXT, resume_folder)
+        ranked, _ = screener.rank_resumes(self.JD_TEXT, resume_folder)
         top2 = screener.filter_to_top_k(ranked, 2)
         assert len(top2) == 2
 
     def test_bm25_scoring_differentiates_resumes(self, resume_folder):
         screener = self._create_screener()
-        ranked = screener.rank_resumes(self.JD_TEXT, resume_folder)
+        ranked, _ = screener.rank_resumes(self.JD_TEXT, resume_folder)
 
         alice = next(r for r in ranked if r.reference_name == "alice_strong")
         carol = next(r for r in ranked if r.reference_name == "carol_weak")
@@ -395,17 +398,52 @@ class TestResumePreScreenerRanking:
         folder = tmp_path / "empty"
         folder.mkdir()
         screener = self._create_screener()
-        ranked = screener.rank_resumes(self.JD_TEXT, folder)
+        ranked, bm25_excluded = screener.rank_resumes(self.JD_TEXT, folder)
         assert ranked == []
+        assert bm25_excluded == 0
 
     def test_build_data_rows_after_ranking(self, resume_folder):
         screener = self._create_screener()
-        ranked = screener.rank_resumes(self.JD_TEXT, resume_folder)
+        ranked, _ = screener.rank_resumes(self.JD_TEXT, resume_folder)
         top2 = screener.filter_to_top_k(ranked, 2)
         rows = screener.build_data_rows(top2)
         assert len(rows) == 2
         assert all("batch_name" in r for r in rows)
         assert all("_documents" in r for r in rows)
+
+    def test_all_returned_resumes_passed_bm25(self, resume_folder):
+        screener = self._create_screener()
+        ranked, _ = screener.rank_resumes(self.JD_TEXT, resume_folder)
+        assert all(r.passed_bm25_filter for r in ranked)
+
+    def test_bm25_hard_exclusion_with_strict_threshold(self, resume_folder):
+        mock_emb = MagicMock()
+        mock_emb.embed_single.return_value = [0.5] * 8
+        mock_emb.embed.return_value = [[0.5] * 8] * 10
+        mock_emb.cosine_similarity = MagicMock(side_effect=lambda a, b: 0.9)
+
+        def _read_file(fp, rn, cn):
+            return Path(fp).read_text(encoding="utf-8")
+
+        with patch("src.orchestrator.pre_screener.FFEmbeddings", return_value=mock_emb):
+            with patch("src.orchestrator.pre_screener.DocumentProcessor") as MockDP:
+                mock_dp = MagicMock()
+                mock_dp.get_document_content.side_effect = _read_file
+                MockDP.return_value = mock_dp
+                screener = ResumePreScreener(
+                    embedding_model="mistral/mistral-embed",
+                    bm25_min_overlap_ratio=0.3,
+                )
+
+        screener._embeddings = mock_emb
+        screener._doc_processor = mock_dp
+
+        ranked, bm25_excluded = screener.rank_resumes(self.JD_TEXT, resume_folder)
+        assert bm25_excluded > 0
+        assert len(ranked) + bm25_excluded == 3
+        assert all(r.passed_bm25_filter for r in ranked)
+        for r in ranked:
+            assert r.entity_overlap_ratio >= 0.3
 
 
 class TestResumePreScreenerIntegration:
@@ -477,17 +515,17 @@ class TestResumePreScreenerIntegration:
 
     def test_alice_ranks_highest(self, resume_folder):
         screener = self._create_screener_with_realistic_embeddings()
-        ranked = screener.rank_resumes(self.JD_TEXT, resume_folder)
+        ranked, _ = screener.rank_resumes(self.JD_TEXT, resume_folder)
         assert ranked[0].reference_name == "alice"
 
     def test_carol_ranks_lowest(self, resume_folder):
         screener = self._create_screener_with_realistic_embeddings()
-        ranked = screener.rank_resumes(self.JD_TEXT, resume_folder)
+        ranked, _ = screener.rank_resumes(self.JD_TEXT, resume_folder)
         assert ranked[-1].reference_name == "carol"
 
     def test_entity_overlap_counts(self, resume_folder):
         screener = self._create_screener_with_realistic_embeddings()
-        ranked = screener.rank_resumes(self.JD_TEXT, resume_folder)
+        ranked, _ = screener.rank_resumes(self.JD_TEXT, resume_folder)
 
         alice = next(r for r in ranked if r.reference_name == "alice")
         carol = next(r for r in ranked if r.reference_name == "carol")
@@ -496,18 +534,18 @@ class TestResumePreScreenerIntegration:
 
     def test_full_pipeline_report(self, resume_folder):
         screener = self._create_screener_with_realistic_embeddings()
-        ranked = screener.rank_resumes(self.JD_TEXT, resume_folder)
+        ranked, bm25_excluded = screener.rank_resumes(self.JD_TEXT, resume_folder)
         top2 = screener.filter_to_top_k(ranked, 2)
-        report = screener.build_report(ranked, 2)
+        report = screener.build_report(ranked, 2, total_discovered=3, bm25_excluded=bm25_excluded)
 
-        assert report["total_candidates"] == 3
+        assert report["total_discovered"] == 3
         assert report["top_k_selected"] == 2
         assert len(report["selected_candidates"]) == 2
         assert report["selected_candidates"][0]["common_name"] == "alice"
 
     def test_combined_score_monotonic_with_relevance(self, resume_folder):
         screener = self._create_screener_with_realistic_embeddings()
-        ranked = screener.rank_resumes(self.JD_TEXT, resume_folder)
+        ranked, _ = screener.rank_resumes(self.JD_TEXT, resume_folder)
 
         scores = [r.combined_score for r in ranked]
         for i in range(len(scores) - 1):
@@ -524,10 +562,10 @@ class TestPreScreeningConfig:
 
         config = get_config()
         assert config.pre_screening.enabled is True
-        assert config.pre_screening.top_k == 20
         assert config.pre_screening.bm25_weight == 0.3
         assert config.pre_screening.embedding_weight == 0.7
         assert config.pre_screening.embedding_model == "mistral/mistral-embed"
+        assert config.pre_screening.bm25_min_overlap_ratio == 0.05
 
     def test_config_embedding_cache_size(self):
         from src.config import get_config

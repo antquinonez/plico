@@ -1409,7 +1409,7 @@ python scripts/sample_workbook_screening_validate_v001.py [workbook_path]
 ```
 
 Document evaluation pipeline with per-row documents, scoring rubric, and synthesis ranking.
-Supports `--pre-screen [N]` on creation scripts for embedding-based cost reduction.
+Supports `--pre-screen N` (N required) on creation scripts for embedding-based cost reduction.
 
 #### Screening v002 Sample Workbook (Planning Phase)
 

@@ -78,14 +78,15 @@ the synthesis `top_n` count. Resumes are always injected at runtime.
 
 ### Pre-Screening (Cost Reduction)
 
-Both creation scripts accept `--pre-screen [N]` to filter resumes via
-embedding similarity before baking them into the workbook or manifest.
-This reduces LLM costs by only evaluating the top-K candidates instead
-of the full folder.
+Both creation scripts accept `--pre-screen N` (required integer) to filter
+resumes before baking them into the workbook or manifest. This reduces LLM
+costs by only evaluating the top-N candidates instead of the full folder.
 
-Two-tier scoring: BM25 keyword matching on extracted named entities,
-then dense embedding cosine similarity. Combined with configurable
-weights (default 30/70 BM25/embedding).
+Two-tier pipeline: Tier 1 is a **hard exclusion** gate using BM25 keyword
+matching on extracted named entities — candidates below the minimum score or
+overlap threshold are removed entirely. Tier 2 uses dense embedding cosine
+similarity to rank survivors, with BM25 and embedding scores combined using
+configurable weights (default 30/70 BM25/embedding).
 
 ```bash
 # Workbook: pre-screen top 20, bake filtered set into .xlsx
@@ -95,10 +96,6 @@ python scripts/create_screening_workbook.py ./screening.xlsx \
 # Manifest: pre-screen top 10, bake filtered set into data.yaml
 python scripts/create_screening_manifest.py ./manifests/manifest_screening \
     --resumes-path ./resumes/ --jd ./jd.md --planning --pre-screen 10
-
-# Use config default top_k (20)
-python scripts/create_screening_manifest.py ./manifests/manifest_screening \
-    --resumes-path ./resumes/ --jd ./jd.md --pre-screen
 ```
 
 Pre-screening is a **creation-time** filter — it runs before the workbook
@@ -115,11 +112,10 @@ filtering by curating the folder contents before running.
 pre_screening:
   enabled: true
   embedding_model: "mistral/mistral-embed"
-  top_k: 20
   bm25_weight: 0.3
   embedding_weight: 0.7
   bm25_min_score: 0.0
-  bm25_min_overlap_ratio: 0.0
+  bm25_min_overlap_ratio: 0.05
   embedding_cache_size: 512
 ```
 
@@ -413,7 +409,7 @@ python scripts/create_screening_workbook.py <output_path> [options]
 | `--client` | No | config default | Client type from `config/clients.yaml` |
 | `--system-instructions` | No | recruiter prompt | System instructions for AI |
 | `--evaluation-strategy` | No | `balanced` | Scoring strategy name |
-| `--pre-screen` | No | — | Pre-screen top-N resumes via embeddings (baked in) |
+| `--pre-screen` | No | — | Pre-screen top-N resumes via embeddings (N required, e.g. `--pre-screen 10`) |
 | `--verbose` | No | off | Enable verbose output |
 
 **Examples:**
@@ -466,7 +462,7 @@ python scripts/create_screening_manifest.py [output_dir] [options]
 | `--client` | No | config default | Client type from `config/clients.yaml` |
 | `--system-instructions` | No | recruiter prompt | System instructions for AI |
 | `--evaluation-strategy` | No | `balanced` | Scoring strategy name |
-| `--pre-screen` | No | — | Pre-screen top-N resumes via embeddings (bakes into `data.yaml`) |
+| `--pre-screen` | No | — | Pre-screen top-N resumes via embeddings (N required, bakes into `data.yaml`) |
 | `--verbose` | No | off | Enable verbose output |
 
 **Examples:**
@@ -753,10 +749,11 @@ resumes/               job_descriptions/
         │                      │  tags="shared"
         │                      │
         v                      v
-   [--pre-screen?]          Shared doc
+   [--pre-screen N]          Shared doc
    ResumePreScreener       (available to all
    .rank_resumes()          prompts, not bound
-   .filter_to_top_k()       to any data row)
+   → (ranked, excluded)     to any data row)
+   .filter_to_top_k()
         │                         │
         v                         │
    create_data_rows_              │
@@ -781,10 +778,11 @@ resumes/               job_descriptions/
 
 Key points:
 
-- `--pre-screen [N]` filters discovered resumes via BM25 + embedding
-  similarity before creating batch data. Only the top-K candidates
-  proceed to LLM evaluation. This is a creation-time filter on
-  `create_screening_workbook.py` and `create_screening_manifest.py`.
+- `--pre-screen N` (N required) filters discovered resumes via a two-tier
+  pipeline: BM25 hard exclusion (removes candidates below threshold), then
+  embedding similarity ranking of survivors. Only the top-N proceed to LLM
+  evaluation. This is a creation-time filter on `create_screening_workbook.py`
+  and `create_screening_manifest.py`.
 - `--shared-document` creates a document with a `reference_name` derived
   from the filename (e.g., `senior_engineer.md` → `senior_engineer`).
   Use `--shared-document-name` to override (e.g., `--shared-document-name

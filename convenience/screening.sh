@@ -11,11 +11,13 @@ while [[ $# -gt 0 ]]; do
       shift
       ;;
     --pre-screen)
-      PRESCREEN_FLAG="--pre-screen"
       shift
       if [[ $# -gt 0 ]] && [[ ! "$1" =~ ^- ]]; then
         PRESCREEN_FLAG="--pre-screen $1"
         shift
+      else
+        echo "Error: --pre-screen requires a number (e.g., --pre-screen 10)"
+        exit 1
       fi
       ;;
     *)
@@ -27,8 +29,7 @@ while [[ $# -gt 0 ]]; do
       echo "  medium             Medium set (library/resumes_medium/)"
       echo ""
       echo "Pre-screening:"
-      echo "  --pre-screen       Enable pre-screening with config default (20)"
-      echo "  --pre-screen 10    Enable pre-screening with custom top-K"
+      echo "  --pre-screen 10    Enable pre-screening with top-K candidates"
       exit 1
       ;;
   esac

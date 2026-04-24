@@ -157,14 +157,12 @@ def main() -> int:
     )
     parser.add_argument(
         "--pre-screen",
-        nargs="?",
-        const=-1,
         type=int,
         default=None,
         metavar="N",
         help="Enable embedding-based pre-screening to rank and filter resumes "
         "before baking them into the workbook. Reduces LLM costs by only evaluating "
-        "top-K candidates. Optionally specify N to override config default.",
+        "top-N candidates. Requires an explicit N value (e.g., --pre-screen 10).",
     )
 
     args = parser.parse_args()
@@ -236,7 +234,12 @@ def main() -> int:
         print(f"  Discovered {len(resume_docs)} documents")
 
         if args.pre_screen is not None:
-            top_k = args.pre_screen if args.pre_screen > 0 else config.pre_screening.top_k
+            if args.pre_screen <= 0:
+                print(
+                    "Error: --pre-screen requires a positive integer value (e.g., --pre-screen 10).\n"
+                )
+                return 1
+            top_k = args.pre_screen
             print(f"\n  Pre-screening enabled (top-{top_k} of {len(resume_docs)})")
             print(f"  Embedding model: {config.pre_screening.embedding_model}")
             print(
@@ -256,10 +259,17 @@ def main() -> int:
                 bm25_min_overlap_ratio=config.pre_screening.bm25_min_overlap_ratio,
                 embedding_cache_size=config.pre_screening.embedding_cache_size,
             )
-            ranked = pre_screener.rank_resumes(jd_text, args.resumes_path, extensions=extensions)
+            ranked, bm25_excluded = pre_screener.rank_resumes(
+                jd_text, args.resumes_path, extensions=extensions
+            )
             filtered = pre_screener.filter_to_top_k(ranked, top_k)
             filtered_doc_specs = pre_screener.build_document_specs(filtered)
-            pre_screen_report = pre_screener.build_report(ranked, top_k)
+            pre_screen_report = pre_screener.build_report(
+                ranked,
+                top_k,
+                total_discovered=len(resume_docs),
+                bm25_excluded=bm25_excluded,
+            )
 
             resume_docs = [
                 d
@@ -268,9 +278,10 @@ def main() -> int:
             ]
 
             print("\n  Pre-screening results:")
-            print(f"    Total candidates:   {pre_screen_report['total_candidates']}")
-            print(f"    BM25 filtered out:  {pre_screen_report['bm25_filtered']}")
-            print(f"    Selected (top-{top_k}):    {len(filtered)}")
+            print(f"    Discovered:         {pre_screen_report['total_discovered']}")
+            print(f"    BM25 excluded:      {pre_screen_report['bm25_excluded']}")
+            print(f"    After BM25:         {pre_screen_report['after_bm25']}")
+            print(f"    Selected (top-{top_k}):  {len(filtered)}")
             if filtered:
                 print(
                     f"    Best match:         {filtered[0].common_name} "
@@ -420,7 +431,7 @@ def main() -> int:
         summary_extra["Job description"] = jd_doc["file_path"]
     if candidate_count > 0:
         if args.pre_screen is not None and pre_screen_report:
-            summary_extra["Resumes discovered"] = str(pre_screen_report["total_candidates"])
+            summary_extra["Resumes discovered"] = str(pre_screen_report["total_discovered"])
             summary_extra["Pre-screened (top-K)"] = str(candidate_count)
         else:
             summary_extra["Resumes discovered"] = str(candidate_count)

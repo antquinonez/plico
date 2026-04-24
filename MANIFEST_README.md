@@ -992,9 +992,11 @@ manifest can screen different resume folders against different job descriptions.
 
 ### Pre-Screening
 
-Use `--pre-screen [N]` to filter resumes via embedding similarity before
-creating the manifest. Only the top-K candidates are baked into `data.yaml`
-and `documents.yaml`, reducing LLM costs for large resume folders.
+Use `--pre-screen N` (required integer) to filter resumes before creating
+the manifest. A two-tier pipeline first excludes candidates via BM25 hard
+gating, then ranks survivors via embedding similarity. Only the top-N
+candidates are baked into `data.yaml` and `documents.yaml`, reducing LLM
+costs for large resume folders.
 
 ```bash
 # Pre-screen top 20 resumes before creating manifest

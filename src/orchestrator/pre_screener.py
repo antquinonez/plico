@@ -281,13 +281,13 @@ class ResumePreScreener:
         jd_text: str,
         resumes_folder: str | Path,
         extensions: set[str] | None = None,
-    ) -> list[RankedResume]:
+    ) -> tuple[list[RankedResume], int]:
         """Rank resumes against a job description.
 
         Executes the two-tier pipeline:
         1. Parse all resumes and extract entities
-        2. Tier 1: BM25 filter on entity overlap
-        3. Tier 2: Embedding similarity ranking
+        2. Tier 1: BM25 filter on entity overlap (hard exclusion)
+        3. Tier 2: Embedding similarity ranking on survivors
         4. Combine scores and return ranked list
 
         Args:
@@ -296,7 +296,8 @@ class ResumePreScreener:
             extensions: File extensions to include (defaults to standard set).
 
         Returns:
-            List of RankedResume objects sorted by combined_score descending.
+            Tuple of (ranked resumes sorted by combined_score descending,
+            count of resumes excluded by BM25 filter).
 
         """
         doc_specs = discover_documents(
@@ -307,7 +308,7 @@ class ResumePreScreener:
         )
         if not doc_specs:
             logger.warning(f"No documents found in {resumes_folder}")
-            return []
+            return [], 0
 
         logger.info(f"Pre-screening {len(doc_specs)} resumes against JD")
 
@@ -317,9 +318,9 @@ class ResumePreScreener:
         parsed = self._parse_all(doc_specs)
         if not parsed:
             logger.warning("No resumes could be parsed")
-            return []
+            return [], 0
 
-        ranked = self._score_bm25(jd_text, jd_entities, parsed)
+        ranked, bm25_excluded = self._score_bm25(jd_text, jd_entities, parsed)
         ranked = self._score_embeddings(jd_text, ranked)
         ranked = self._combine_scores(ranked)
         ranked.sort(key=lambda r: r.combined_score, reverse=True)
@@ -328,10 +329,10 @@ class ResumePreScreener:
             r.rank = i
 
         logger.info(
-            f"Pre-screening complete: {len(ranked)} ranked, "
-            f"{sum(1 for r in ranked if r.passed_bm25_filter)} passed BM25 filter"
+            f"Pre-screening complete: {len(ranked)} ranked "
+            f"({bm25_excluded} excluded by BM25 filter)"
         )
-        return ranked
+        return ranked, bm25_excluded
 
     def filter_to_top_k(
         self,
@@ -406,22 +407,31 @@ class ResumePreScreener:
         self,
         ranked: list[RankedResume],
         top_k: int,
+        total_discovered: int,
+        bm25_excluded: int,
     ) -> dict[str, Any]:
         """Build a pre-screening report dictionary.
 
         Args:
-            ranked: Full ranked list.
+            ranked: Ranked list (BM25-excluded resumes already removed).
             top_k: Number of candidates that will proceed.
+            total_discovered: Total resumes discovered before any filtering.
+            bm25_excluded: Count of resumes excluded by BM25 filter.
 
         Returns:
             Dict with summary statistics and per-resume details.
 
         """
         selected = self.filter_to_top_k(ranked, top_k)
+        top_k_excluded = max(0, len(ranked) - len(selected))
         return {
-            "total_candidates": len(ranked),
-            "bm25_filtered": sum(1 for r in ranked if not r.passed_bm25_filter),
+            "total_discovered": total_discovered,
+            "bm25_excluded": bm25_excluded,
+            "after_bm25": len(ranked),
+            "embedding_excluded": 0,
             "top_k_selected": len(selected),
+            "top_k_excluded": top_k_excluded,
+            "evaluated_by_llm": len(selected),
             "score_statistics": {
                 "min_combined": min((r.combined_score for r in ranked), default=0.0),
                 "max_combined": max((r.combined_score for r in ranked), default=0.0),
@@ -486,8 +496,11 @@ class ResumePreScreener:
         jd_text: str,
         jd_entities: set[str],
         parsed: list[tuple[DocumentSpec, str]],
-    ) -> list[RankedResume]:
+    ) -> tuple[list[RankedResume], int]:
         """Apply Tier 1 BM25 scoring on entity overlap.
+
+        Resumes that fail the BM25 filter (below minimum score or overlap
+        ratio) are excluded from the returned list entirely.
 
         Args:
             jd_text: Job description text (used as BM25 query).
@@ -495,12 +508,13 @@ class ResumePreScreener:
             parsed: (spec, text) pairs for each resume.
 
         Returns:
-            List of RankedResume with BM25 scores populated.
+            Tuple of (passing RankedResume list, count of excluded resumes).
 
         """
         from ..RAG.indexing.bm25_index import BM25Index
 
-        results: list[RankedResume] = []
+        passing: list[RankedResume] = []
+        excluded_count = 0
 
         bm25 = BM25Index()
         for spec, text in parsed:
@@ -516,13 +530,15 @@ class ResumePreScreener:
 
             bm25_score = bm25_results.get(ref_name, 0.0)
 
-            passed = True
-            if bm25_score < self._bm25_min_score:
-                passed = False
-            if overlap_ratio < self._bm25_min_overlap_ratio:
-                passed = False
+            if bm25_score < self._bm25_min_score or overlap_ratio < self._bm25_min_overlap_ratio:
+                excluded_count += 1
+                logger.debug(
+                    f"BM25 excluded {ref_name}: score={bm25_score:.2f}, "
+                    f"overlap_ratio={overlap_ratio:.2f}"
+                )
+                continue
 
-            results.append(
+            passing.append(
                 RankedResume(
                     reference_name=ref_name,
                     common_name=spec["common_name"],
@@ -530,11 +546,15 @@ class ResumePreScreener:
                     bm25_score=bm25_score,
                     entity_overlap=len(overlap),
                     entity_overlap_ratio=overlap_ratio,
-                    passed_bm25_filter=passed,
+                    passed_bm25_filter=True,
                 )
             )
 
-        return results
+        logger.info(
+            f"BM25 filter: {len(passing)} passed, {excluded_count} excluded "
+            f"(min_score={self._bm25_min_score}, min_overlap={self._bm25_min_overlap_ratio})"
+        )
+        return passing, excluded_count
 
     def _score_embeddings(
         self,
@@ -543,27 +563,25 @@ class ResumePreScreener:
     ) -> list[RankedResume]:
         """Apply Tier 2 embedding similarity scoring.
 
-        Only resumes that passed the BM25 filter are embedded. Those that
-        failed get an embedding_score of 0.0.
+        All resumes in the list have already passed the BM25 hard filter.
+        Computes embedding cosine similarity between JD and each resume.
 
         Args:
             jd_text: Job description text.
-            resumes: RankedResume list with BM25 scores populated.
+            resumes: RankedResume list with BM25 scores populated (BM25-excluded
+                resumes already removed).
 
         Returns:
             Same list with embedding_score populated.
 
         """
-        passing = [r for r in resumes if r.passed_bm25_filter]
-
-        if not passing:
-            logger.warning("No resumes passed BM25 filter, embedding all as fallback")
-            passing = resumes
+        if not resumes:
+            return resumes
 
         jd_embedding = self._embeddings.embed_single(jd_text)
 
         batch_texts = []
-        for r in passing:
+        for r in resumes:
             try:
                 content = self._doc_processor.get_document_content(
                     r.file_path, r.reference_name, r.common_name
@@ -575,7 +593,7 @@ class ResumePreScreener:
 
         if batch_texts:
             resume_embeddings = self._embed_batch(batch_texts)
-            for r, emb in zip(passing, resume_embeddings):
+            for r, emb in zip(resumes, resume_embeddings):
                 r.embedding_score = FFEmbeddings.cosine_similarity(jd_embedding, emb)
 
         return resumes
@@ -618,8 +636,8 @@ class ResumePreScreener:
     def _combine_scores(self, resumes: list[RankedResume]) -> list[RankedResume]:
         """Compute combined score from BM25 and embedding scores.
 
-        Uses configured weights. Resumes that failed BM25 filter get
-        their BM25 contribution zeroed but still receive embedding scores.
+        Uses configured weights to produce a single combined score for each
+        resume. All resumes in the list have passed the BM25 hard filter.
 
         Args:
             resumes: RankedResume list with both scores populated.
@@ -628,6 +646,9 @@ class ResumePreScreener:
             Same list with combined_score populated.
 
         """
+        if not resumes:
+            return resumes
+
         bm25_scores = [r.bm25_score for r in resumes]
         emb_scores = [r.embedding_score for r in resumes]
 

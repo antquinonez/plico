@@ -307,27 +307,18 @@ def main():
     print(f"Concurrency:   {args.concurrency}")
 
     if pre_screen_report:
-        total_discovered = pre_screen_report.get("total_candidates", 0)
-        bm25_filtered = pre_screen_report.get("bm25_filtered", 0)
-        top_k_selected = pre_screen_report.get("top_k_selected", 0)
-        selected_names = {
-            c["reference_name"]
-            for c in pre_screen_report.get("selected_candidates", [])
-            if "reference_name" in c
-        }
-        all_candidates = pre_screen_report.get("all_candidates", [])
-        bm25_filtered_not_selected = sum(
-            1
-            for c in all_candidates
-            if not c.get("passed_bm25", True) and c.get("reference_name") not in selected_names
-        )
-        embedding_excluded = total_discovered - bm25_filtered_not_selected - top_k_selected
+        total_discovered = pre_screen_report.get("total_discovered", 0)
+        bm25_excluded = pre_screen_report.get("bm25_excluded", 0)
+        after_bm25 = pre_screen_report.get("after_bm25", 0)
+        top_k_excluded = pre_screen_report.get("top_k_excluded", 0)
+        evaluated_by_llm = pre_screen_report.get("evaluated_by_llm", 0)
         print()
         print("Screening Pipeline:")
         print(f"  Discovered:         {total_discovered}")
-        print(f"  BM25 filtered:      {bm25_filtered}")
-        print(f"  Embedding excluded: {embedding_excluded}")
-        print(f"  Evaluated by LLM:   {top_k_selected}")
+        print(f"  BM25 excluded:      {bm25_excluded}")
+        print(f"  After BM25:         {after_bm25}")
+        print(f"  Top-K excluded:     {top_k_excluded}")
+        print(f"  Evaluated by LLM:   {evaluated_by_llm}")
 
     if summary.get("total_batches"):
         candidates_with_aborted_prompts = 0

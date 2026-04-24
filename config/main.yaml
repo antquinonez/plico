@@ -270,7 +270,6 @@ observability:
 pre_screening:
   enabled: true
   embedding_model: "mistral/mistral-embed"
-  top_k: 20
   bm25_weight: 0.3
   embedding_weight: 0.7
   bm25_min_score: 0.0
