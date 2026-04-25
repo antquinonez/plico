@@ -39,6 +39,18 @@ prompts:
            is the criteria_name (matching exactly) with an integer score 1-10, plus a
            'reasoning' key. Example for a criterion named 'skills_match':
            {"skills_match": 8, "reasoning": "..."}
+         - Include an ABSOLUTE scoring scale with concrete descriptions for each
+           score band (1-2, 3-4, 5-6, 7-8, 9-10) so the evaluator applies the
+           scale consistently across ALL candidates. Example for a "python" criterion:
+
+           1-2: No Python experience — no evidence of Python in the resume.
+           3-4: Minimal — mentions Python but no evidence of professional use.
+           5-6: Intermediate — has used Python professionally but gaps exist.
+           7-8: Strong — proficient with evidence of substantive professional use.
+           9-10: Expert — deep mastery with advanced use or mentorship evidence.
+
+           Include the instruction: "Use this ABSOLUTE scale — apply it consistently
+           across ALL candidates."
 
       Return your response as JSON with exactly two keys:
       - "scoring_criteria": array of criteria objects
@@ -64,6 +76,12 @@ prompts:
       Refine them for:
       - Clarity: each prompt should be unambiguous about what to evaluate
       - Consistency: all prompts should use the same scoring scale and JSON format
+      - Score anchoring: every evaluation prompt MUST include an ABSOLUTE scoring scale
+        with concrete descriptions for each band (1-2, 3-4, 5-6, 7-8, 9-10) so the
+        evaluator applies the scale consistently across ALL candidates. Each band must
+        describe what EVIDENCE qualifies a candidate for that score level. Include the
+        instruction: "Use this ABSOLUTE scale — apply it consistently across ALL
+        candidates." Verify every prompt has this scale; add it to any that are missing.
       - Reliability: prompts should elicit scores that are reproducible
       - Completeness: ensure all important aspects of the JD are covered
       - Weight balance: weights should reflect the JD's priorities
