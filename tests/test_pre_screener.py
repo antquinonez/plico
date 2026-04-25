@@ -562,8 +562,6 @@ class TestPreScreeningConfig:
 
         config = get_config()
         assert config.pre_screening.enabled is True
-        assert config.pre_screening.bm25_weight == 0.3
-        assert config.pre_screening.embedding_weight == 0.7
         assert config.pre_screening.embedding_model == "mistral/mistral-embed"
         assert config.pre_screening.bm25_min_overlap_ratio == 0.05
 

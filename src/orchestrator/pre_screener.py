@@ -234,13 +234,14 @@ class ResumePreScreener:
     computes dense embedding similarity between the JD and each surviving
     resume for precise semantic ranking.
 
+    BM25 is used only as a hard exclusion filter in Tier 1. Final ranking
+    is determined entirely by embedding cosine similarity (Tier 2).
+
     Args:
         embedding_model: LiteLLM model string (e.g., ``"mistral/mistral-embed"``).
         cache_dir: Directory for parsed document cache.
         bm25_min_score: Minimum BM25 score to pass tier 1 filter.
         bm25_min_overlap_ratio: Minimum fraction of JD entities that must appear.
-        bm25_weight: Weight for BM25 score in combined ranking (0-1).
-        embedding_weight: Weight for embedding score in combined ranking (0-1).
         embedding_cache_size: LRU cache size for embedding model.
 
     """
@@ -251,16 +252,12 @@ class ResumePreScreener:
         cache_dir: str | None = None,
         bm25_min_score: float = 0.0,
         bm25_min_overlap_ratio: float = 0.0,
-        bm25_weight: float = 0.3,
-        embedding_weight: float = 0.7,
         embedding_cache_size: int = 512,
     ) -> None:
         config = get_config()
         self._cache_dir = cache_dir or config.paths.ffai_data
         self._bm25_min_score = bm25_min_score
         self._bm25_min_overlap_ratio = bm25_min_overlap_ratio
-        self._bm25_weight = bm25_weight
-        self._embedding_weight = embedding_weight
 
         self._embeddings = FFEmbeddings(
             model=embedding_model,
@@ -273,7 +270,7 @@ class ResumePreScreener:
 
         logger.info(
             f"ResumePreScreener initialized: model={embedding_model}, "
-            f"bm25_weight={bm25_weight}, embedding_weight={embedding_weight}"
+            f"bm25_min_overlap_ratio={bm25_min_overlap_ratio}"
         )
 
     def rank_resumes(
@@ -634,30 +631,19 @@ class ResumePreScreener:
         return all_embeddings
 
     def _combine_scores(self, resumes: list[RankedResume]) -> list[RankedResume]:
-        """Compute combined score from BM25 and embedding scores.
+        """Set combined score to embedding cosine similarity.
 
-        Uses configured weights to produce a single combined score for each
-        resume. All resumes in the list have passed the BM25 hard filter.
+        BM25 is used only as a hard filter in Tier 1. The final ranking
+        is determined entirely by the embedding similarity score.
 
         Args:
-            resumes: RankedResume list with both scores populated.
+            resumes: RankedResume list with embedding scores populated.
 
         Returns:
-            Same list with combined_score populated.
+            Same list with combined_score set to embedding_score.
 
         """
-        if not resumes:
-            return resumes
-
-        bm25_scores = [r.bm25_score for r in resumes]
-        emb_scores = [r.embedding_score for r in resumes]
-
-        max_bm25 = max(bm25_scores) if bm25_scores and max(bm25_scores) > 0 else 1.0
-        max_emb = max(emb_scores) if emb_scores and max(emb_scores) > 0 else 1.0
-
         for r in resumes:
-            norm_bm25 = r.bm25_score / max_bm25
-            norm_emb = r.embedding_score / max_emb
-            r.combined_score = self._bm25_weight * norm_bm25 + self._embedding_weight * norm_emb
+            r.combined_score = r.embedding_score
 
         return resumes

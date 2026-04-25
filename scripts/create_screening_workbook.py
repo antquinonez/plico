@@ -242,10 +242,6 @@ def main() -> int:
             top_k = args.pre_screen
             print(f"\n  Pre-screening enabled (top-{top_k} of {len(resume_docs)})")
             print(f"  Embedding model: {config.pre_screening.embedding_model}")
-            print(
-                f"  Weights: BM25={config.pre_screening.bm25_weight}, "
-                f"embedding={config.pre_screening.embedding_weight}"
-            )
 
             from pathlib import Path
 
@@ -253,8 +249,6 @@ def main() -> int:
 
             pre_screener = ResumePreScreener(
                 embedding_model=config.pre_screening.embedding_model,
-                bm25_weight=config.pre_screening.bm25_weight,
-                embedding_weight=config.pre_screening.embedding_weight,
                 bm25_min_score=config.pre_screening.bm25_min_score,
                 bm25_min_overlap_ratio=config.pre_screening.bm25_min_overlap_ratio,
                 embedding_cache_size=config.pre_screening.embedding_cache_size,
