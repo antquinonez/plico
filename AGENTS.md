@@ -884,7 +884,7 @@ orchestrator.run()
 
 ### Pre-Screening (Cost Reduction)
 
-Embedding-based resume ranking filters candidates before the expensive LLM pipeline. Two-tier pipeline: Tier 1 is a **hard exclusion** gate using BM25 keyword matching — candidates below threshold are removed entirely. Tier 2 uses dense embedding cosine similarity to rank survivors, with scores combined using configurable weights (default 30/70 BM25/embedding).
+Embedding-based resume ranking filters candidates before the expensive LLM pipeline. Two-tier pipeline: Tier 1 is a **hard exclusion** gate using BM25 keyword matching — candidates below threshold are removed entirely. Tier 2 uses dense embedding cosine similarity to rank survivors. BM25 is used only as a hard filter; final ranking is determined entirely by embedding similarity.
 
 ```bash
 # Pre-screen top 20 resumes before LLM evaluation
@@ -903,8 +903,6 @@ python scripts/create_screening_manifest.py ./resumes/ --jd ./jd.md --pre-screen
 pre_screening:
   enabled: true
   embedding_model: "mistral/mistral-embed"
-  bm25_weight: 0.3
-  embedding_weight: 0.7
   bm25_min_score: 0.0
   bm25_min_overlap_ratio: 0.05
   embedding_cache_size: 512

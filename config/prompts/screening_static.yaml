@@ -55,25 +55,67 @@ prompts:
     prompt_name: evaluate_skills
     prompt: |
       Evaluate {{candidate_name}}'s technical skills against the job description.
-      For each required skill, rate proficiency (1-10). Return JSON:
-      {"skills_match": <1-10>, "reasoning": "..."}
+
+      Use this ABSOLUTE scale — apply it consistently across ALL candidates regardless
+      of how impressive any single resume appears in isolation:
+
+      1-2: No relevant skills — none of the required skills appear in the resume.
+      3-4: Minimal — mentions some required skills but no evidence of professional use.
+      5-6: Intermediate — has used most required skills in professional settings, but
+          gaps exist or depth is shallow.
+      7-8: Strong — proficient in all required skills with evidence of substantive
+          professional use; minor gaps in secondary skills only.
+      9-10: Expert — deep mastery of all required skills; evidence of advanced use,
+          mentorship, architecture-level decisions, or recognized expertise.
+
+      Do not inflate scores for candidates who are strong in unrelated areas.
+      A candidate with no exposure to the required stack should score 1-4 regardless
+      of other strengths.
+
+      Return JSON: {"skills_match": <1-10>, "reasoning": "..."}
     history: '["extract_profile"]'
     references: '["job_description"]'
 
   - sequence: 30
     prompt_name: evaluate_education
     prompt: |
-      Evaluate {{candidate_name}}'s education quality and relevance.
-      Consider institution reputation, degree relevance. Return JSON:
-      {"education": <1-10>, "reasoning": "..."}
+      Evaluate {{candidate_name}}'s education quality and relevance to the role.
+
+      Use this ABSOLUTE scale — apply it consistently across ALL candidates:
+
+      1-2: No relevant education — no degree or degree in an unrelated field.
+      3-4: Below average — degree in a related field but from an unremarkable institution
+          with no academic distinction.
+      5-6: Adequate — relevant degree from a solid institution; meets the baseline
+          educational requirement for the role.
+      7-8: Strong — degree from a well-regarded institution, strong academic performance,
+          or advanced degree (Masters/PhD) directly relevant to the role.
+      9-10: Exceptional — degree from a top-tier institution, outstanding academic
+          achievements, published research, or highly specialized advanced degree.
+
+      Return JSON: {"education": <1-10>, "reasoning": "..."}
     history: '["extract_profile"]'
     references: '["job_description"]'
 
   - sequence: 40
     prompt_name: evaluate_experience
     prompt: |
-      Evaluate {{candidate_name}}'s work experience depth and relevance.
-      Consider years, progression, scope, relevance.
+      Evaluate {{candidate_name}}'s work experience depth and relevance to the role.
+
+      Use this ABSOLUTE scale — apply it consistently across ALL candidates:
+
+      1-2: No relevant experience — has never worked in a related role or industry.
+      3-4: Junior — less than half the required years, or experience is tangential
+          with limited transferable responsibilities.
+      5-6: Intermediate — meets the minimum years requirement but with limited scope,
+          no progression, or mixed relevance.
+      7-8: Strong — exceeds the minimum years with clear progression in responsibility,
+          scope, and relevance to the target role.
+      9-10: Exceptional — extensive deeply relevant experience with leadership,
+          strategic impact, and a clear track record of increasingly significant
+          accomplishments in the domain.
+
+      Consider years, progression, scope, and relevance.
       Return JSON: {"experience_depth": <1-10>, "reasoning": "..."}
     history: '["extract_profile"]'
     references: '["job_description"]'
@@ -81,8 +123,24 @@ prompts:
   - sequence: 50
     prompt_name: evaluate_growth
     prompt: |
-      Assess {{candidate_name}}'s growth trajectory. Look for increasing responsibility,
-      career progression, skill development, learning agility.
+      Assess {{candidate_name}}'s career growth trajectory and learning agility.
+
+      Use this ABSOLUTE scale — apply it consistently across ALL candidates:
+
+      1-2: Stagnant — same role/level for many years with no evidence of new skills
+          or increasing responsibility.
+      3-4: Slow — minimal progression over time; lateral moves without clear growth;
+          limited evidence of skill development.
+      5-6: Steady — reasonable progression with some increases in responsibility;
+          evidence of learning new skills but at a moderate pace.
+      7-8: Strong — clear upward trajectory with regular promotions or expanding scope;
+          proactive skill development; takes on increasing responsibility.
+      9-10: Exceptional — rapid acceleration through roles; demonstrates learning
+          agility across domains; evidence of leadership emergence and
+          self-directed growth.
+
+      Look for increasing responsibility, career progression, skill development,
+      and learning agility.
       Return JSON: {"growth_trajectory": <1-10>, "evidence": ["..."], "reasoning": "..."}
     history: '["extract_profile"]'
 
@@ -90,7 +148,21 @@ prompts:
     prompt_name: evaluate_employers
     prompt: |
       Evaluate the quality and relevance of {{candidate_name}}'s past employers.
-      Consider company reputation, industry alignment, scale, competitiveness.
+
+      Use this ABSOLUTE scale — apply it consistently across ALL candidates:
+
+      1-2: No relevant employers — all experience is at small or unknown companies
+          in unrelated industries with no name recognition.
+      3-4: Below average — mostly small companies or unknown firms; limited industry
+          alignment with the target role.
+      5-6: Adequate — mix of mid-tier companies with some industry relevance;
+          employers are recognizable within their niche.
+      7-8: Strong — experience at well-known companies in the relevant industry;
+          employers are respected and competitive; good industry alignment.
+      9-10: Exceptional — experience at top-tier, highly selective employers (FAANG,
+          Fortune 100, industry leaders) directly relevant to the target domain.
+
+      Consider company reputation, industry alignment, scale, and competitiveness.
       Return JSON: {"employer_prestige": <1-10>, "reasoning": "..."}
     history: '["extract_profile"]'
 

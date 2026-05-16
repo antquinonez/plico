@@ -104,7 +104,7 @@ prompts:
       CRITICAL RULES:
       - One skill per criterion. Never combine multiple skills into one.
       - Every criterion MUST include weight as a float between 0.3 and 2.0.
-      - Every criterion MUST include label_1 set to one of: technical,
+      - Every criterion MUST have label_1 set to one of: technical,
         education, experience, or domain.
       - Each source_prompt must exactly match a prompt_name in the prompts array.
       - Each prompt text MUST explicitly state the exact JSON key the evaluator
@@ -113,6 +113,17 @@ prompts:
         NOT a nested object. Correct: {"python": 8}. Wrong: {"python": {"score": 8}}.
       - The prompt text for each skill must be specific about what evidence to
         look for (e.g., for "python": look for projects, years used, libraries).
+      - SCORE ANCHORING: Every generated evaluation prompt MUST include an ABSOLUTE
+        scoring scale with concrete descriptions for each band (1-2, 3-4, 5-6, 7-8,
+        9-10) describing what EVIDENCE qualifies a candidate for that level. Include
+        the instruction: "Use this ABSOLUTE scale — apply it consistently across ALL
+        candidates." Example for "python":
+
+        1-2: No Python experience — no evidence of Python in the resume.
+        3-4: Minimal — mentions Python but no evidence of professional use.
+        5-6: Intermediate — has used Python professionally but gaps exist.
+        7-8: Strong — proficient with evidence of substantive professional use.
+        9-10: Expert — deep mastery with advanced use or mentorship evidence.
     references: '["job_description"]'
     notes: >
       Master generator: exhaustively extracts every skill/requirement from JD,
@@ -131,6 +142,12 @@ prompts:
         unless the JD treats them as one)
       - Clarity: each prompt should precisely define what evidence demonstrates
         proficiency at each score level (1-10)
+      - Score anchoring: EVERY evaluation prompt MUST include an ABSOLUTE scoring scale
+        with concrete descriptions for each band (1-2, 3-4, 5-6, 7-8, 9-10) describing
+        what EVIDENCE qualifies a candidate for that score level. Include the instruction:
+        "Use this ABSOLUTE scale — apply it consistently across ALL candidates." Verify
+        every prompt has this scale; add it to any that are missing. The scale descriptions
+        must be specific to the skill being evaluated, not generic.
       - Weight calibration: EVERY criterion MUST have a weight field (float
         0.3–2.0). Weights should reflect the JD's actual emphasis. Skills
         mentioned in the first paragraph or in a "Required" section should be

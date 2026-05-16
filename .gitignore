@@ -20,3 +20,4 @@ working_docs/*
 .coverage
 .opencode/package-lock.json
 articles/*
+*pre_screening_report.yaml

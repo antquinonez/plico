@@ -85,9 +85,18 @@ def get_static_screening_prompts(
         PromptSpec(
             20,
             "evaluate_skills",
-            "Evaluate {{candidate_name}}'s technical skills against the job description. "
-            "For each required skill, rate proficiency (1-10). Return JSON: "
-            '{"skills_match": <1-10>, "reasoning": "..."}',
+            "Evaluate {{candidate_name}}'s technical skills against the job description.\n"
+            "\n"
+            "Use this ABSOLUTE scale — apply it consistently across ALL candidates:\n"
+            "\n"
+            "1-2: No relevant skills — none of the required skills appear.\n"
+            "3-4: Minimal — mentions some required skills but no evidence of professional use.\n"
+            "5-6: Intermediate — has used most required skills professionally, but gaps exist.\n"
+            "7-8: Strong — proficient in all required skills with substantive professional use.\n"
+            "9-10: Expert — deep mastery with advanced use, mentorship, or architecture evidence.\n"
+            "\n"
+            "Do not inflate scores for candidates strong in unrelated areas.\n"
+            'Return JSON: {"skills_match": <1-10>, "reasoning": "..."}',
             history='["extract_profile"]',
             references='["job_description"]',
         )
@@ -96,9 +105,18 @@ def get_static_screening_prompts(
         PromptSpec(
             30,
             "evaluate_education",
-            "Evaluate {{candidate_name}}'s education quality and relevance. "
-            "Consider institution reputation, degree relevance. Return JSON: "
-            '{"education": <1-10>, "reasoning": "..."}',
+            "Evaluate {{candidate_name}}'s education quality and relevance.\n"
+            "\n"
+            "Use this ABSOLUTE scale — apply it consistently across ALL candidates:\n"
+            "\n"
+            "1-2: No relevant education — no degree or unrelated field.\n"
+            "3-4: Below average — related field but unremarkable institution.\n"
+            "5-6: Adequate — relevant degree from a solid institution; meets baseline.\n"
+            "7-8: Strong — well-regarded institution, advanced degree, or strong performance.\n"
+            "9-10: Exceptional — top-tier institution, published research, or specialized degree.\n"
+            "\n"
+            "Consider institution reputation and degree relevance. "
+            'Return JSON: {"education": <1-10>, "reasoning": "..."}',
             history='["extract_profile"]',
             references='["job_description"]',
         )
@@ -107,7 +125,16 @@ def get_static_screening_prompts(
         PromptSpec(
             40,
             "evaluate_experience",
-            "Evaluate {{candidate_name}}'s work experience depth and relevance. "
+            "Evaluate {{candidate_name}}'s work experience depth and relevance.\n"
+            "\n"
+            "Use this ABSOLUTE scale — apply it consistently across ALL candidates:\n"
+            "\n"
+            "1-2: No relevant experience — never worked in a related role or industry.\n"
+            "3-4: Junior — less than half the required years or tangential experience.\n"
+            "5-6: Intermediate — meets minimum years but limited scope or progression.\n"
+            "7-8: Strong — exceeds minimum years with clear progression and relevance.\n"
+            "9-10: Exceptional — extensive deeply relevant experience with leadership impact.\n"
+            "\n"
             "Consider years, progression, scope, relevance. "
             'Return JSON: {"experience_depth": <1-10>, "reasoning": "..."}',
             history='["extract_profile"]',
@@ -118,8 +145,18 @@ def get_static_screening_prompts(
         PromptSpec(
             50,
             "evaluate_growth",
-            "Assess {{candidate_name}}'s growth trajectory. Look for increasing responsibility, "
-            "career progression, skill development, learning agility. "
+            "Assess {{candidate_name}}'s career growth trajectory.\n"
+            "\n"
+            "Use this ABSOLUTE scale — apply it consistently across ALL candidates:\n"
+            "\n"
+            "1-2: Stagnant — same role/level for years with no new skills.\n"
+            "3-4: Slow — minimal progression; lateral moves; limited skill development.\n"
+            "5-6: Steady — reasonable progression with some increasing responsibility.\n"
+            "7-8: Strong — clear upward trajectory with regular promotions and skill growth.\n"
+            "9-10: Exceptional — rapid acceleration; learning agility across domains.\n"
+            "\n"
+            "Look for increasing responsibility, career progression, skill development, "
+            "learning agility. "
             'Return JSON: {"growth_trajectory": <1-10>, "evidence": ["..."], "reasoning": "..."}',
             history='["extract_profile"]',
         )
@@ -128,7 +165,16 @@ def get_static_screening_prompts(
         PromptSpec(
             60,
             "evaluate_employers",
-            "Evaluate the quality and relevance of {{candidate_name}}'s past employers. "
+            "Evaluate the quality and relevance of {{candidate_name}}'s past employers.\n"
+            "\n"
+            "Use this ABSOLUTE scale — apply it consistently across ALL candidates:\n"
+            "\n"
+            "1-2: No relevant employers — all experience at unknown companies in unrelated fields.\n"
+            "3-4: Below average — mostly small/unknown firms with limited industry alignment.\n"
+            "5-6: Adequate — mid-tier companies with some industry relevance.\n"
+            "7-8: Strong — well-known companies in the relevant industry.\n"
+            "9-10: Exceptional — top-tier, highly selective employers directly relevant.\n"
+            "\n"
             "Consider company reputation, industry alignment, scale, competitiveness. "
             'Return JSON: {"employer_prestige": <1-10>, "reasoning": "..."}',
             history='["extract_profile"]',
@@ -194,6 +240,10 @@ def get_planning_screening_prompts(
             "is the criteria_name (matching exactly) with an integer score 1-10, plus a "
             "'reasoning' key. Example for a criterion named 'skills_match': "
             '{"skills_match": 8, "reasoning": "..."}\n'
+            "   - Include an ABSOLUTE scoring scale with concrete descriptions for each "
+            "score band (1-2, 3-4, 5-6, 7-8, 9-10) so the evaluator applies the scale "
+            "consistently across ALL candidates. Include the instruction: \"Use this "
+            "ABSOLUTE scale — apply it consistently across ALL candidates.\"\n"
             "\n"
             "Return your response as JSON with exactly two keys:\n"
             '- "scoring_criteria": array of criteria objects\n'
@@ -220,6 +270,10 @@ def get_planning_screening_prompts(
             "Refine them for:\n"
             "- Clarity: each prompt should be unambiguous about what to evaluate\n"
             "- Consistency: all prompts should use the same scoring scale and JSON format\n"
+            "- Score anchoring: every evaluation prompt MUST include an ABSOLUTE scoring "
+            "scale with concrete descriptions for each band (1-2, 3-4, 5-6, 7-8, 9-10) "
+            "so the evaluator applies the scale consistently across ALL candidates. "
+            "Verify every prompt has this scale; add it to any that are missing.\n"
             "- Reliability: prompts should elicit scores that are reproducible\n"
             "- Completeness: ensure all important aspects of the JD are covered\n"
             "- Weight balance: weights should reflect the JD's priorities\n"
