@@ -327,6 +327,55 @@ def test_all(c: Context):
 
 
 @task
+def docs_sphinx(c: Context, clean: bool = False, apidoc: bool = True):
+    """Build Sphinx documentation in HTML, text, and JSON formats.
+
+    Outputs are written to:
+        docs/sphinx/html/  - HTML documentation
+        docs/sphinx/text/  - Plain text documentation
+        docs/sphinx/json/  - JSON documentation
+
+    Args:
+        clean: Remove existing build directories before building.
+        apidoc: Run sphinx-apidoc to generate .rst files from Python modules.
+
+    Examples:
+        inv docs-sphinx              # Build all formats (with apidoc)
+        inv docs-sphinx --clean      # Clean and rebuild all formats
+        inv docs-sphinx --no-apidoc  # Skip apidoc, use existing .rst files
+    """
+    source_dir = "docs/source"
+    base_out = "docs/sphinx"
+
+    if apidoc:
+        print("Generating API documentation stubs with sphinx-apidoc...")
+        c.run(f"sphinx-apidoc -o {source_dir}/ src/ --force --separate", pty=PTY)
+
+    if clean:
+        print("Cleaning existing build directories...")
+        for builder in ["html", "text", "json"]:
+            out_dir = f"{base_out}/{builder}"
+            if os.path.exists(out_dir):
+                import shutil
+
+                shutil.rmtree(out_dir)
+                print(f"  Removed {out_dir}")
+
+    builders = [
+        ("html", f"{base_out}/html"),
+        ("text", f"{base_out}/text"),
+        ("json", f"{base_out}/json"),
+    ]
+
+    print("Building Sphinx documentation...")
+    for builder, out_dir in builders:
+        print(f"  Building {builder} -> {out_dir}")
+        c.run(f"sphinx-build -b {builder} {source_dir} {out_dir}", pty=PTY)
+
+    print("\nSphinx documentation built successfully!")
+
+
+@task
 def explain(c: Context, workbook: str, concurrency: str = "1"):
     """Show execution plan for a workbook without running it.
 
@@ -1284,6 +1333,7 @@ ns.add_task(lint)
 ns.add_task(format)
 ns.add_task(test)
 ns.add_task(test_all, name="test-all")
+ns.add_task(docs_sphinx, name="docs-sphinx")
 ns.add_collection(wb, name="wb")
 ns.add_collection(rag, name="rag")
 ns.add_collection(screening, name="screening")

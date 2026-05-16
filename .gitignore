@@ -1,5 +1,8 @@
 *.parquet
 ffclients.egg-info/*
+Plico.egg-info/*
+docs/sphinx/
+docs/source/src*
 .vscode/settings.json
 __pycache__/
 *.pyc
