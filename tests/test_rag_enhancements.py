@@ -300,25 +300,29 @@ class TestCosineSimilarity:
 
     def test_identical_vectors(self):
         """Identical vectors should have similarity 1.0."""
-        emb = FFEmbeddings.__new__(FFEmbeddings)
+        with patch.object(FFEmbeddings, "_get_default_api_key", return_value="test-key"):
+            emb = FFEmbeddings(model="mistral/mistral-embed")
         sim = emb.cosine_similarity([1.0, 0.0], [1.0, 0.0])
         assert abs(sim - 1.0) < 0.001
 
     def test_orthogonal_vectors(self):
         """Orthogonal vectors should have similarity 0.0."""
-        emb = FFEmbeddings.__new__(FFEmbeddings)
+        with patch.object(FFEmbeddings, "_get_default_api_key", return_value="test-key"):
+            emb = FFEmbeddings(model="mistral/mistral-embed")
         sim = emb.cosine_similarity([1.0, 0.0], [0.0, 1.0])
         assert abs(sim) < 0.001
 
     def test_opposite_vectors(self):
         """Opposite vectors should have similarity -1.0."""
-        emb = FFEmbeddings.__new__(FFEmbeddings)
+        with patch.object(FFEmbeddings, "_get_default_api_key", return_value="test-key"):
+            emb = FFEmbeddings(model="mistral/mistral-embed")
         sim = emb.cosine_similarity([1.0, 0.0], [-1.0, 0.0])
         assert abs(sim - (-1.0)) < 0.001
 
     def test_zero_vector(self):
         """Zero vector should return 0.0."""
-        emb = FFEmbeddings.__new__(FFEmbeddings)
+        with patch.object(FFEmbeddings, "_get_default_api_key", return_value="test-key"):
+            emb = FFEmbeddings(model="mistral/mistral-embed")
         sim = emb.cosine_similarity([0.0, 0.0], [1.0, 0.0])
         assert sim == 0.0
 
@@ -448,8 +452,8 @@ class TestFFEmbeddingsExtended:
 
     def test_get_default_api_key_unknown_provider(self) -> None:
         """_get_default_api_key constructs env var for unknown provider."""
-        emb = FFEmbeddings.__new__(FFEmbeddings)
-        emb.model = "custom/model"
+        with patch.object(FFEmbeddings, "_get_default_api_key", return_value=None):
+            emb = FFEmbeddings(model="custom/model")
         with patch.dict("os.environ", {}, clear=True):
             key = emb._get_default_api_key()
             assert key is None

@@ -55,12 +55,12 @@ class TestCharacterChunker:
     """Tests for CharacterChunker."""
 
     def test_basic_chunking(self) -> None:
-        """Basic character-based chunking works."""
+        """Basic character-based chunking produces exactly 4 chunks for known input."""
         chunker = CharacterChunker(chunk_size=50, chunk_overlap=10)
         text = "This is a test. " * 10
         chunks = chunker.chunk(text)
 
-        assert len(chunks) > 1
+        assert len(chunks) == 4
         for chunk in chunks:
             assert len(chunk.content) <= 50 + 10
             assert isinstance(chunk, TextChunk)
@@ -95,12 +95,12 @@ class TestRecursiveChunker:
     """Tests for RecursiveChunker."""
 
     def test_splits_by_paragraphs_first(self) -> None:
-        """Recursive chunker splits by paragraphs first."""
+        """Recursive chunker keeps 3 paragraphs within chunk_size as 1 chunk."""
         chunker = RecursiveChunker(chunk_size=500, chunk_overlap=50)
         text = "First paragraph.\n\nSecond paragraph.\n\nThird paragraph."
         chunks = chunker.chunk(text)
 
-        assert len(chunks) >= 1
+        assert len(chunks) == 1
 
     def test_splits_by_sentences_when_needed(self) -> None:
         """Falls back to sentence splitting for long paragraphs."""
@@ -108,7 +108,7 @@ class TestRecursiveChunker:
         text = "This is a long sentence. This is another sentence. And a third one here."
         chunks = chunker.chunk(text)
 
-        assert len(chunks) >= 1
+        assert len(chunks) == 1
 
     def test_custom_separators(self) -> None:
         """Custom separators can be provided."""
@@ -120,7 +120,7 @@ class TestRecursiveChunker:
         text = "a|b|c|d|e|f|g|h"
         chunks = chunker.chunk(text)
 
-        assert len(chunks) >= 1
+        assert len(chunks) == 1
 
     def test_chunk_whitespace_only(self) -> None:
         """Test chunk with whitespace-only text returns empty."""
@@ -135,15 +135,15 @@ class TestRecursiveChunker:
         text = "A" * 30 + " " + "B" * 30 + " " + "C" * 30
         chunks = chunker.chunk(text)
 
-        assert len(chunks) > 1
+        assert len(chunks) == 3
 
     def test_chunk_large_text_splitting(self) -> None:
-        """Test splitting of text that exceeds chunk_size."""
+        """Test splitting of text that exceeds chunk_size produces 11 chunks."""
         chunker = RecursiveChunker(chunk_size=50, chunk_overlap=10)
         text = "word " * 100
         chunks = chunker.chunk(text)
 
-        assert len(chunks) > 1
+        assert len(chunks) == 11
         for chunk in chunks:
             assert len(chunk.content) <= 60
 
@@ -230,6 +230,7 @@ class TestRecursiveChunker:
         text = "A" * 20 + " " + "B" * 20 + " " + "C" * 20
         chunks = chunker.chunk(text)
 
+        assert len(chunks) == 2
         for chunk in chunks:
             assert chunk.start_char >= 0
             assert chunk.end_char > chunk.start_char
@@ -241,14 +242,14 @@ class TestRecursiveChunker:
         text = "a" * 100
         chunks = chunker.chunk(text)
 
-        assert len(chunks) >= 1
+        assert len(chunks) == 7
 
 
 class TestMarkdownChunker:
     """Tests for MarkdownChunker."""
 
     def test_splits_by_headers(self) -> None:
-        """Markdown chunker splits by headers."""
+        """Markdown chunker splits by headers producing exactly 3 chunks."""
         chunker = MarkdownChunker(chunk_size=500, split_headers=["h1", "h2"])
         text = """# Main Title
 
@@ -264,7 +265,7 @@ Content in section 2.
 """
         chunks = chunker.chunk(text)
 
-        assert len(chunks) >= 2
+        assert len(chunks) == 3
         header_metadata = [c.metadata.get("header", "") for c in chunks]
         assert any("Main Title" in h for h in header_metadata)
 
@@ -294,7 +295,7 @@ Content here.
         )
 
         chunks = chunker.chunk(text)
-        assert len(chunks) > 1
+        assert len(chunks) == 5
 
 
 class TestCodeChunker:
@@ -318,9 +319,9 @@ class MyClass:
 '''
         chunks = chunker.chunk(code)
 
-        assert len(chunks) >= 2
+        assert len(chunks) == 4
         function_chunks = [c for c in chunks if c.metadata.get("block_type") == "function"]
-        assert len(function_chunks) >= 2
+        assert len(function_chunks) == 3
 
     def test_detects_function_names(self) -> None:
         """Function names are extracted."""
@@ -328,7 +329,7 @@ class MyClass:
         code = "def my_function():\n    pass"
         chunks = chunker.chunk(code)
 
-        assert len(chunks) >= 1
+        assert len(chunks) == 1
         assert chunks[0].metadata.get("block_name") == "my_function"
 
     def test_javascript_functions(self) -> None:
@@ -344,7 +345,7 @@ const bar = () => {
 };
 """
         chunks = chunker.chunk(code)
-        assert len(chunks) >= 1
+        assert len(chunks) == 3
 
     def test_fallback_for_no_structure(self) -> None:
         """Fallback chunking when no code structure detected."""
@@ -352,7 +353,7 @@ const bar = () => {
         code = "# Just a comment\n" * 10
 
         chunks = chunker.chunk(code)
-        assert len(chunks) >= 1
+        assert len(chunks) == 3
 
 
 class TestCodeChunkerExtended:
@@ -371,10 +372,12 @@ class TestCodeChunkerExtended:
 
         chunks = chunker.chunk(code)
         assert len(chunks) >= 1
-        non_fallback = [c for c in chunks if c.metadata.get("block_type") != "fallback"]
-        assert len(non_fallback) == 0 or all(
-            c.metadata.get("block_type") in ("module_level", "fallback") for c in chunks
-        )
+        non_fallback = [
+            c
+            for c in chunks
+            if c.metadata.get("block_type") not in ("module_level", "fallback", None)
+        ]
+        assert len(non_fallback) == 0
 
     def test_split_by_class(self) -> None:
         """split_by='class' detects classes and functions."""
@@ -392,7 +395,7 @@ def standalone_func():
     return 3
 """
         chunks = chunker.chunk(code)
-        assert len(chunks) >= 2
+        assert len(chunks) == 6
 
     def test_split_by_module(self) -> None:
         """split_by='module' detects both classes and functions."""
@@ -405,7 +408,7 @@ def my_func():
     pass
 """
         chunks = chunker.chunk(code)
-        assert len(chunks) >= 2
+        assert len(chunks) == 3
 
     def test_extract_name_for_class(self) -> None:
         """Class names are extracted."""
@@ -414,7 +417,7 @@ def my_func():
         chunks = chunker.chunk(code)
         assert len(chunks) >= 1
         class_chunks = [c for c in chunks if c.metadata.get("block_type") == "class"]
-        assert len(class_chunks) >= 1
+        assert len(class_chunks) == 1
         assert class_chunks[0].metadata.get("block_name") == "MyClassName"
 
     def test_get_overlap_lines_zero_overlap(self) -> None:
@@ -436,7 +439,7 @@ def my_func():
         code += "    x = 1\n" * 20
 
         chunks = chunker.chunk(code)
-        assert len(chunks) >= 2
+        assert len(chunks) == 6
         assert all(c.metadata.get("block_type") == "function" for c in chunks)
 
     def test_language_defaults_to_python(self) -> None:
@@ -449,7 +452,7 @@ def my_func():
         chunker = CodeChunker(language="brainfuck", chunk_size=500)
         code = "function test()\n  return 1\n"
         chunks = chunker.chunk(code)
-        assert len(chunks) >= 1
+        assert len(chunks) == 1
 
     def test_metadata_includes_language(self) -> None:
         """Chunks include language in metadata."""
@@ -479,8 +482,8 @@ class TestHierarchicalChunker:
         parents = [c for c in chunks if c.hierarchy_level == 0]
         children = [c for c in chunks if c.hierarchy_level > 0]
 
-        assert len(parents) >= 1
-        assert len(children) >= 1
+        assert len(parents) == 2
+        assert len(children) == 6
 
     def test_child_references_parent(self) -> None:
         """Child chunks reference their parent."""
@@ -562,7 +565,7 @@ class TestChunkTextConvenience:
         text = "This is a test. " * 20
         chunks = chunk_text(text, strategy="character", chunk_size=200, chunk_overlap=50)
 
-        assert len(chunks) >= 1
+        assert len(chunks) == 2
         assert all(isinstance(c, TextChunk) for c in chunks)
 
     def test_chunk_text_with_metadata(self) -> None:
