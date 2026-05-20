@@ -11,9 +11,10 @@ deterministic DAG orchestrator.
 
 from __future__ import annotations
 
-from .agent_result import AgentResult, ToolCallRecord
+from .agent_result import AgentResult, AgentStatus, ToolCallRecord
 
 __all__ = [
     "AgentResult",
+    "AgentStatus",
     "ToolCallRecord",
 ]

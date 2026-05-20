@@ -10,6 +10,8 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+from src.RAG import CHROMADB_AVAILABLE, FFEmbeddings
+
 collect_ignore_glob = [
     "test_ffanthropic*.py",
     "test_ffazure_*.py",
@@ -327,3 +329,27 @@ def temp_workbook_with_batch_data(temp_workbook, sample_prompts, sample_config, 
 
     wb.save(temp_workbook)
     return temp_workbook
+
+
+requires_chromadb = pytest.mark.skipif(
+    not CHROMADB_AVAILABLE,
+    reason="chromadb not installed or not compatible with this Python version",
+)
+
+
+@pytest.fixture
+def rag_mock_embeddings():
+    """Create mock embeddings that return fixed 384-dim vectors.
+
+    Shared by all RAG test classes that need a mock embedding model.
+    """
+
+    def make_embed_mock(texts):
+        n = len(texts) if isinstance(texts, list) else 1
+        return [[0.1] * 384 for _ in range(n)]
+
+    mock = MagicMock(spec=FFEmbeddings)
+    mock.embed = MagicMock(side_effect=make_embed_mock)
+    mock.embed_single = MagicMock(return_value=[0.1] * 384)
+    mock.model = "test-model"
+    return mock

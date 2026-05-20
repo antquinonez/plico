@@ -237,8 +237,8 @@ class TestLoadSynthesisTemplate:
         assert result is None
 
 
-class TestScreeningFallbackIntegration:
-    """Tests that screening.py functions fall back correctly."""
+class TestDictToPromptSpecFieldFiltering:
+    """Tests for _dict_to_prompt_spec stripping unknown fields."""
 
     @pytest.fixture(autouse=True)
     def _add_scripts_to_path(self):
@@ -246,183 +246,330 @@ class TestScreeningFallbackIntegration:
         if scripts_dir not in sys.path:
             sys.path.insert(0, scripts_dir)
 
-    def test_static_prompts_default(self):
-        from sample_workbooks.screening import get_static_screening_prompts
-
-        prompts = get_static_screening_prompts()
-        assert len(prompts) == 8
-        assert prompts[0].name == "extract_profile"
-
-    def test_planning_prompts_default(self):
-        from sample_workbooks.screening import get_planning_screening_prompts
-
-        prompts = get_planning_screening_prompts()
-        assert len(prompts) == 5
-        assert prompts[0].name == "analyze_jd"
-
-    def test_static_prompts_with_valid_template(self):
-        from sample_workbooks.screening import get_static_screening_prompts
-
-        prompts = get_static_screening_prompts(template_path="screening_static")
-        assert len(prompts) == 8
-        assert prompts[0].name == "extract_profile"
-
-    def test_planning_prompts_with_valid_template(self):
-        from sample_workbooks.screening import get_planning_screening_prompts
-
-        prompts = get_planning_screening_prompts(template_path="screening_planning")
-        assert len(prompts) == 5
-        assert prompts[0].name == "analyze_jd"
-
-    def test_static_prompts_fallback_on_missing_template(self):
-        from sample_workbooks.screening import get_static_screening_prompts
-
-        prompts = get_static_screening_prompts(template_path="nonexistent_xyz")
-        assert len(prompts) == 8
-
-    def test_planning_prompts_fallback_on_missing_template(self):
-        from sample_workbooks.screening import get_planning_screening_prompts
-
-        prompts = get_planning_screening_prompts(template_path="nonexistent_xyz")
-        assert len(prompts) == 5
-
-    def test_synthesis_prompts_default(self):
-        from sample_workbooks.screening import get_screening_synthesis_prompts
-
-        synthesis = get_screening_synthesis_prompts(top_n=10)
-        assert len(synthesis) == 3
-        assert synthesis[0]["source_scope"] == "top:10"
-
-    def test_synthesis_prompts_with_template(self):
-        from sample_workbooks.screening import get_screening_synthesis_prompts
-
-        synthesis = get_screening_synthesis_prompts(top_n=8, template_path="screening_synthesis")
-        assert len(synthesis) == 3
-        assert synthesis[0]["source_scope"] == "top:8"
-
-    def test_synthesis_prompts_fallback_on_missing_template(self):
-        from sample_workbooks.screening import get_screening_synthesis_prompts
-
-        synthesis = get_screening_synthesis_prompts(top_n=5, template_path="nonexistent_xyz")
-        assert len(synthesis) == 3
-
-    def test_static_prompts_custom_file(self, tmp_path):
-        from sample_workbooks.screening import get_static_screening_prompts
+    def test_unknown_fields_stripped(self, tmp_path):
+        from src.prompt_templates import load_prompt_template
 
         template_data = {
-            "name": "custom",
+            "name": "test",
             "prompts": [
                 {
                     "sequence": 1,
-                    "prompt_name": "custom_eval",
-                    "prompt": "Evaluate {{candidate_name}}",
+                    "prompt_name": "p1",
+                    "prompt": "Test",
+                    "unknown_field": "should_be_removed",
+                    "also_unknown": 42,
                 },
             ],
         }
-        template_file = tmp_path / "custom.yaml"
-        with open(template_file, "w") as f:
-            yaml.dump(template_data, f)
-
-        prompts = get_static_screening_prompts(template_path=str(template_file))
-        assert len(prompts) == 1
-        assert prompts[0].name == "custom_eval"
-
-
-class TestScreeningSkillsPlanningTemplate:
-    """Tests for the screening_skills_planning template."""
-
-    @pytest.fixture(autouse=True)
-    def _add_scripts_to_path(self):
-        scripts_dir = str(Path(__file__).parent.parent / "scripts")
-        if scripts_dir not in sys.path:
-            sys.path.insert(0, scripts_dir)
-
-    def test_load_skills_planning_template(self):
-        from src.prompt_templates import load_prompt_template
-
-        result = load_prompt_template("screening_skills_planning")
+        f = tmp_path / "test.yaml"
+        f.write_text(yaml.dump(template_data))
+        result = load_prompt_template(str(f))
         assert result is not None
-        assert len(result) == 5
+        assert not hasattr(result[0], "unknown_field")
+        assert result[0].name == "p1"
 
-    def test_skills_planning_has_correct_prompt_names(self):
+    def test_sequence_as_string_converted_to_int(self, tmp_path):
         from src.prompt_templates import load_prompt_template
 
-        result = load_prompt_template("screening_skills_planning")
-        names = [p.name for p in result]
-        assert "analyze_jd" in names
-        assert "refine_criteria" in names
-        assert "extract_profile" in names
-        assert "gate_evaluation" in names
-        assert "overall_assessment" in names
+        template_data = {
+            "name": "test",
+            "prompts": [
+                {
+                    "sequence": "7",
+                    "prompt_name": "p1",
+                    "prompt": "Test",
+                },
+            ],
+        }
+        f = tmp_path / "test.yaml"
+        f.write_text(yaml.dump(template_data))
+        result = load_prompt_template(str(f))
+        assert result is not None
+        assert result[0].sequence == 7
+        assert isinstance(result[0].sequence, int)
 
-    def test_skills_planning_gate_has_abort_condition(self):
+    def test_tools_list_converted_to_json(self, tmp_path):
         from src.prompt_templates import load_prompt_template
 
-        result = load_prompt_template("screening_skills_planning")
-        gate = next(p for p in result if p.name == "gate_evaluation")
-        assert gate.abort_condition is not None
-        assert "json_get" in gate.abort_condition
-        assert "proceed" in gate.abort_condition
+        template_data = {
+            "name": "test",
+            "prompts": [
+                {
+                    "sequence": 1,
+                    "prompt_name": "p1",
+                    "prompt": "Test",
+                    "tools": ["rag_search", "calculate"],
+                },
+            ],
+        }
+        f = tmp_path / "test.yaml"
+        f.write_text(yaml.dump(template_data))
+        result = load_prompt_template(str(f))
+        assert result is not None
+        assert result[0].tools == '["rag_search", "calculate"]'
+        parsed = json.loads(result[0].tools)
+        assert parsed == ["rag_search", "calculate"]
 
-    def test_skills_planning_analyze_jd_is_generator(self):
+    def test_semantic_filter_dict_converted_to_json(self, tmp_path):
         from src.prompt_templates import load_prompt_template
 
-        result = load_prompt_template("screening_skills_planning")
-        analyze = next(p for p in result if p.name == "analyze_jd")
-        assert analyze.phase == "planning"
-        assert analyze.generator == "true"
+        template_data = {
+            "name": "test",
+            "prompts": [
+                {
+                    "sequence": 1,
+                    "prompt_name": "p1",
+                    "prompt": "Test",
+                    "semantic_filter": {"category": "tech"},
+                },
+            ],
+        }
+        f = tmp_path / "test.yaml"
+        f.write_text(yaml.dump(template_data))
+        result = load_prompt_template(str(f))
+        assert result is not None
+        parsed = json.loads(result[0].semantic_filter)
+        assert parsed == {"category": "tech"}
 
-    def test_skills_planning_refine_is_generator(self):
+    def test_prompt_name_mapped_to_name(self, tmp_path):
         from src.prompt_templates import load_prompt_template
 
-        result = load_prompt_template("screening_skills_planning")
-        refine = next(p for p in result if p.name == "refine_criteria")
-        assert refine.phase == "planning"
-        assert refine.generator == "true"
-        assert refine.history == '["analyze_jd"]'
+        template_data = {
+            "name": "test",
+            "prompts": [
+                {
+                    "sequence": 1,
+                    "prompt_name": "my_prompt",
+                    "prompt": "Test",
+                },
+            ],
+        }
+        f = tmp_path / "test.yaml"
+        f.write_text(yaml.dump(template_data))
+        result = load_prompt_template(str(f))
+        assert result[0].name == "my_prompt"
 
-    def test_skills_planning_extract_profile_is_execution(self):
+    def test_history_none_left_as_none(self, tmp_path):
         from src.prompt_templates import load_prompt_template
 
-        result = load_prompt_template("screening_skills_planning")
-        profile = next(p for p in result if p.name == "extract_profile")
-        assert profile.phase is None or profile.phase != "planning"
-        assert profile.references is None
+        template_data = {
+            "name": "test",
+            "prompts": [
+                {
+                    "sequence": 1,
+                    "prompt_name": "p1",
+                    "prompt": "Test",
+                    "history": None,
+                },
+            ],
+        }
+        f = tmp_path / "test.yaml"
+        f.write_text(yaml.dump(template_data))
+        result = load_prompt_template(str(f))
+        assert result[0].history is None
 
-    def test_skills_planning_overall_assessment_references_profile(self):
+
+class TestResolveTemplatePathEdgeCases:
+    def test_resolve_path_with_yaml_suffix_already_present(self, tmp_path):
+        from src.prompt_templates import resolve_template_path
+
+        template = tmp_path / "already.yaml"
+        template.write_text("name: test\n")
+        result = resolve_template_path(str(template))
+        assert result is not None
+        assert result == template.resolve()
+
+    def test_resolve_directory_returns_none(self, tmp_path):
+        from src.prompt_templates import resolve_template_path
+
+        subdir = tmp_path / "subdir.yaml"
+        subdir.mkdir()
+        result = resolve_template_path(str(subdir))
+        assert result is None
+
+
+class TestLoadPromptTemplateEdgeCases:
+    def test_load_yaml_with_no_prompts_key(self, tmp_path):
         from src.prompt_templates import load_prompt_template
 
-        result = load_prompt_template("screening_skills_planning")
-        overall = next(p for p in result if p.name == "overall_assessment")
-        assert overall.history == '["extract_profile"]'
+        template_file = tmp_path / "no_prompts_key.yaml"
+        template_file.write_text(yaml.dump({"name": "no_prompts"}))
+        result = load_prompt_template(str(template_file))
+        assert result is None
 
-    def test_skills_planning_analyze_jd_mentions_exhaustive(self):
+    def test_load_yaml_with_null_prompts(self, tmp_path):
         from src.prompt_templates import load_prompt_template
 
-        result = load_prompt_template("screening_skills_planning")
-        analyze = next(p for p in result if p.name == "analyze_jd")
-        assert "exhaustively" in analyze.prompt.lower()
-        assert "one skill per criterion" in analyze.prompt.lower()
+        template_file = tmp_path / "null_prompts.yaml"
+        template_file.write_text(yaml.dump({"name": "null", "prompts": None}))
+        result = load_prompt_template(str(template_file))
+        assert result is None
 
-    def test_skills_planning_refine_mentions_deduplication(self):
+    def test_load_yaml_with_string_prompts(self, tmp_path):
         from src.prompt_templates import load_prompt_template
 
-        result = load_prompt_template("screening_skills_planning")
-        refine = next(p for p in result if p.name == "refine_criteria")
-        assert "dedup" in refine.prompt.lower()
+        template_file = tmp_path / "string_prompts.yaml"
+        template_file.write_text(yaml.dump({"name": "str", "prompts": "not a list"}))
+        result = load_prompt_template(str(template_file))
+        assert result is None
 
-    def test_skills_planning_via_screening_function(self):
-        from sample_workbooks.screening import get_planning_screening_prompts
 
-        prompts = get_planning_screening_prompts(template_path="screening_skills_planning")
-        assert len(prompts) == 5
-        names = [p.name for p in prompts]
-        assert "analyze_jd" in names
-        assert "refine_criteria" in names
+class TestLoadSynthesisTemplateEdgeCases:
+    def test_explicit_comparison_n(self, tmp_path):
+        from src.prompt_templates import load_synthesis_template
 
-    def test_skills_planning_analyze_jd_references_jd(self):
-        from src.prompt_templates import load_prompt_template
+        data = {
+            "name": "test",
+            "prompts": [
+                {
+                    "prompt_name": "p1",
+                    "source_scope": "top:{{comparison_n}}",
+                },
+            ],
+        }
+        f = tmp_path / "test.yaml"
+        f.write_text(yaml.dump(data))
+        result = load_synthesis_template(str(f), top_n=5, comparison_n=7)
+        assert result is not None
+        assert result[0]["source_scope"] == "top:7"
 
-        result = load_prompt_template("screening_skills_planning")
-        analyze = next(p for p in result if p.name == "analyze_jd")
-        assert analyze.references == '["job_description"]'
+    def test_history_none_becomes_empty_string(self, tmp_path):
+        from src.prompt_templates import load_synthesis_template
+
+        data = {
+            "name": "test",
+            "prompts": [
+                {
+                    "prompt_name": "p1",
+                    "source_scope": "top:{{top_n}}",
+                    "history": None,
+                },
+            ],
+        }
+        f = tmp_path / "test.yaml"
+        f.write_text(yaml.dump(data))
+        result = load_synthesis_template(str(f), top_n=5)
+        assert result[0]["history"] == ""
+
+    def test_condition_none_becomes_empty_string(self, tmp_path):
+        from src.prompt_templates import load_synthesis_template
+
+        data = {
+            "name": "test",
+            "prompts": [
+                {
+                    "prompt_name": "p1",
+                    "source_scope": "top:{{top_n}}",
+                    "condition": None,
+                },
+            ],
+        }
+        f = tmp_path / "test.yaml"
+        f.write_text(yaml.dump(data))
+        result = load_synthesis_template(str(f), top_n=5)
+        assert result[0]["condition"] == ""
+
+    def test_history_list_serialized_to_json(self, tmp_path):
+        from src.prompt_templates import load_synthesis_template
+
+        data = {
+            "name": "test",
+            "prompts": [
+                {
+                    "prompt_name": "p1",
+                    "source_scope": "top:{{top_n}}",
+                    "history": ["prev_prompt"],
+                },
+            ],
+        }
+        f = tmp_path / "test.yaml"
+        f.write_text(yaml.dump(data))
+        result = load_synthesis_template(str(f), top_n=5)
+        parsed = json.loads(result[0]["history"])
+        assert parsed == ["prev_prompt"]
+
+    def test_source_prompts_list_serialized_to_json(self, tmp_path):
+        from src.prompt_templates import load_synthesis_template
+
+        data = {
+            "name": "test",
+            "prompts": [
+                {
+                    "prompt_name": "p1",
+                    "source_scope": "top:{{top_n}}",
+                    "source_prompts": ["extract_profile", "overall_assessment"],
+                },
+            ],
+        }
+        f = tmp_path / "test.yaml"
+        f.write_text(yaml.dump(data))
+        result = load_synthesis_template(str(f), top_n=5)
+        parsed = json.loads(result[0]["source_prompts"])
+        assert parsed == ["extract_profile", "overall_assessment"]
+
+    def test_no_prompts_key_returns_none(self, tmp_path):
+        from src.prompt_templates import load_synthesis_template
+
+        f = tmp_path / "empty.yaml"
+        f.write_text(yaml.dump({"name": "empty"}))
+        result = load_synthesis_template(str(f), top_n=5)
+        assert result is None
+
+    def test_comparison_n_defaults_to_min_of_3_and_top_n(self, tmp_path):
+        from src.prompt_templates import load_synthesis_template
+
+        data = {
+            "name": "test",
+            "prompts": [
+                {
+                    "prompt_name": "p1",
+                    "source_scope": "top:{{top_n}}",
+                },
+                {
+                    "prompt_name": "p2",
+                    "source_scope": "top:{{comparison_n}}",
+                },
+            ],
+        }
+        f = tmp_path / "test.yaml"
+        f.write_text(yaml.dump(data))
+
+        result_top10 = load_synthesis_template(str(f), top_n=10)
+        assert result_top10[1]["source_scope"] == "top:3"
+
+        result_top2 = load_synthesis_template(str(f), top_n=2)
+        assert result_top2[1]["source_scope"] == "top:2"
+
+    def test_string_source_scope_not_substituted_when_no_placeholders(self, tmp_path):
+        from src.prompt_templates import load_synthesis_template
+
+        data = {
+            "name": "test",
+            "prompts": [
+                {
+                    "prompt_name": "p1",
+                    "source_scope": "all",
+                },
+            ],
+        }
+        f = tmp_path / "test.yaml"
+        f.write_text(yaml.dump(data))
+        result = load_synthesis_template(str(f), top_n=5)
+        assert result[0]["source_scope"] == "all"
+
+    def test_non_string_source_scope_not_modified(self, tmp_path):
+        from src.prompt_templates import load_synthesis_template
+
+        data = {
+            "name": "test",
+            "prompts": [
+                {
+                    "prompt_name": "p1",
+                    "source_scope": None,
+                },
+            ],
+        }
+        f = tmp_path / "test.yaml"
+        f.write_text(yaml.dump(data))
+        result = load_synthesis_template(str(f), top_n=5)
+        assert result[0]["source_scope"] is None

@@ -333,20 +333,6 @@ class ManifestOrchestrator(OrchestratorBase):
             str(self._manifest_dir / "doc_cache"),
         )
 
-    def _evaluate_condition(
-        self, prompt: dict[str, Any], results_by_name: dict[str, dict[str, Any]]
-    ) -> tuple[bool, str | None, str | None]:
-        """Evaluate a prompt's condition (override to return string result for backward compatibility).
-
-        Returns:
-            Tuple of (should_execute, condition_result_string, condition_error)
-
-        """
-        should_execute, result, error, _trace = super()._evaluate_condition_with_trace(
-            prompt, results_by_name
-        )
-        return should_execute, str(result) if result is not None else None, error
-
     def _evaluate_condition_with_trace(
         self, prompt: dict[str, Any], results_by_name: dict[str, dict[str, Any]]
     ) -> tuple[bool, str | None, str | None, str | None]:

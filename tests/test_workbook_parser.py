@@ -959,3 +959,63 @@ class TestWorkbookParserWriteScoresPivot:
         assert ws.cell(row=3, column=10).value == 1
         assert ws.cell(row=3, column=11).value == 100
         assert ws.cell(row=3, column=12).value == 100
+
+
+class TestValidationWorkbookParsing:
+    def test_prompts_headers_include_validation(self):
+        from src.orchestrator.workbook_parser import WorkbookParser
+
+        assert "validation_prompt" in WorkbookParser.PROMPTS_HEADERS
+        assert "max_validation_retries" in WorkbookParser.PROMPTS_HEADERS
+
+    def test_results_headers_include_validation(self):
+        from src.orchestrator.workbook_parser import WorkbookParser
+
+        assert "validation_passed" in WorkbookParser.RESULTS_HEADERS
+        assert "validation_attempts" in WorkbookParser.RESULTS_HEADERS
+        assert "validation_critique" in WorkbookParser.RESULTS_HEADERS
+
+    def test_sample_prompt_spec_includes_validation_columns(self):
+        import sys
+        from pathlib import Path
+
+        scripts_dir = str(Path(__file__).parent.parent / "scripts")
+        if scripts_dir not in sys.path:
+            sys.path.insert(0, scripts_dir)
+
+        from scripts.sample_workbooks import DEFAULT_PROMPT_HEADERS, PromptSpec
+
+        prompt = PromptSpec(
+            sequence=1,
+            name="validated",
+            prompt="Use calculate to compute 9.",
+            validation_prompt="The result must be 9.",
+            max_validation_retries=2,
+        )
+
+        row = prompt.to_row()
+        assert "validation_prompt" in DEFAULT_PROMPT_HEADERS
+        assert "max_validation_retries" in DEFAULT_PROMPT_HEADERS
+        assert row["validation_prompt"] == "The result must be 9."
+        assert row["max_validation_retries"] == 2
+
+    def test_sample_prompt_spec_includes_notes(self):
+        import sys
+        from pathlib import Path
+
+        scripts_dir = str(Path(__file__).parent.parent / "scripts")
+        if scripts_dir not in sys.path:
+            sys.path.insert(0, scripts_dir)
+
+        from scripts.sample_workbooks import DEFAULT_PROMPT_HEADERS, PromptSpec
+
+        prompt = PromptSpec(
+            sequence=1,
+            name="annotated",
+            prompt="Say hello",
+            notes="Helpful note for workbook users.",
+        )
+
+        row = prompt.to_row()
+        assert "notes" in DEFAULT_PROMPT_HEADERS
+        assert row["notes"] == "Helpful note for workbook users."

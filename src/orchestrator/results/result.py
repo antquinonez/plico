@@ -7,7 +7,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, fields
-from typing import Any
+from typing import Any, Literal
+
+PromptStatus = Literal["pending", "success", "failed", "skipped", "aborted", "max_rounds_exceeded"]
 
 
 @dataclass
@@ -67,7 +69,7 @@ class PromptResult:
     condition_error: str | None = None
     condition_trace: str | None = None
     response: str | None = None
-    status: str = "pending"
+    status: PromptStatus = "pending"
     attempts: int = 0
     error: str | None = None
     references: list[str] | None = None
@@ -96,8 +98,6 @@ class PromptResult:
     cost_usd: float = 0.0
     duration_ms: float = 0.0
     abort_trace: str | None = None
-
-    VALID_STATUSES = ("pending", "success", "failed", "skipped", "aborted", "max_rounds_exceeded")
 
     def to_dict(self) -> dict[str, Any]:
         """Convert to dictionary for backward compatibility."""
