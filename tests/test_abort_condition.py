@@ -90,9 +90,6 @@ class TestResultBuilderAborted:
 
 
 class TestPromptResultAbortedStatus:
-    def test_valid_statuses_includes_aborted(self):
-        assert "aborted" in PromptResult.VALID_STATUSES
-
     def test_abort_trace_field(self):
         result = PromptResult(sequence=1, abort_trace="resolved trace")
         assert result.abort_trace == "resolved trace"

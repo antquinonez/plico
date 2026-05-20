@@ -238,10 +238,6 @@ class TestResultBuilder:
         result = ResultBuilder(sample_prompt).with_agent_result(agent_result).build()
         assert result.status == "failed"
 
-    def test_valid_statuses_includes_max_rounds_exceeded(self):
-        """VALID_STATUSES should include max_rounds_exceeded."""
-        assert "max_rounds_exceeded" in PromptResult.VALID_STATUSES
-
     def test_agent_fields_default_to_none(self):
         """Agent fields should default to None/False."""
         result = PromptResult(sequence=1)

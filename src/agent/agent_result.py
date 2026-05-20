@@ -7,7 +7,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Literal
 
 
 @dataclass
@@ -59,6 +59,9 @@ class ToolCallRecord:
         )
 
 
+AgentStatus = Literal["success", "failed", "max_rounds_exceeded"]
+
+
 @dataclass
 class AgentResult:
     """Result of an agentic execution loop.
@@ -76,9 +79,7 @@ class AgentResult:
     tool_calls: list[ToolCallRecord] = field(default_factory=list)
     total_rounds: int = 0
     total_llm_calls: int = 0
-    status: str = "success"
-
-    VALID_STATUSES = ("success", "failed", "max_rounds_exceeded")
+    status: AgentStatus = "success"
 
     @property
     def tool_calls_count(self) -> int:

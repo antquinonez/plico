@@ -28,11 +28,15 @@ class TestToolCallRecord:
             duration_ms=150.5,
         )
         d = record.to_dict()
-        assert d["round"] == 1
-        assert d["tool_name"] == "rag_search"
-        assert d["tool_call_id"] == "tc_123"
-        assert d["arguments"] == {"query": "test"}
-        assert d["error"] is None
+        assert d == {
+            "round": 1,
+            "tool_name": "rag_search",
+            "tool_call_id": "tc_123",
+            "arguments": {"query": "test"},
+            "result": "found 3 docs",
+            "duration_ms": 150.5,
+            "error": None,
+        }
 
     def test_from_dict(self):
         data = {
@@ -47,6 +51,11 @@ class TestToolCallRecord:
         record = ToolCallRecord.from_dict(data)
         assert record.round == 2
         assert record.tool_name == "calculate"
+        assert record.tool_call_id == "tc_456"
+        assert record.arguments == {"expression": "2+2"}
+        assert record.result == "4"
+        assert record.duration_ms == 10.0
+        assert record.error is None
 
     def test_roundtrip(self):
         original = ToolCallRecord(
@@ -59,8 +68,7 @@ class TestToolCallRecord:
             error="timeout",
         )
         restored = ToolCallRecord.from_dict(original.to_dict())
-        assert restored.round == original.round
-        assert restored.error == original.error
+        assert restored == original
 
     def test_defaults(self):
         record = ToolCallRecord(round=1, tool_name="test")
@@ -102,15 +110,35 @@ class TestAgentResult:
 
     def test_to_dict_from_dict_roundtrip(self):
         original = AgentResult(
-            response="test",
-            tool_calls=[ToolCallRecord(round=1, tool_name="calculate")],
+            response="test response",
+            tool_calls=[
+                ToolCallRecord(
+                    round=1,
+                    tool_name="calculate",
+                    tool_call_id="tc_001",
+                    arguments={"expr": "2+2"},
+                    result="4",
+                    duration_ms=12.3,
+                )
+            ],
             total_rounds=1,
             total_llm_calls=2,
             status="success",
         )
         restored = AgentResult.from_dict(original.to_dict())
-        assert restored.response == original.response
+        assert restored.response == "test response"
+        assert restored.total_rounds == 1
+        assert restored.total_llm_calls == 2
+        assert restored.status == "success"
         assert len(restored.tool_calls) == 1
+        assert restored.tool_calls[0] == ToolCallRecord(
+            round=1,
+            tool_name="calculate",
+            tool_call_id="tc_001",
+            arguments={"expr": "2+2"},
+            result="4",
+            duration_ms=12.3,
+        )
 
     def test_defaults(self):
         result = AgentResult()
@@ -119,11 +147,6 @@ class TestAgentResult:
         assert result.status == "success"
         assert result.tool_calls_count == 0
         assert result.last_tool_name == ""
-
-    def test_valid_statuses(self):
-        assert "success" in AgentResult.VALID_STATUSES
-        assert "failed" in AgentResult.VALID_STATUSES
-        assert "max_rounds_exceeded" in AgentResult.VALID_STATUSES
 
 
 class TestToolDefinition:
@@ -271,7 +294,7 @@ class TestToolRegistry:
         registry.register(ToolDefinition(name="dict", description="Dict"))
         registry.register_executor("dict", lambda args: {"key": "value"})
         result = registry.execute_tool("dict", {})
-        assert isinstance(result, str)
+        assert result == "{'key': 'value'}"
 
     def test_execute_tool_error_propagates(self):
         registry = ToolRegistry()
@@ -784,15 +807,194 @@ class TestAgentLoop:
         result = loop.execute("test", tools=["slow_tool"])
         assert result.status == "success"
         assert result.tool_calls_count == 1
-        assert (
-            "timed out" in result.tool_calls[0].error.lower()
-            or result.tool_calls[0].error is not None
-        )
+        assert "timed out" in result.tool_calls[0].error.lower()
 
     def test_no_dead_regex_import(self):
         import src.agent.agent_loop as mod
 
         assert not hasattr(mod, "_TOOL_CALLS_PATTERN") or mod._TOOL_CALLS_PATTERN is None
+
+    def test_tool_result_truncated_at_10k_chars(self):
+        long_result = "x" * 20000
+        client = MockClient()
+        client.queue_response(
+            "searching",
+            tool_calls=[
+                {"id": "tc_1", "function": {"name": "search", "arguments": "{}"}},
+            ],
+        )
+        client.queue_response("done", tool_calls=None)
+        registry = ToolRegistry()
+        registry.register(ToolDefinition(name="search", description="Search"))
+        registry.register_executor("search", lambda args: long_result)
+        loop = AgentLoop(client, registry, max_rounds=3)
+        result = loop.execute("test", tools=["search"])
+        assert len(result.tool_calls[0].result) == 10000
+
+    def test_dict_arguments_not_double_parsed(self):
+        """Tool calls with dict arguments (already parsed) should not be JSON-decoded again."""
+        client = MockClient()
+        client.queue_response(
+            "searching",
+            tool_calls=[
+                {
+                    "id": "tc_1",
+                    "function": {
+                        "name": "search",
+                        "arguments": {"query": "already a dict"},
+                    },
+                },
+            ],
+        )
+        client.queue_response("done", tool_calls=None)
+        registry = ToolRegistry()
+        received_args = []
+
+        def capture_tool(args):
+            received_args.append(args)
+            return "ok"
+
+        registry.register(ToolDefinition(name="search", description="Search"))
+        registry.register_executor("search", capture_tool)
+        loop = AgentLoop(client, registry, max_rounds=3)
+        result = loop.execute("test", tools=["search"])
+        assert result.tool_calls[0].arguments == {"query": "already a dict"}
+        assert received_args[0] == {"query": "already a dict"}
+
+    def test_tool_choice_passed_only_on_first_round(self):
+        """tool_choice should be 'specific' on round 1, 'auto' on subsequent rounds."""
+        client = MockClient()
+        client.queue_response(
+            "using tool",
+            tool_calls=[
+                {"id": "tc_1", "function": {"name": "search", "arguments": "{}"}},
+            ],
+        )
+        client.queue_response("done", tool_calls=None)
+        registry = ToolRegistry()
+        registry.register(ToolDefinition(name="search", description="Search"))
+        registry.register_executor("search", lambda args: "ok")
+
+        captured_kwargs = []
+        original_generate = client.generate_response
+
+        def capture(prompt, **kwargs):
+            captured_kwargs.append(kwargs.copy())
+            return original_generate(prompt, **kwargs)
+
+        client.generate_response = capture
+        loop = AgentLoop(client, registry, max_rounds=3)
+        loop.execute("test", tools=["search"], tool_choice="specific")
+
+        assert captured_kwargs[0]["tool_choice"] == "specific"
+        assert captured_kwargs[1]["tool_choice"] == "auto"
+
+    def test_llm_failure_after_first_round_returns_partial(self):
+        """LLM failure after round 1 returns accumulated results, not a failed AgentResult."""
+        client = MockClient()
+        client.queue_response(
+            "using tool",
+            tool_calls=[
+                {"id": "tc_1", "function": {"name": "search", "arguments": "{}"}},
+            ],
+        )
+        registry = ToolRegistry()
+        registry.register(ToolDefinition(name="search", description="Search"))
+        registry.register_executor("search", lambda args: "found")
+
+        call_count = [0]
+        original_generate = client.generate_response
+
+        def fail_on_second(prompt, **kwargs):
+            call_count[0] += 1
+            if call_count[0] == 1:
+                return original_generate(prompt, **kwargs)
+            raise RuntimeError("API error on round 2")
+
+        client.generate_response = fail_on_second
+        loop = AgentLoop(client, registry, max_rounds=3)
+        result = loop.execute("test", tools=["search"])
+        assert result.status == "success"
+        assert result.response == "using tool"
+        assert result.tool_calls_count == 1
+        assert result.total_rounds == 2
+        assert result.total_llm_calls == 2
+
+    def test_tool_error_feed_back_to_client(self):
+        """When a tool errors, the error result should be fed back via add_tool_result."""
+        client = MockClient()
+        client.queue_response(
+            "calculating",
+            tool_calls=[
+                {"id": "tc_err", "function": {"name": "calc", "arguments": "{}"}},
+            ],
+        )
+        client.queue_response("recovered", tool_calls=None)
+        registry = ToolRegistry()
+        registry.register(ToolDefinition(name="calc", description="Calc"))
+        registry.register_executor("calc", lambda args: (_ for _ in ()).throw(RuntimeError("boom")))
+        loop = AgentLoop(client, registry, max_rounds=3, continue_on_tool_error=True)
+        loop.execute("test", tools=["calc"])
+        tool_msgs = [m for m in client.chat_history if m.get("role") == "tool"]
+        assert len(tool_msgs) == 1
+        assert "boom" in tool_msgs[0]["content"]
+
+
+class TestToolCallRecordMissingFields:
+    def test_from_dict_empty_uses_defaults(self):
+        record = ToolCallRecord.from_dict({})
+        assert record.round == 0
+        assert record.tool_name == ""
+        assert record.tool_call_id == ""
+        assert record.arguments == {}
+        assert record.result == ""
+        assert record.duration_ms == 0.0
+        assert record.error is None
+
+    def test_from_dict_preserves_error(self):
+        record = ToolCallRecord.from_dict({"round": 1, "tool_name": "t", "error": "fail"})
+        assert record.error == "fail"
+
+
+class TestAgentResultMissingFields:
+    def test_from_dict_empty_uses_defaults(self):
+        result = AgentResult.from_dict({})
+        assert result.response == ""
+        assert result.tool_calls == []
+        assert result.total_rounds == 0
+        assert result.total_llm_calls == 0
+        assert result.status == "success"
+
+    def test_from_dict_with_multiple_tool_calls(self):
+        data = {
+            "response": "final",
+            "tool_calls": [
+                {"round": 1, "tool_name": "search", "tool_call_id": "tc_1"},
+                {"round": 2, "tool_name": "calc", "tool_call_id": "tc_2", "error": "overflow"},
+            ],
+            "total_rounds": 2,
+            "total_llm_calls": 3,
+            "status": "success",
+        }
+        result = AgentResult.from_dict(data)
+        assert result.tool_calls_count == 2
+        assert result.last_tool_name == "calc"
+        assert len(result.failed_tool_calls) == 1
+        assert result.failed_tool_calls[0].tool_name == "calc"
+
+    def test_to_dict_roundtrip_preserves_all_fields(self):
+        original = AgentResult(
+            response="test",
+            tool_calls=[
+                ToolCallRecord(round=1, tool_name="calc", tool_call_id="tc_1"),
+                ToolCallRecord(round=2, tool_name="search", error="not found"),
+            ],
+            total_rounds=2,
+            total_llm_calls=3,
+            status="success",
+        )
+        restored = AgentResult.from_dict(original.to_dict())
+        assert restored == original
 
 
 class TestValidationResultFields:
