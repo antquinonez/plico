@@ -250,25 +250,12 @@ class TestConfigClientMethods:
         assert default == "litellm-mistral-small"
 
     def test_get_available_client_types(self):
-        """get_available_client_types returns list of clients."""
+        """get_available_client_types returns list of known client type names."""
         config = get_config()
         clients = config.get_available_client_types()
-        assert isinstance(clients, list)
+        assert len(clients) > 0
         assert "litellm-mistral" in clients
         assert "litellm-anthropic" in clients
-
-    def test_get_api_key_from_env(self, monkeypatch):
-        """get_api_key retrieves key from environment."""
-        monkeypatch.setenv("MISTRAL_API_KEY", "test-mistral-key")
-        config = reload_config()
-        api_key = config.get_api_key("litellm-mistral")
-        assert api_key == "test-mistral-key"
-
-    def test_get_api_key_returns_none_for_unknown(self):
-        """get_api_key returns None for unknown client."""
-        config = get_config()
-        api_key = config.get_api_key("nonexistent-client")
-        assert api_key is None
 
     def test_get_litellm_prefix(self):
         """get_litellm_prefix returns correct prefix."""
@@ -281,12 +268,6 @@ class TestConfigClientMethods:
         config = get_config()
         prefix = config.get_litellm_prefix("nonexistent-client")
         assert prefix == ""
-
-    def test_get_client_config_legacy_returns_none_for_client_type(self):
-        """get_client_config returns None for client_types (not legacy format)."""
-        config = get_config()
-        client_config = config.get_client_config("litellm-mistral")
-        assert client_config is None
 
 
 class TestConfigEnvFormat:
@@ -314,10 +295,11 @@ class TestConfigEnvFormat:
 class TestConfigExtraFields:
     """Test handling of extra/unknown fields."""
 
-    def test_extra_yaml_fields_ignored(self, tmp_path):
-        """Extra fields in YAML are ignored (extra='ignore')."""
-        config = Config()
-        assert config.model_config.get("extra") == "ignore"
+    def test_extra_fields_ignored_on_init(self):
+        """Extra fields passed to Config are silently ignored, not rejected."""
+        config = Config(orchestrator={"default_concurrency": 2}, unknown_field="should_be_ignored")
+        assert config.orchestrator.default_concurrency == 2
+        assert not hasattr(config, "unknown_field")
 
 
 class TestAgentValidationConfig:
@@ -332,6 +314,322 @@ class TestAgentValidationConfig:
         from src.config import AgentConfig
 
         config = AgentConfig()
-        assert hasattr(config, "validation")
         assert config.validation.enabled is True
         assert config.validation.max_retries == 2
+
+
+class TestRetryConfig:
+    """Test retry configuration values loaded from main.yaml."""
+
+    def test_retry_section_values(self):
+        config = get_config()
+        assert config.retry.max_attempts == 3
+        assert config.retry.min_wait_seconds == 1.0
+        assert config.retry.max_wait_seconds == 60.0
+        assert config.retry.exponential_base == 2.0
+        assert config.retry.exponential_jitter is True
+        assert config.retry.retry_on_status_codes == [429, 503, 502, 504]
+        assert config.retry.log_level == "INFO"
+
+
+class TestPlanningConfig:
+    """Test planning configuration values."""
+
+    def test_planning_section_values(self):
+        config = get_config()
+        assert config.planning.enabled is True
+        assert config.planning.save_artifacts is False
+        assert config.planning.generated_sequence_base == "auto"
+        assert config.planning.generated_sequence_step == 10
+        assert config.planning.continue_on_parse_error is True
+
+
+class TestEvaluationConfig:
+    """Test evaluation/scoring configuration values."""
+
+    def test_evaluation_section_values(self):
+        config = get_config()
+        assert config.evaluation.default_strategy == "balanced"
+        assert config.evaluation.scoring_failure_threshold == 0.5
+        assert config.evaluation.max_synthesis_context_chars == 30000
+        assert config.evaluation.weight_tier_enabled is True
+        assert config.evaluation.weight_tier_num_tiers == 3
+        assert config.evaluation.weight_tier_prefix == "tier_"
+
+
+class TestObservabilityConfig:
+    """Test observability configuration values."""
+
+    def test_observability_section_values(self):
+        config = get_config()
+        assert config.observability.enabled is False
+        assert config.observability.otel.service_name == "plico"
+        assert config.observability.otel.endpoint == "http://localhost:4317"
+        assert config.observability.otel.export_traces is True
+        assert config.observability.otel.insecure is True
+        assert config.observability.token_tracking is True
+        assert config.observability.cost_tracking is True
+
+
+class TestPreScreeningConfig:
+    """Test pre-screening configuration values."""
+
+    def test_pre_screening_section_values(self):
+        config = get_config()
+        assert config.pre_screening.enabled is True
+        assert config.pre_screening.embedding_model == "mistral/mistral-embed"
+        assert config.pre_screening.bm25_min_score == 0.0
+        assert config.pre_screening.bm25_min_overlap_ratio == 0.05
+        assert config.pre_screening.embedding_cache_size == 512
+
+
+class TestAgentConfigExtended:
+    """Test agent configuration values in detail."""
+
+    def test_agent_section_values(self):
+        config = get_config()
+        assert config.agent.enabled is True
+        assert config.agent.max_tool_rounds == 5
+        assert config.agent.tool_timeout == 30.0
+        assert config.agent.continue_on_tool_error is True
+
+
+class TestRAGConfigDetail:
+    """Test RAG configuration sub-sections in detail."""
+
+    def test_rag_chunking_config(self):
+        config = get_config()
+        assert config.rag.chunking.strategy == "recursive"
+        assert config.rag.chunking.chunk_size == 1000
+        assert config.rag.chunking.chunk_overlap == 200
+        assert config.rag.chunking.contextual_headers is True
+        assert config.rag.chunking.dedup_enabled is False
+
+    def test_rag_chunking_markdown_config(self):
+        config = get_config()
+        assert config.rag.chunking.markdown.split_headers == ["h1", "h2", "h3"]
+        assert config.rag.chunking.markdown.preserve_structure is True
+        assert config.rag.chunking.markdown.max_chunk_fallback is True
+
+    def test_rag_chunking_code_config(self):
+        config = get_config()
+        assert config.rag.chunking.code.language == "python"
+        assert config.rag.chunking.code.split_by == "function"
+
+    def test_rag_search_config(self):
+        config = get_config()
+        assert config.rag.search.mode == "vector"
+        assert config.rag.search.n_results_default == 5
+        assert config.rag.search.hybrid_alpha == 0.6
+        assert config.rag.search.rerank is False
+        assert config.rag.search.query_expansion is False
+        assert config.rag.search.query_expansion_variations == 3
+        assert config.rag.search.summary_boost == 1.5
+
+    def test_rag_hierarchical_config(self):
+        config = get_config()
+        assert config.rag.hierarchical.enabled is False
+        assert config.rag.hierarchical.parent_context is True
+        assert config.rag.hierarchical.parent_chunk_size == 1500
+        assert config.rag.hierarchical.levels == 2
+
+    def test_rag_base_config(self):
+        config = get_config()
+        assert config.rag.embedding_model == "mistral/mistral-embed"
+        assert config.rag.collection_name == "plico_kb"
+        assert config.rag.local_embeddings is False
+        assert config.rag.embedding_cache_size == 256
+        assert config.rag.generate_summaries is False
+
+
+class TestWorkbookConfigDetail:
+    """Test workbook configuration sub-sections."""
+
+    def test_workbook_defaults(self):
+        config = get_config()
+        assert config.workbook.defaults.model == "mistral-small-2503"
+        assert config.workbook.defaults.api_key_env == "MISTRALSMALL_KEY"
+        assert config.workbook.defaults.max_retries == 3
+        assert config.workbook.defaults.temperature == 0.8
+        assert config.workbook.defaults.max_tokens == 32000
+
+    def test_workbook_batch_config(self):
+        config = get_config()
+        assert config.workbook.batch.mode == "per_row"
+        assert config.workbook.batch.output == "combined"
+        assert config.workbook.batch.on_error == "continue"
+
+    def test_workbook_formatting_config(self):
+        config = get_config()
+        assert config.workbook.formatting.features.freeze_panes == {"enabled": True, "rows": 1}
+        assert config.workbook.formatting.features.auto_filter == {
+            "enabled": True,
+            "all_sheets": True,
+        }
+        assert config.workbook.formatting.rows["auto_fit_height"] is True
+        assert config.workbook.formatting.rows["wrap_text_height_multiplier"] == 15
+
+    def test_workbook_sheet_names(self):
+        config = get_config()
+        assert config.workbook.sheet_names.config == "config"
+        assert config.workbook.sheet_names.prompts == "prompts"
+        assert config.workbook.sheet_names.data == "data"
+        assert config.workbook.sheet_names.clients == "clients"
+        assert config.workbook.sheet_names.documents == "documents"
+
+
+class TestDocumentProcessorConfig:
+    """Test document processor configuration."""
+
+    def test_text_extensions_count(self):
+        config = get_config()
+        assert len(config.document_processor.text_extensions) == 32
+
+    def test_text_extensions_contains_key_types(self):
+        config = get_config()
+        ext = config.document_processor.text_extensions
+        assert ".py" in ext
+        assert ".md" in ext
+        assert ".json" in ext
+        assert ".yaml" in ext
+        assert ".csv" in ext
+        assert ".txt" in ext
+
+
+class TestOrchestratorConfigDetail:
+    """Test orchestrator abort config."""
+
+    def test_abort_config(self):
+        config = get_config()
+        assert config.orchestrator.abort.response_default == "-1"
+
+
+class TestClientsConfigMethods:
+    """Test ClientsConfig active methods."""
+
+    def test_get_client_type_returns_config(self):
+        from src.config import ClientsConfig, ClientTypeConfig
+
+        cc = ClientsConfig(
+            client_types={
+                "custom": ClientTypeConfig(
+                    client_class="FFCustom",
+                    type="native",
+                    api_key_env="CUSTOM_KEY",
+                    provider_prefix="custom/",
+                    default_model="custom-v1",
+                )
+            }
+        )
+        result = cc.get_client_type("custom")
+        assert result is not None
+        assert result.default_model == "custom-v1"
+        assert result.provider_prefix == "custom/"
+
+    def test_get_client_type_returns_none_for_missing(self):
+        from src.config import ClientsConfig
+
+        cc = ClientsConfig()
+        assert cc.get_client_type("missing") is None
+
+    def test_get_available_client_types_returns_keys(self):
+        from src.config import ClientsConfig, ClientTypeConfig
+
+        cc = ClientsConfig(
+            client_types={
+                "alpha": ClientTypeConfig(default_model="a"),
+                "beta": ClientTypeConfig(default_model="b"),
+            }
+        )
+        names = cc.get_available_client_types()
+        assert names == ["alpha", "beta"]
+
+
+class TestConfigGetYamlHelpers:
+    """Test _find_config_dir fallback and _load_yaml_file missing file."""
+
+    def test_find_config_dir_finds_project_config(self):
+        from src.config import _find_config_dir
+
+        result = _find_config_dir()
+        assert result.name == "config"
+        assert result.exists()
+        assert (result / "main.yaml").exists()
+
+    def test_load_yaml_file_missing_returns_empty(self, tmp_path, monkeypatch):
+        from src.config import _load_yaml_file
+
+        monkeypatch.chdir(tmp_path)
+        result = _load_yaml_file("does_not_exist.yaml")
+        assert result == {}
+
+
+class TestConfigModelDefaults:
+    """Test model_defaults specific model overrides."""
+
+    def test_model_defaults_contains_known_models(self):
+        config = get_config()
+        models = config.model_defaults.models
+        assert "azure/mistral-small-2503" in models
+        assert models["azure/mistral-small-2503"]["max_tokens"] == 40000
+        assert models["azure/codestral"]["temperature"] == 0.3
+
+    def test_model_defaults_generic_values(self):
+        config = get_config()
+        generic = config.model_defaults.generic
+        assert generic["max_tokens"] == 4096
+        assert generic["temperature"] == 0.7
+
+
+class TestConfigSampleWorkbook:
+    """Test sample workbook configuration details."""
+
+    def test_sample_workbook_paths(self):
+        config = get_config()
+        assert config.sample.workbooks.basic == "./sample_workbook.xlsx"
+        assert config.sample.workbooks.multiclient == "./sample_workbook_multiclient.xlsx"
+        assert config.sample.workbooks.conditional == "./sample_workbook_conditional.xlsx"
+
+    def test_sample_client_configs(self):
+        config = get_config()
+        assert "default" in config.sample.sample_clients
+        default_client = config.sample.sample_clients["default"]
+        assert default_client.model == "mistral-small-latest"
+        assert default_client.temperature == 0.7
+        assert default_client.max_tokens == 300
+
+        fast_client = config.sample.sample_clients["fast"]
+        assert fast_client.temperature == 0.3
+        assert fast_client.max_tokens == 100
+
+
+class TestConfigValidateAgentField:
+    """Test _validate_agent_field model validator."""
+
+    def test_agent_field_coerced_from_non_dict(self):
+        config = Config(agent="invalid_string")
+        assert isinstance(config.agent, type(config.agent))
+        assert config.agent.enabled is True
+
+    def test_agent_field_kept_as_dict(self):
+        config = Config(agent={"enabled": False, "max_tool_rounds": 3})
+        assert config.agent.enabled is False
+        assert config.agent.max_tool_rounds == 3
+
+
+class TestConfigLoggingRotation:
+    """Test logging rotation sub-config."""
+
+    def test_rotation_defaults(self):
+        from src.config import LoggingRotationConfig
+
+        r = LoggingRotationConfig()
+        assert r.when == "midnight"
+        assert r.interval == 1
+        assert r.backup_count == 10
+
+    def test_logging_rotation_via_config(self):
+        config = get_config()
+        assert config.logging.rotation.when == "midnight"
+        assert config.logging.rotation.interval == 1
+        assert config.logging.rotation.backup_count == 10

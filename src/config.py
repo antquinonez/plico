@@ -18,7 +18,6 @@ Config files:
 
 from __future__ import annotations
 
-import os
 from pathlib import Path
 from typing import Any, Literal
 
@@ -337,22 +336,6 @@ class AgentConfig(BaseSettings):
     validation: AgentValidationConfig = AgentValidationConfig()
 
 
-class ClientConfig(BaseSettings):
-    """Individual client configuration (legacy format)."""
-
-    type: str = "litellm"
-    provider_prefix: str = ""
-    model: str = ""
-    api_key_env: str = ""
-    api_key: str = ""
-    client_class: str = ""
-    azure_endpoint: str = ""
-    azure_deployment: str = ""
-    api_base: str = ""
-    api_version: str = ""
-    fallbacks: list[str] = Field(default_factory=list)
-
-
 class ClientTypeConfig(BaseSettings):
     """Configuration for a single client type."""
 
@@ -371,15 +354,6 @@ class ClientsConfig(BaseSettings):
 
     default_client: str = "litellm-mistral-small"
     client_types: dict[str, ClientTypeConfig] = Field(default_factory=dict)
-
-    def get_client(self, name: str) -> ClientConfig | None:
-        """Get a client configuration by name (legacy support)."""
-        data = getattr(self, name, None)
-        if data is None:
-            return None
-        if isinstance(data, dict):
-            return ClientConfig(**data)
-        return data
 
     def get_client_type(self, name: str) -> ClientTypeConfig | None:
         """Get a client type configuration by name."""
@@ -549,10 +523,6 @@ class Config(BaseSettings):
         yaml_source = YamlConfigSource(settings_cls, yaml_data)
         return (init_settings, env_settings, yaml_source)
 
-    def get_client_config(self, name: str) -> ClientConfig | None:
-        """Get a client configuration by name (legacy support)."""
-        return self.clients.get_client(name)
-
     def get_client_type_config(self, name: str) -> ClientTypeConfig | None:
         """Get a client type configuration by name."""
         return self.clients.get_client_type(name)
@@ -564,17 +534,6 @@ class Config(BaseSettings):
     def get_available_client_types(self) -> list[str]:
         """Get list of available client type names."""
         return self.clients.get_available_client_types()
-
-    def get_api_key(self, client_name: str) -> str | None:
-        """Get API key for a client, checking direct key first, then env var."""
-        client_type_config = self.get_client_type_config(client_name)
-        if client_type_config is None:
-            return None
-
-        if client_type_config.api_key_env:
-            return os.getenv(client_type_config.api_key_env)
-
-        return None
 
     def get_litellm_prefix(self, client_name: str) -> str:
         """Get LiteLLM provider prefix for a client."""

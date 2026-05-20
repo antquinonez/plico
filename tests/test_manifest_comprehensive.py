@@ -343,7 +343,7 @@ class TestManifestOrchestratorConditionEvaluation:
     """Tests for ManifestOrchestrator condition evaluation."""
 
     def test_evaluate_condition_empty(self, tmp_path, mock_ffmistralsmall):
-        """Test _evaluate_condition with empty condition."""
+        """Test _evaluate_condition_with_trace with empty condition."""
         from src.orchestrator.manifest import ManifestOrchestrator
 
         orchestrator = ManifestOrchestrator(
@@ -354,7 +354,7 @@ class TestManifestOrchestratorConditionEvaluation:
         prompt = {"condition": ""}
         results_by_name = {}
 
-        should_exec, cond_result, cond_error = orchestrator._evaluate_condition(
+        should_exec, cond_result, cond_error, trace = orchestrator._evaluate_condition_with_trace(
             prompt, results_by_name
         )
 
@@ -363,7 +363,7 @@ class TestManifestOrchestratorConditionEvaluation:
         assert cond_error is None
 
     def test_evaluate_condition_whitespace_only(self, tmp_path, mock_ffmistralsmall):
-        """Test _evaluate_condition with whitespace-only condition."""
+        """Test _evaluate_condition_with_trace with whitespace-only condition."""
         from src.orchestrator.manifest import ManifestOrchestrator
 
         orchestrator = ManifestOrchestrator(
@@ -374,14 +374,14 @@ class TestManifestOrchestratorConditionEvaluation:
         prompt = {"condition": "   "}
         results_by_name = {}
 
-        should_exec, cond_result, cond_error = orchestrator._evaluate_condition(
+        should_exec, cond_result, cond_error, trace = orchestrator._evaluate_condition_with_trace(
             prompt, results_by_name
         )
 
         assert should_exec is True
 
     def test_evaluate_condition_true(self, tmp_path, mock_ffmistralsmall):
-        """Test _evaluate_condition when condition passes."""
+        """Test _evaluate_condition_with_trace when condition passes."""
         from src.orchestrator.manifest import ManifestOrchestrator
 
         orchestrator = ManifestOrchestrator(
@@ -392,7 +392,7 @@ class TestManifestOrchestratorConditionEvaluation:
         prompt = {"condition": "1 == 1"}
         results_by_name = {}
 
-        should_exec, cond_result, cond_error = orchestrator._evaluate_condition(
+        should_exec, cond_result, cond_error, trace = orchestrator._evaluate_condition_with_trace(
             prompt, results_by_name
         )
 
@@ -401,7 +401,7 @@ class TestManifestOrchestratorConditionEvaluation:
         assert cond_error is None
 
     def test_evaluate_condition_false(self, tmp_path, mock_ffmistralsmall):
-        """Test _evaluate_condition when condition fails."""
+        """Test _evaluate_condition_with_trace when condition fails."""
         from src.orchestrator.manifest import ManifestOrchestrator
 
         orchestrator = ManifestOrchestrator(
@@ -412,7 +412,7 @@ class TestManifestOrchestratorConditionEvaluation:
         prompt = {"condition": "1 == 2"}
         results_by_name = {}
 
-        should_exec, cond_result, cond_error = orchestrator._evaluate_condition(
+        should_exec, cond_result, cond_error, trace = orchestrator._evaluate_condition_with_trace(
             prompt, results_by_name
         )
 
@@ -421,7 +421,7 @@ class TestManifestOrchestratorConditionEvaluation:
         assert cond_error is None
 
     def test_evaluate_condition_with_status_reference(self, tmp_path, mock_ffmistralsmall):
-        """Test _evaluate_condition references another prompt's status."""
+        """Test _evaluate_condition_with_trace references another prompt's status."""
         from src.orchestrator.manifest import ManifestOrchestrator
 
         orchestrator = ManifestOrchestrator(
@@ -432,7 +432,7 @@ class TestManifestOrchestratorConditionEvaluation:
         prompt = {"condition": "{{a.status}} == 'success'"}
         results_by_name = {"a": {"status": "success"}}
 
-        should_exec, cond_result, cond_error = orchestrator._evaluate_condition(
+        should_exec, cond_result, cond_error, trace = orchestrator._evaluate_condition_with_trace(
             prompt, results_by_name
         )
 
@@ -1605,6 +1605,476 @@ def temp_workbook_full(temp_workbook, sample_config, sample_batch_data, tmp_path
     ws_docs["A2"] = "doc1"
     ws_docs["B2"] = "Sample"
     ws_docs["C2"] = str(doc_file)
-
     wb.save(temp_workbook)
     return temp_workbook
+
+
+class TestManifestExporterScoringSynthesis:
+    """Tests for scoring and synthesis YAML export (lines 119, 121, 240-248)."""
+
+    def _create_workbook_with_scoring(self, tmp_path):
+        from openpyxl import Workbook
+
+        wb = Workbook()
+        ws_config = wb.active
+        ws_config.title = "config"
+        ws_config["A1"] = "field"
+        ws_config["B1"] = "value"
+        ws_config["A2"] = "model"
+        ws_config["B2"] = "mistral-small-2503"
+
+        ws_prompts = wb.create_sheet(title="prompts")
+        ws_prompts["A1"] = "sequence"
+        ws_prompts["B1"] = "prompt_name"
+        ws_prompts["C1"] = "prompt"
+        ws_prompts["D1"] = "history"
+        ws_prompts["A2"] = 1
+        ws_prompts["B2"] = "score_response"
+        ws_prompts["C2"] = "Score this"
+
+        ws_scoring = wb.create_sheet(title="scoring")
+        ws_scoring["A1"] = "criteria_name"
+        ws_scoring["B1"] = "description"
+        ws_scoring["C1"] = "scale_min"
+        ws_scoring["D1"] = "scale_max"
+        ws_scoring["E1"] = "weight"
+        ws_scoring["F1"] = "source_prompt"
+        ws_scoring["G1"] = "score_type"
+        ws_scoring["A2"] = "relevance"
+        ws_scoring["B2"] = "How relevant"
+        ws_scoring["C2"] = 1
+        ws_scoring["D2"] = 10
+        ws_scoring["E2"] = 1.5
+        ws_scoring["F2"] = "score_response"
+        ws_scoring["G2"] = "numeric"
+
+        workbook_path = str(tmp_path / "scoring_test.xlsx")
+        wb.save(workbook_path)
+        return workbook_path
+
+    def test_export_creates_scoring_yaml(self, tmp_path):
+        """Test export creates scoring.yaml when scoring sheet present."""
+        from src.orchestrator.manifest import WorkbookManifestExporter
+
+        wb_path = self._create_workbook_with_scoring(tmp_path)
+        manifest_dir = str(tmp_path / "manifests")
+        exporter = WorkbookManifestExporter(wb_path)
+        manifest_path = exporter.export(manifest_dir=manifest_dir)
+
+        with open(os.path.join(manifest_path, "manifest.yaml"), encoding="utf-8") as f:
+            manifest = yaml.safe_load(f)
+
+        assert manifest["has_scoring"] is True
+        assert os.path.exists(os.path.join(manifest_path, "scoring.yaml"))
+
+        with open(os.path.join(manifest_path, "scoring.yaml"), encoding="utf-8") as f:
+            scoring = yaml.safe_load(f)
+
+        assert len(scoring["scoring"]) == 1
+        assert scoring["scoring"][0]["criteria_name"] == "relevance"
+        assert scoring["scoring"][0]["scale_min"] == 1
+        assert scoring["scoring"][0]["scale_max"] == 10
+        assert scoring["scoring"][0]["weight"] == 1.5
+
+    def test_export_creates_synthesis_yaml(self, tmp_path):
+        """Test export creates synthesis.yaml when synthesis sheet present."""
+        from openpyxl import Workbook
+
+        from src.orchestrator.manifest import WorkbookManifestExporter
+
+        wb = Workbook()
+        ws_config = wb.active
+        ws_config.title = "config"
+        ws_config["A1"] = "field"
+        ws_config["B1"] = "value"
+        ws_config["A2"] = "model"
+        ws_config["B2"] = "mistral-small-2503"
+
+        ws_prompts = wb.create_sheet(title="prompts")
+        ws_prompts["A1"] = "sequence"
+        ws_prompts["B1"] = "prompt_name"
+        ws_prompts["C1"] = "prompt"
+        ws_prompts["D1"] = "history"
+        ws_prompts["A2"] = 1
+        ws_prompts["B2"] = "test"
+        ws_prompts["C2"] = "Hello"
+
+        ws_synthesis = wb.create_sheet(title="synthesis")
+        ws_synthesis["A1"] = "sequence"
+        ws_synthesis["B1"] = "prompt_name"
+        ws_synthesis["C1"] = "prompt"
+        ws_synthesis["A2"] = 1
+        ws_synthesis["B2"] = "summarize"
+        ws_synthesis["C2"] = "Summarize all results"
+
+        workbook_path = str(tmp_path / "synthesis_test.xlsx")
+        wb.save(workbook_path)
+
+        manifest_dir = str(tmp_path / "manifests")
+        exporter = WorkbookManifestExporter(workbook_path)
+        manifest_path = exporter.export(manifest_dir=manifest_dir)
+
+        with open(os.path.join(manifest_path, "manifest.yaml"), encoding="utf-8") as f:
+            manifest = yaml.safe_load(f)
+
+        assert manifest["has_synthesis"] is True
+        assert os.path.exists(os.path.join(manifest_path, "synthesis.yaml"))
+
+        with open(os.path.join(manifest_path, "synthesis.yaml"), encoding="utf-8") as f:
+            synthesis = yaml.safe_load(f)
+
+        assert len(synthesis["synthesis"]) == 1
+        assert synthesis["synthesis"][0]["prompt_name"] == "summarize"
+        assert synthesis["synthesis"][0]["prompt"] == "Summarize all results"
+
+
+class TestManifestExporterGeneratorField:
+    """Tests for generator field in prompts YAML export (line 200)."""
+
+    def test_export_generator_field_true(self, tmp_path):
+        """Test that generator=True is included in prompts.yaml."""
+        from openpyxl import Workbook
+
+        from src.orchestrator.manifest import WorkbookManifestExporter
+
+        wb = Workbook()
+        ws_config = wb.active
+        ws_config.title = "config"
+        ws_config["A1"] = "field"
+        ws_config["B1"] = "value"
+        ws_config["A2"] = "model"
+        ws_config["B2"] = "mistral-small-2503"
+
+        ws_prompts = wb.create_sheet(title="prompts")
+        headers = ["sequence", "prompt_name", "prompt", "history", "generator"]
+        for col_idx, h in enumerate(headers, start=1):
+            ws_prompts.cell(row=1, column=col_idx, value=h)
+
+        ws_prompts.cell(row=2, column=1, value=1)
+        ws_prompts.cell(row=2, column=2, value="gen_prompt")
+        ws_prompts.cell(row=2, column=3, value="Generate something")
+        ws_prompts.cell(row=2, column=5, value=True)
+
+        workbook_path = str(tmp_path / "gen_test.xlsx")
+        wb.save(workbook_path)
+
+        manifest_dir = str(tmp_path / "manifests")
+        exporter = WorkbookManifestExporter(workbook_path)
+        manifest_path = exporter.export(manifest_dir=manifest_dir)
+
+        with open(os.path.join(manifest_path, "prompts.yaml"), encoding="utf-8") as f:
+            prompts_data = yaml.safe_load(f)
+
+        prompt = prompts_data["prompts"][0]
+        assert prompt["generator"] is True
+
+    def test_export_no_generator_field_when_false(self, tmp_path):
+        """Test that generator field is absent when not set to True."""
+        from openpyxl import Workbook
+
+        from src.orchestrator.manifest import WorkbookManifestExporter
+
+        wb = Workbook()
+        ws_config = wb.active
+        ws_config.title = "config"
+        ws_config["A1"] = "field"
+        ws_config["B1"] = "value"
+        ws_config["A2"] = "model"
+        ws_config["B2"] = "mistral-small-2503"
+
+        ws_prompts = wb.create_sheet(title="prompts")
+        ws_prompts["A1"] = "sequence"
+        ws_prompts["B1"] = "prompt_name"
+        ws_prompts["C1"] = "prompt"
+        ws_prompts["D1"] = "history"
+        ws_prompts["A2"] = 1
+        ws_prompts["B2"] = "normal"
+        ws_prompts["C2"] = "Hello"
+
+        workbook_path = str(tmp_path / "no_gen_test.xlsx")
+        wb.save(workbook_path)
+
+        manifest_dir = str(tmp_path / "manifests")
+        exporter = WorkbookManifestExporter(workbook_path)
+        manifest_path = exporter.export(manifest_dir=manifest_dir)
+
+        with open(os.path.join(manifest_path, "prompts.yaml"), encoding="utf-8") as f:
+            prompts_data = yaml.safe_load(f)
+
+        prompt = prompts_data["prompts"][0]
+        assert "generator" not in prompt
+
+
+class TestManifestLoadScoring:
+    """Tests for scoring loading in _load_source (lines 436-460)."""
+
+    def test_load_source_with_scoring(self, tmp_path, mock_ffmistralsmall):
+        """Test _load_source initializes scoring rubric from scoring.yaml."""
+        from src.orchestrator.manifest import ManifestOrchestrator
+
+        manifest_dir = tmp_path / "manifest_scoring"
+        manifest_dir.mkdir()
+
+        manifest_yaml = {"name": "test", "version": "1.0", "has_scoring": True}
+        with open(manifest_dir / "manifest.yaml", "w") as f:
+            yaml.dump(manifest_yaml, f)
+
+        config_yaml = {"model": "mistral-small-2503"}
+        with open(manifest_dir / "config.yaml", "w") as f:
+            yaml.dump(config_yaml, f)
+
+        prompts_yaml = {"prompts": [{"sequence": 1, "prompt_name": "p1", "prompt": "test"}]}
+        with open(manifest_dir / "prompts.yaml", "w") as f:
+            yaml.dump(prompts_yaml, f)
+
+        scoring_yaml = {
+            "scoring": [
+                {
+                    "criteria_name": "relevance",
+                    "description": "How relevant",
+                    "scale_min": 1,
+                    "scale_max": 10,
+                    "weight": 1.5,
+                    "source_prompt": "p1",
+                    "score_type": "numeric",
+                }
+            ]
+        }
+        with open(manifest_dir / "scoring.yaml", "w") as f:
+            yaml.dump(scoring_yaml, f)
+
+        orchestrator = ManifestOrchestrator(
+            manifest_dir=str(manifest_dir),
+            client=mock_ffmistralsmall,
+        )
+        orchestrator._load_source()
+
+        assert orchestrator.has_scoring is True
+        assert orchestrator.scoring_rubric is not None
+        assert len(orchestrator.scoring_rubric.criteria) == 1
+        assert orchestrator.scoring_rubric.criteria[0].criteria_name == "relevance"
+        assert orchestrator.scoring_rubric.criteria[0].weight == 1.5
+
+    def test_load_source_with_empty_scoring(self, tmp_path, mock_ffmistralsmall):
+        """Test _load_source with has_scoring=true but empty list does not enable scoring."""
+        from src.orchestrator.manifest import ManifestOrchestrator
+
+        manifest_dir = tmp_path / "manifest_empty_scoring"
+        manifest_dir.mkdir()
+
+        manifest_yaml = {"name": "test", "version": "1.0", "has_scoring": True}
+        with open(manifest_dir / "manifest.yaml", "w") as f:
+            yaml.dump(manifest_yaml, f)
+
+        config_yaml = {"model": "mistral-small-2503"}
+        with open(manifest_dir / "config.yaml", "w") as f:
+            yaml.dump(config_yaml, f)
+
+        prompts_yaml = {"prompts": [{"sequence": 1, "prompt_name": "p1", "prompt": "test"}]}
+        with open(manifest_dir / "prompts.yaml", "w") as f:
+            yaml.dump(prompts_yaml, f)
+
+        scoring_yaml = {"scoring": []}
+        with open(manifest_dir / "scoring.yaml", "w") as f:
+            yaml.dump(scoring_yaml, f)
+
+        orchestrator = ManifestOrchestrator(
+            manifest_dir=str(manifest_dir),
+            client=mock_ffmistralsmall,
+        )
+        orchestrator._load_source()
+
+        assert orchestrator.has_scoring is False
+
+
+class TestManifestLoadSynthesis:
+    """Tests for synthesis loading in _load_source (lines 466-472)."""
+
+    def test_load_source_with_synthesis(self, tmp_path, mock_ffmistralsmall):
+        """Test _load_source initializes synthesis prompts sorted by sequence."""
+        from src.orchestrator.manifest import ManifestOrchestrator
+
+        manifest_dir = tmp_path / "manifest_synthesis"
+        manifest_dir.mkdir()
+
+        manifest_yaml = {"name": "test", "version": "1.0", "has_synthesis": True}
+        with open(manifest_dir / "manifest.yaml", "w") as f:
+            yaml.dump(manifest_yaml, f)
+
+        config_yaml = {"model": "mistral-small-2503"}
+        with open(manifest_dir / "config.yaml", "w") as f:
+            yaml.dump(config_yaml, f)
+
+        prompts_yaml = {"prompts": [{"sequence": 1, "prompt_name": "p1", "prompt": "test"}]}
+        with open(manifest_dir / "prompts.yaml", "w") as f:
+            yaml.dump(prompts_yaml, f)
+
+        synthesis_yaml = {
+            "synthesis": [
+                {"sequence": 2, "prompt_name": "summarize", "prompt": "Summarize results"},
+                {"sequence": 1, "prompt_name": "intro", "prompt": "Intro synthesis"},
+            ]
+        }
+        with open(manifest_dir / "synthesis.yaml", "w") as f:
+            yaml.dump(synthesis_yaml, f)
+
+        orchestrator = ManifestOrchestrator(
+            manifest_dir=str(manifest_dir),
+            client=mock_ffmistralsmall,
+        )
+        orchestrator._load_source()
+
+        assert orchestrator.has_synthesis is True
+        assert len(orchestrator.synthesis_prompts) == 2
+        assert orchestrator.synthesis_prompts[0]["sequence"] == 1
+        assert orchestrator.synthesis_prompts[1]["sequence"] == 2
+
+    def test_load_source_with_empty_synthesis(self, tmp_path, mock_ffmistralsmall):
+        """Test _load_source with has_synthesis=true but empty list."""
+        from src.orchestrator.manifest import ManifestOrchestrator
+
+        manifest_dir = tmp_path / "manifest_empty_synthesis"
+        manifest_dir.mkdir()
+
+        manifest_yaml = {"name": "test", "version": "1.0", "has_synthesis": True}
+        with open(manifest_dir / "manifest.yaml", "w") as f:
+            yaml.dump(manifest_yaml, f)
+
+        config_yaml = {"model": "mistral-small-2503"}
+        with open(manifest_dir / "config.yaml", "w") as f:
+            yaml.dump(config_yaml, f)
+
+        prompts_yaml = {"prompts": [{"sequence": 1, "prompt_name": "p1", "prompt": "test"}]}
+        with open(manifest_dir / "prompts.yaml", "w") as f:
+            yaml.dump(prompts_yaml, f)
+
+        synthesis_yaml = {"synthesis": []}
+        with open(manifest_dir / "synthesis.yaml", "w") as f:
+            yaml.dump(synthesis_yaml, f)
+
+        orchestrator = ManifestOrchestrator(
+            manifest_dir=str(manifest_dir),
+            client=mock_ffmistralsmall,
+        )
+        orchestrator._load_source()
+
+        assert orchestrator.has_synthesis is False
+
+
+class TestManifestExporterPlanningDetection:
+    """Tests for planning phase detection during export."""
+
+    def test_export_detects_planning_phase(self, tmp_path):
+        """Test manifest.yaml has_planning=true when planning prompts exist."""
+        from openpyxl import Workbook
+
+        from src.orchestrator.manifest import WorkbookManifestExporter
+
+        wb = Workbook()
+        ws_config = wb.active
+        ws_config.title = "config"
+        ws_config["A1"] = "field"
+        ws_config["B1"] = "value"
+        ws_config["A2"] = "model"
+        ws_config["B2"] = "mistral-small-2503"
+
+        ws_prompts = wb.create_sheet(title="prompts")
+        headers = ["sequence", "prompt_name", "prompt", "history", "phase"]
+        for col_idx, h in enumerate(headers, start=1):
+            ws_prompts.cell(row=1, column=col_idx, value=h)
+
+        ws_prompts.cell(row=2, column=1, value=1)
+        ws_prompts.cell(row=2, column=2, value="plan")
+        ws_prompts.cell(row=2, column=3, value="Plan this")
+        ws_prompts.cell(row=2, column=5, value="planning")
+
+        ws_prompts.cell(row=3, column=1, value=2)
+        ws_prompts.cell(row=3, column=2, value="execute")
+        ws_prompts.cell(row=3, column=3, value="Execute this")
+
+        workbook_path = str(tmp_path / "planning_test.xlsx")
+        wb.save(workbook_path)
+
+        manifest_dir = str(tmp_path / "manifests")
+        exporter = WorkbookManifestExporter(workbook_path)
+        manifest_path = exporter.export(manifest_dir=manifest_dir)
+
+        with open(os.path.join(manifest_path, "manifest.yaml"), encoding="utf-8") as f:
+            manifest = yaml.safe_load(f)
+
+        assert manifest["has_planning"] is True
+        assert manifest["prompt_count"] == 2
+
+    def test_export_no_planning_when_all_execution(self, tmp_path):
+        """Test manifest.yaml has_planning=false when no planning prompts."""
+        from openpyxl import Workbook
+
+        from src.orchestrator.manifest import WorkbookManifestExporter
+
+        wb = Workbook()
+        ws_config = wb.active
+        ws_config.title = "config"
+        ws_config["A1"] = "field"
+        ws_config["B1"] = "value"
+        ws_config["A2"] = "model"
+        ws_config["B2"] = "mistral-small-2503"
+
+        ws_prompts = wb.create_sheet(title="prompts")
+        ws_prompts["A1"] = "sequence"
+        ws_prompts["B1"] = "prompt_name"
+        ws_prompts["C1"] = "prompt"
+        ws_prompts["D1"] = "history"
+        ws_prompts["A2"] = 1
+        ws_prompts["B2"] = "exec"
+        ws_prompts["C2"] = "Execute"
+
+        workbook_path = str(tmp_path / "no_planning_test.xlsx")
+        wb.save(workbook_path)
+
+        manifest_dir = str(tmp_path / "manifests")
+        exporter = WorkbookManifestExporter(workbook_path)
+        manifest_path = exporter.export(manifest_dir=manifest_dir)
+
+        with open(os.path.join(manifest_path, "manifest.yaml"), encoding="utf-8") as f:
+            manifest = yaml.safe_load(f)
+
+        assert manifest["has_planning"] is False
+
+
+class TestManifestPhaseRoundTrip:
+    """Tests for phase field round-trip through export and load."""
+
+    def test_phase_preserved_in_export(self, tmp_path):
+        """Test that phase='execution' is explicitly written even for non-planning prompts."""
+        from openpyxl import Workbook
+
+        from src.orchestrator.manifest import WorkbookManifestExporter
+
+        wb = Workbook()
+        ws_config = wb.active
+        ws_config.title = "config"
+        ws_config["A1"] = "field"
+        ws_config["B1"] = "value"
+        ws_config["A2"] = "model"
+        ws_config["B2"] = "mistral-small-2503"
+
+        ws_prompts = wb.create_sheet(title="prompts")
+        ws_prompts["A1"] = "sequence"
+        ws_prompts["B1"] = "prompt_name"
+        ws_prompts["C1"] = "prompt"
+        ws_prompts["D1"] = "history"
+        ws_prompts["A2"] = 1
+        ws_prompts["B2"] = "exec"
+        ws_prompts["C2"] = "Execute"
+
+        workbook_path = str(tmp_path / "phase_rt.xlsx")
+        wb.save(workbook_path)
+
+        manifest_dir = str(tmp_path / "manifests")
+        exporter = WorkbookManifestExporter(workbook_path)
+        manifest_path = exporter.export(manifest_dir=manifest_dir)
+
+        with open(os.path.join(manifest_path, "prompts.yaml"), encoding="utf-8") as f:
+            prompts_data = yaml.safe_load(f)
+
+        assert prompts_data["prompts"][0]["phase"] == "execution"

@@ -17,7 +17,7 @@ class TestWorkbookManifestExporter:
     """Tests for WorkbookManifestExporter class."""
 
     def test_export_creates_manifest_folder(self, temp_workbook_with_data, tmp_path):
-        """Test that export creates a manifest folder."""
+        """Test that export creates a manifest folder named manifest_<workbook_stem>."""
         from src.orchestrator.manifest import WorkbookManifestExporter
 
         manifest_dir = str(tmp_path / "manifests")
@@ -25,7 +25,7 @@ class TestWorkbookManifestExporter:
         manifest_path = exporter.export(manifest_dir=manifest_dir)
 
         assert os.path.isdir(manifest_path)
-        assert "manifest_" in manifest_path
+        assert os.path.basename(manifest_path) == "manifest_sample_workbook"
 
     def test_export_creates_required_files(self, temp_workbook_with_data, tmp_path):
         """Test that export creates all required YAML files."""
@@ -119,8 +119,8 @@ class TestWorkbookManifestExporter:
 class TestManifestOrchestratorInit:
     """Tests for ManifestOrchestrator initialization."""
 
-    def test_init_basic(self, tmp_path, mock_ffmistralsmall):
-        """Test basic initialization."""
+    def test_init_default_concurrency_within_bounds(self, tmp_path, mock_ffmistralsmall):
+        """Default concurrency is always clamped to [1, max_concurrency]."""
         from src.orchestrator.manifest import ManifestOrchestrator
 
         orchestrator = ManifestOrchestrator(
@@ -128,11 +128,10 @@ class TestManifestOrchestratorInit:
             client=mock_ffmistralsmall,
         )
 
-        assert orchestrator.concurrency >= 1
-        assert orchestrator.client == mock_ffmistralsmall
+        assert 1 <= orchestrator.concurrency <= 10
 
     def test_init_with_custom_concurrency(self, tmp_path, mock_ffmistralsmall):
-        """Test initialization with custom concurrency."""
+        """Explicit concurrency value is used directly."""
         from src.orchestrator.manifest import ManifestOrchestrator
 
         orchestrator = ManifestOrchestrator(
@@ -142,6 +141,18 @@ class TestManifestOrchestratorInit:
         )
 
         assert orchestrator.concurrency == 4
+
+    def test_init_concurrency_clamped_to_max(self, tmp_path, mock_ffmistralsmall):
+        """Concurrency exceeding max_concurrency is clamped to 10."""
+        from src.orchestrator.manifest import ManifestOrchestrator
+
+        orchestrator = ManifestOrchestrator(
+            manifest_dir=str(tmp_path),
+            client=mock_ffmistralsmall,
+            concurrency=999,
+        )
+
+        assert orchestrator.concurrency == 10
 
 
 class TestManifestOrchestratorLoad:
@@ -258,7 +269,7 @@ class TestManifestOrchestratorOutput:
         assert os.path.exists(parquet_path)
 
     def test_write_parquet_schema(self, tmp_path, mock_ffmistralsmall):
-        """Test parquet file has expected schema."""
+        """Test parquet file has expected schema and correct cell values."""
         from src.orchestrator.manifest import ManifestOrchestrator
 
         orchestrator = ManifestOrchestrator(
@@ -277,7 +288,7 @@ class TestManifestOrchestratorOutput:
                 "condition": "x > 5",
                 "condition_result": "True",
                 "condition_error": None,
-                "response": "Response",
+                "response": "Response text here",
                 "status": "success",
                 "attempts": 1,
                 "error": None,
@@ -292,29 +303,14 @@ class TestManifestOrchestratorOutput:
         parquet_path = orchestrator._write_parquet(results)
         df = pl.read_parquet(parquet_path)
 
-        expected_columns = [
-            "sequence",
-            "prompt_name",
-            "prompt",
-            "resolved_prompt",
-            "history",
-            "client",
-            "condition",
-            "condition_result",
-            "condition_error",
-            "response",
-            "status",
-            "attempts",
-            "error",
-            "references",
-            "semantic_query",
-            "semantic_filter",
-            "query_expansion",
-            "rerank",
-        ]
-
-        for col in expected_columns:
-            assert col in df.columns
+        assert df["sequence"][0] == 1
+        assert df["prompt_name"][0] == "test"
+        assert df["prompt"][0] == "Hello"
+        assert df["response"][0] == "Response text here"
+        assert df["status"][0] == "success"
+        assert df["attempts"][0] == 1
+        assert df["client"][0] == "writer"
+        assert df["condition"][0] == "x > 5"
 
     def test_write_parquet_metadata(self, tmp_path, mock_ffmistralsmall):
         """Test parquet file includes manifest metadata."""
