@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: MIT
 # Contact: antquinonez@farfiner.com
 
+import pytest
+
 from src.core.pricing import estimate_cost
 
 
@@ -24,11 +26,11 @@ class TestEstimateCost:
 
     def test_case_insensitive(self):
         cost = estimate_cost("Mistral-Small-2503", 100, 50)
-        assert cost > 0
+        assert cost == pytest.approx((100 / 1000) * 0.0001 + (50 / 1000) * 0.0003)
 
     def test_partial_match(self):
         cost = estimate_cost("google/gemini-1.5-pro-002", 100, 50)
-        assert cost > 0
+        assert cost == pytest.approx((100 / 1000) * 0.00125 + (50 / 1000) * 0.005)
 
     def test_perplexity_sonar(self):
         cost = estimate_cost("sonar", 1000, 1000)
@@ -37,4 +39,4 @@ class TestEstimateCost:
 
     def test_gemini_flash(self):
         cost = estimate_cost("gemini-2.5-flash-lite", 1000, 500)
-        assert cost > 0
+        assert cost == pytest.approx((1000 / 1000) * 0.000075 + (500 / 1000) * 0.0003)

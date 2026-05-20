@@ -4,6 +4,7 @@
 
 import os
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -451,6 +452,138 @@ class TestParseTextFileEncoding:
         content = processor._parse_text_file(str(latin1_file))
         assert isinstance(content, str)
         assert len(content) > 0
+        assert "Héllo" in content
+
+
+class TestParseWithLlama:
+    def test_parse_with_llama_import_error(self, temp_cache_dir, tmp_path):
+        processor = DocumentProcessor(cache_dir=temp_cache_dir, api_key="fake-key")
+        fake_pdf = tmp_path / "test.xyz"
+        fake_pdf.write_text("content")
+
+        from unittest.mock import patch
+
+        with patch.dict("sys.modules", {"llama_cloud_services": None, "llama_index.core": None}):
+            with pytest.raises(ImportError, match="LlamaParse not installed"):
+                processor._parse_with_llama(str(fake_pdf))
+
+    def test_parse_with_llama_no_content_raises(self, temp_cache_dir, tmp_path):
+        from unittest.mock import MagicMock, patch
+
+        processor = DocumentProcessor(cache_dir=temp_cache_dir, api_key="fake-key")
+        fake_pdf = tmp_path / "test.pdf"
+        fake_pdf.write_text("content")
+
+        mock_doc = MagicMock()
+        mock_reader_instance = MagicMock()
+        mock_reader_instance.load_data.return_value = []
+
+        def fake_llama_parse(*a, **kw):
+            return MagicMock()
+
+        def fake_simple_reader(*a, **kw):
+            return mock_reader_instance
+
+        with (
+            patch(
+                "src.orchestrator.document_processor.LlamaParse",
+                side_effect=fake_llama_parse,
+                create=True,
+            ),
+            patch(
+                "src.orchestrator.document_processor.SimpleDirectoryReader",
+                side_effect=fake_simple_reader,
+                create=True,
+            ),
+        ):
+            # Need to mock at the import site inside the function
+            import src.orchestrator.document_processor as dp_mod
+
+            with patch.object(dp_mod, "LlamaParse", create=True, return_value=MagicMock()):
+                # Actually, the imports happen inside _parse_with_llama
+                # So we need to mock the module-level imports
+                pass
+
+        # Since LlamaParse is imported locally, we mock the modules themselves
+        mock_llama_parse = MagicMock()
+        mock_doc_list = MagicMock()
+        mock_doc_list.__len__ = MagicMock(return_value=0)
+
+        mock_reader_cls = MagicMock()
+        mock_reader_instance = MagicMock()
+        mock_reader_instance.load_data.return_value = []
+        mock_reader_cls.return_value = mock_reader_instance
+
+        fake_modules = {
+            "llama_cloud_services": MagicMock(LlamaParse=MagicMock(return_value=MagicMock())),
+            "llama_index.core": MagicMock(SimpleDirectoryReader=mock_reader_cls),
+        }
+
+        with patch.dict("sys.modules", fake_modules):
+            with pytest.raises(ValueError, match="No content parsed"):
+                processor._parse_with_llama(str(fake_pdf))
+
+    def test_parse_with_llama_extracts_text(self, temp_cache_dir, tmp_path):
+        from unittest.mock import MagicMock
+
+        processor = DocumentProcessor(cache_dir=temp_cache_dir, api_key="fake-key")
+        fake_pdf = tmp_path / "test.pdf"
+        fake_pdf.write_text("content")
+
+        mock_doc = MagicMock()
+        mock_doc.text = "Parsed PDF content"
+        mock_doc.metadata = {}
+
+        mock_parser_instance = MagicMock()
+        mock_reader_instance = MagicMock()
+        mock_reader_instance.load_data.return_value = [mock_doc]
+
+        mock_llama_cloud = MagicMock()
+        mock_llama_cloud.LlamaParse.return_value = mock_parser_instance
+
+        mock_llama_index = MagicMock()
+        mock_llama_index.SimpleDirectoryReader.return_value = mock_reader_instance
+
+        fake_modules = {
+            "llama_cloud_services": mock_llama_cloud,
+            "llama_index": MagicMock(),
+            "llama_index.core": mock_llama_index,
+        }
+
+        with patch.dict("sys.modules", fake_modules):
+            result = processor._parse_with_llama(str(fake_pdf))
+            assert result == "Parsed PDF content"
+
+    def test_parse_with_llama_prefers_markdown_metadata(self, temp_cache_dir, tmp_path):
+        from unittest.mock import MagicMock
+
+        processor = DocumentProcessor(cache_dir=temp_cache_dir, api_key="fake-key")
+        fake_pdf = tmp_path / "test.pdf"
+        fake_pdf.write_text("content")
+
+        mock_doc = MagicMock()
+        mock_doc.text = "Plain text"
+        mock_doc.metadata = {"markdown": "# Markdown content"}
+
+        mock_parser_instance = MagicMock()
+        mock_reader_instance = MagicMock()
+        mock_reader_instance.load_data.return_value = [mock_doc]
+
+        mock_llama_cloud = MagicMock()
+        mock_llama_cloud.LlamaParse.return_value = mock_parser_instance
+
+        mock_llama_index = MagicMock()
+        mock_llama_index.SimpleDirectoryReader.return_value = mock_reader_instance
+
+        fake_modules = {
+            "llama_cloud_services": mock_llama_cloud,
+            "llama_index": MagicMock(),
+            "llama_index.core": mock_llama_index,
+        }
+
+        with patch.dict("sys.modules", fake_modules):
+            result = processor._parse_with_llama(str(fake_pdf))
+            assert result == "# Markdown content"
 
 
 class TestLoadDocumentEdgeCases:

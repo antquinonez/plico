@@ -341,6 +341,7 @@ class TestConditionEvaluator:
         result, error = evaluator.evaluate('__import__("os").system("echo hacked")')
         assert result is False
         assert error is not None
+        assert "unknown function" in error.lower()
 
     def test_no_arbitrary_function_calls(self):
         """Test that arbitrary function calls are blocked."""
@@ -350,6 +351,7 @@ class TestConditionEvaluator:
         result, error = evaluator.evaluate('open("/etc/passwd")')
         assert result is False
         assert error is not None
+        assert "unknown function" in error.lower()
 
     def test_only_whitelisted_functions(self):
         """Test that only whitelisted functions are allowed."""
@@ -1519,6 +1521,7 @@ class TestConditionEvaluator:
         result, error = evaluator.evaluate("1 + + 2")
         assert result is False
         assert error is not None
+        assert "unsupported" in error.lower()
 
     # ========================================
     # validate_syntax exception
@@ -1554,6 +1557,7 @@ class TestConditionEvaluator:
         result, error, trace = evaluator.evaluate_with_trace('{{step1.error}} == ""')
         assert result is True
         assert trace is not None
+        assert "{{step1.error}}" not in trace
 
     def test_value_to_display_bool_true(self):
         """True becomes 'True' in display trace."""

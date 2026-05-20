@@ -129,7 +129,7 @@ class TestSplitTextEdgeCases:
         chunker = get_chunker("character", chunk_size=100, chunk_overlap=20)
         result = chunker.chunk(text)
 
-        assert len(result) >= 1
+        assert len(result) == 8
         assert all(chunk.content for chunk in result)
 
     def test_no_spaces_text(self):
@@ -184,7 +184,7 @@ class TestSplitTextEdgeCases:
         chunker = get_chunker("character", chunk_size=20, chunk_overlap=5)
         result = chunker.chunk(text)
 
-        assert len(result) >= 1
+        assert len(result) == 2
         for chunk in result:
             assert chunk.content
 
@@ -285,7 +285,7 @@ class TestChunkDocuments:
             chunks = chunker.chunk(text, metadata=metadata)
             all_chunks.extend(chunks)
 
-        assert len(all_chunks) >= 1
+        assert len(all_chunks) == 10
 
     def test_metadata_excludes_text_key(self):
         """Metadata does not include the text content key."""

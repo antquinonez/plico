@@ -1462,6 +1462,7 @@ class TestExcelOrchestratorConditions:
         results = orchestrator.execute()
 
         assert results[1]["condition_error"] is not None
+        assert "unknown prompt name" in results[1]["condition_error"].lower()
 
     def test_summary_includes_condition_count(self, temp_workbook, mock_ffmistralsmall):
         """Test that summary includes prompts_with_conditions."""
