@@ -443,3 +443,5 @@ class TestDefaultExtensions:
 
     def test_is_set(self):
         assert isinstance(DEFAULT_EXTENSIONS, set)
+        assert ".pdf" in DEFAULT_EXTENSIONS
+        assert len(DEFAULT_EXTENSIONS) >= 5

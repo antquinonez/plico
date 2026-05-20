@@ -695,8 +695,8 @@ class TestFFRAGClientHybridSearch:
             )
             client._embeddings = rag_mock_embeddings
 
-        assert client._bm25_index is not None
-        assert client._hybrid_search is not None
+        assert callable(client._bm25_index.search)
+        assert hasattr(client._hybrid_search, "search")
 
     def test_init_hybrid_search_loads_existing_docs(self, temp_persist_dir, rag_mock_embeddings):
         """Test that hybrid search loads existing documents into BM25."""
@@ -720,7 +720,7 @@ class TestFFRAGClientHybridSearch:
             )
             client2._embeddings = rag_mock_embeddings
 
-        assert client2._bm25_index is not None
+        assert callable(client2._bm25_index.search)
 
     def test_vector_search_only(self, temp_persist_dir, rag_mock_embeddings):
         """Test _vector_search_only helper."""
@@ -1151,7 +1151,7 @@ class TestFFRAGClientSearch:
 
         rag_client._ensure_query_expander()
 
-        assert rag_client._query_expander is not None
+        assert hasattr(rag_client._query_expander, "expand")
 
     def test_ensure_query_expander_with_llm_fn(self, rag_client):
         """Test lazy init of query expander with LLM function."""
@@ -1160,8 +1160,8 @@ class TestFFRAGClientSearch:
 
         rag_client._ensure_query_expander()
 
-        assert rag_client._query_expander is not None
-        assert rag_client._query_expander.llm_generate_fn is not None
+        assert hasattr(rag_client._query_expander, "expand")
+        assert callable(rag_client._query_expander.llm_generate_fn)
 
     def test_ensure_reranker_lazy_init(self, rag_client):
         """Test lazy initialization of reranker."""
@@ -1169,7 +1169,7 @@ class TestFFRAGClientSearch:
 
         rag_client._ensure_reranker()
 
-        assert rag_client._reranker is not None
+        assert hasattr(rag_client._reranker, "rerank")
 
     def test_search_single_hybrid_mode(self, temp_persist_dir, rag_mock_embeddings):
         """Test _search_single with hybrid search mode."""
@@ -1358,7 +1358,7 @@ class TestFFRAGClientUtilities:
 
         client.clear_chunking_strategy("recursive")
 
-        assert client._bm25_index is not None
+        assert callable(client._bm25_index.search)
 
     def test_get_indexed_documents(self, rag_client, rag_mock_embeddings):
         """Test get_indexed_documents method."""

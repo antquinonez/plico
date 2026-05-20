@@ -96,6 +96,7 @@ class TestClientRegistryGet:
             client = registry.get("fast")
 
             assert client is not None
+            assert client == mock_ffmistralsmall
 
 
 class TestClientRegistryClone:

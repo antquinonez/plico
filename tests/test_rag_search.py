@@ -218,19 +218,20 @@ class TestRerankers:
         assert len(reranked) == 1
 
     def test_get_reranker_none(self) -> None:
-        """get_reranker returns NoopReranker for 'none'."""
         reranker = get_reranker("none")
         assert isinstance(reranker, NoopReranker)
+        results = [{"id": "1"}, {"id": "2"}]
+        assert reranker.rerank("q", results) == results
 
     def test_get_reranker_diversity(self) -> None:
-        """get_reranker returns DiversityReranker for 'diversity'."""
         reranker = get_reranker("diversity")
         assert isinstance(reranker, DiversityReranker)
+        assert hasattr(reranker, "lambda_param")
 
     def test_get_reranker_cross_encoder(self) -> None:
-        """get_reranker returns CrossEncoderReranker for 'cross_encoder'."""
         reranker = get_reranker("cross_encoder")
         assert isinstance(reranker, CrossEncoderReranker)
+        assert reranker.model_name == "cross-encoder/ms-marco-MiniLM-L-6-v2"
 
 
 class TestCrossEncoderReranker:
@@ -411,9 +412,10 @@ class TestGetRerankerExtended:
     """Extended tests for get_reranker factory."""
 
     def test_get_reranker_unknown_returns_noop(self) -> None:
-        """get_reranker returns NoopReranker for unknown type."""
         reranker = get_reranker("unknown_type")
         assert isinstance(reranker, NoopReranker)
+        results = [{"id": "1"}, {"id": "2"}]
+        assert reranker.rerank("q", results) == results
 
     def test_get_reranker_with_kwargs(self) -> None:
         """get_reranker passes kwargs to reranker."""

@@ -247,6 +247,7 @@ class TestTelemetryManagerSpan:
         mgr._tracer = None
         with mgr.span("test") as span:
             assert isinstance(span, NoOpSpan)
+            assert span.is_recording() is False
 
     def test_span_attribute_and_exception_on_noop(self):
         mgr = TelemetryManager()

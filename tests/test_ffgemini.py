@@ -891,7 +891,7 @@ class TestFFGeminiUsageExtraction:
                     assert client.last_usage.input_tokens == 100
                     assert client.last_usage.output_tokens == 50
                     assert client.last_usage.total_tokens == 150
-                    assert client.last_cost_usd > 0.0
+                    assert client.last_cost_usd == pytest.approx(0.000375)
 
     def test_usage_none_when_no_usage_in_response(self, mock_gemini_client):
         """Test that usage is None when response has no usage data."""

@@ -380,6 +380,7 @@ class TestSelfFfaiDocumentation:
         orchestrator._init_client()
 
         assert orchestrator.ffai is not None
+        assert hasattr(orchestrator.ffai, "generate_response")
 
     def test_execution_uses_isolated_ffai_not_self_ffai(
         self, temp_workbook_with_data, mock_ffmistralsmall
@@ -1305,7 +1306,7 @@ class TestResolveBatchName:
         orch = _make_base(mock_ffmistralsmall)
         result = orch._resolve_batch_name({"region": "north", "product": "widget"}, 1)
         assert isinstance(result, str)
-        assert len(result) > 0
+        assert result == "batch_1"
 
 
 class TestDetectPlanningPrompts:

@@ -521,14 +521,14 @@ class TestGetChunker:
         assert chunker.chunk_size == 500
 
     def test_get_recursive_chunker(self) -> None:
-        """Get recursive chunker by name."""
         chunker = get_chunker("recursive")
         assert isinstance(chunker, RecursiveChunker)
+        assert chunker.chunk_size > 0
 
     def test_get_markdown_chunker(self) -> None:
-        """Get markdown chunker by name."""
         chunker = get_chunker("markdown")
         assert isinstance(chunker, MarkdownChunker)
+        assert chunker.chunk_size > 0
 
     def test_get_code_chunker(self) -> None:
         """Get code chunker by name."""

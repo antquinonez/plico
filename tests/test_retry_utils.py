@@ -247,6 +247,8 @@ class TestRetryableExceptions:
 
     def test_is_tuple(self):
         assert isinstance(RETRYABLE_EXCEPTIONS, tuple)
+        assert len(RETRYABLE_EXCEPTIONS) == 4
+        assert RateLimitError in RETRYABLE_EXCEPTIONS
 
 
 class TestGetConfiguredRetryDecorator:

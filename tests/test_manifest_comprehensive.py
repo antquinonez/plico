@@ -178,6 +178,7 @@ class TestManifestOrchestratorClientRegistry:
         ffai = orchestrator._get_isolated_ffai("writer")
 
         assert ffai is not None
+        assert ffai.client is not mock_ffmistralsmall
 
 
 class TestManifestOrchestratorDocuments:
