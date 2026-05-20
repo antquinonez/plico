@@ -48,7 +48,7 @@ def _build_synthesis_result(
         builder.with_attempts(1)
     else:
         builder.with_error(error or "unknown error", attempts=1)
-        builder.with_response("")
+        builder._result.response = ""
         builder.with_resolved_prompt("")
 
     if input_tokens or output_tokens or total_tokens:
