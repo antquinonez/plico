@@ -463,3 +463,67 @@ class TestRowDocumentValidation:
         ).validate()
         doc_errors = [e for e in result.errors if e.code == "UNKNOWN_ROW_DOCUMENT"]
         assert len(doc_errors) == 3
+
+
+class TestValidationValidatorAgentMode:
+    def test_validation_prompt_without_agent_mode_warns(self):
+        validator = OrchestratorValidator(
+            prompts=[
+                {
+                    "sequence": 1,
+                    "prompt_name": "test",
+                    "prompt": "test prompt",
+                    "agent_mode": False,
+                    "validation_prompt": "Must be a number",
+                },
+            ],
+            config={},
+        )
+        result = ValidationResult()
+        validator._validate_agent_mode(result)
+        warnings = [
+            e
+            for e in result.errors
+            if e.severity == "warning" and e.code == "VALIDATION_WITHOUT_AGENT"
+        ]
+        assert len(warnings) == 1
+
+    def test_max_validation_retries_out_of_range(self):
+        validator = OrchestratorValidator(
+            prompts=[
+                {
+                    "sequence": 1,
+                    "prompt_name": "test",
+                    "prompt": "test",
+                    "agent_mode": True,
+                    "tools": ["calculate"],
+                    "validation_prompt": "Must be a number",
+                    "max_validation_retries": 20,
+                },
+            ],
+            config={},
+        )
+        result = ValidationResult()
+        validator._validate_agent_mode(result)
+        errors = [e for e in result.errors if e.code == "AGENT_INVALID_MAX_VALIDATION_RETRIES"]
+        assert len(errors) == 1
+
+    def test_max_validation_retries_valid(self):
+        validator = OrchestratorValidator(
+            prompts=[
+                {
+                    "sequence": 1,
+                    "prompt_name": "test",
+                    "prompt": "test",
+                    "agent_mode": True,
+                    "tools": ["calculate"],
+                    "validation_prompt": "Must be a number",
+                    "max_validation_retries": 3,
+                },
+            ],
+            config={},
+        )
+        result = ValidationResult()
+        validator._validate_agent_mode(result)
+        errors = [e for e in result.errors if e.code == "AGENT_INVALID_MAX_VALIDATION_RETRIES"]
+        assert len(errors) == 0

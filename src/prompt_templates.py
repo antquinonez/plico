@@ -201,7 +201,7 @@ def load_prompt_template(name_or_path: str) -> list[Any] | None:
         data = yaml.safe_load(f) or {}
 
     prompts_data = data.get("prompts", [])
-    if not prompts_data:
+    if not isinstance(prompts_data, list) or not prompts_data:
         logger.warning("No prompts found in template: %s", path)
         return None
 
@@ -241,7 +241,7 @@ def load_synthesis_template(
         data = yaml.safe_load(f) or {}
 
     prompts_data = data.get("prompts", [])
-    if not prompts_data:
+    if not isinstance(prompts_data, list) or not prompts_data:
         logger.warning("No prompts found in synthesis template: %s", path)
         return None
 

@@ -1693,3 +1693,68 @@ class TestConditionEvaluator:
         assert result is True
         assert trace is not None
         assert "'quality'" in trace or "quality" in trace
+
+
+class TestValidationConditionEvaluator:
+    def test_validation_passed_true(self):
+        evaluator = ConditionEvaluator(results_by_name={})
+        result = {
+            "validation_passed": True,
+            "validation_attempts": 1,
+        }
+        value = evaluator._compute_property(result, "validation_passed", True)
+        assert value is True
+
+    def test_validation_passed_false(self):
+        evaluator = ConditionEvaluator(results_by_name={})
+        result = {
+            "validation_passed": False,
+            "validation_attempts": 3,
+        }
+        value = evaluator._compute_property(result, "validation_passed", False)
+        assert value is False
+
+    def test_validation_passed_none(self):
+        evaluator = ConditionEvaluator(results_by_name={})
+        result = {"validation_passed": None}
+        value = evaluator._compute_property(result, "validation_passed", None)
+        assert value is None
+
+    def test_validation_attempts(self):
+        evaluator = ConditionEvaluator(results_by_name={})
+        result = {"validation_attempts": 3}
+        value = evaluator._compute_property(result, "validation_attempts", 3)
+        assert value == 3
+
+    def test_validation_attempts_none(self):
+        evaluator = ConditionEvaluator(results_by_name={})
+        result = {}
+        value = evaluator._compute_property(result, "validation_attempts", None)
+        assert value == 0
+
+    def test_validation_condition_in_expression(self):
+        evaluator = ConditionEvaluator(
+            results_by_name={
+                "my_prompt": {
+                    "validation_passed": True,
+                    "validation_attempts": 1,
+                },
+            }
+        )
+        assert evaluator.evaluate("{{my_prompt.validation_passed}} == True")
+        assert evaluator.evaluate("{{my_prompt.validation_attempts}} == 1")
+
+    def test_validation_failed_condition(self):
+        evaluator = ConditionEvaluator(
+            results_by_name={
+                "my_prompt": {
+                    "validation_passed": False,
+                    "validation_attempts": 3,
+                    "validation_critique": "Response too short",
+                },
+            }
+        )
+        result, error = evaluator.evaluate("{{my_prompt.validation_passed}} == True")
+        assert not result
+        result, error = evaluator.evaluate("{{my_prompt.validation_attempts}} >= 3")
+        assert result

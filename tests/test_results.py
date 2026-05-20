@@ -263,3 +263,85 @@ class TestResultBuilder:
         assert d["tool_calls"] is None
         assert d["total_rounds"] is None
         assert d["total_llm_calls"] is None
+
+
+class TestValidationResultFields:
+    def test_prompt_result_validation_defaults(self):
+        result = PromptResult(sequence=1)
+        assert result.validation_passed is None
+        assert result.validation_attempts is None
+        assert result.validation_critique is None
+
+    def test_prompt_result_validation_in_to_dict_when_set(self):
+        result = PromptResult(
+            sequence=1,
+            agent_mode=True,
+            validation_passed=True,
+            validation_attempts=1,
+        )
+        d = result.to_dict()
+        assert d["validation_passed"] is True
+        assert d["validation_attempts"] == 1
+        assert d["validation_critique"] is None
+
+    def test_prompt_result_validation_in_to_dict_when_unset(self):
+        result = PromptResult(sequence=1, agent_mode=True)
+        d = result.to_dict()
+        assert "validation_passed" in d
+        assert d["validation_passed"] is None
+        assert d["validation_attempts"] is None
+
+    def test_prompt_result_validation_from_dict(self):
+        data = {
+            "sequence": 1,
+            "validation_passed": False,
+            "validation_attempts": 3,
+            "validation_critique": "Response too short",
+        }
+        result = PromptResult.from_dict(data)
+        assert result.validation_passed is False
+        assert result.validation_attempts == 3
+        assert result.validation_critique == "Response too short"
+
+    def test_prompt_result_validation_roundtrip(self):
+        original = PromptResult(
+            sequence=5,
+            agent_mode=True,
+            validation_passed=False,
+            validation_attempts=2,
+            validation_critique="Missing numeric value",
+        )
+        restored = PromptResult.from_dict(original.to_dict())
+        assert restored.validation_passed == original.validation_passed
+        assert restored.validation_attempts == original.validation_attempts
+        assert restored.validation_critique == original.validation_critique
+
+
+class TestValidationBuilder:
+    def test_with_validation_result_pass(self):
+        builder = ResultBuilder({"sequence": 1, "prompt": "test"})
+        builder.with_validation_result(passed=True, attempts=1)
+        result = builder.build()
+        assert result.validation_passed is True
+        assert result.validation_attempts == 1
+        assert result.validation_critique is None
+
+    def test_with_validation_result_fail(self):
+        builder = ResultBuilder({"sequence": 1, "prompt": "test"})
+        builder.with_validation_result(passed=False, attempts=3, critique="Must be numeric")
+        result = builder.build()
+        assert result.validation_passed is False
+        assert result.validation_attempts == 3
+        assert result.validation_critique == "Must be numeric"
+
+    def test_with_validation_result_chains(self):
+        builder = ResultBuilder({"sequence": 1, "prompt": "test"})
+        result = builder.with_validation_result(passed=True, attempts=1).build()
+        assert result.validation_passed is True
+
+    def test_with_validation_result_in_dict(self):
+        builder = ResultBuilder({"sequence": 1, "prompt": "test"})
+        builder.with_validation_result(passed=True, attempts=2)
+        d = builder.build_dict()
+        assert d["validation_passed"] is True
+        assert d["validation_attempts"] == 2

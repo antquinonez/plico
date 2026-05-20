@@ -318,3 +318,20 @@ class TestConfigExtraFields:
         """Extra fields in YAML are ignored (extra='ignore')."""
         config = Config()
         assert config.model_config.get("extra") == "ignore"
+
+
+class TestAgentValidationConfig:
+    def test_agent_validation_config_defaults(self):
+        from src.config import AgentValidationConfig
+
+        config = AgentValidationConfig()
+        assert config.enabled is True
+        assert config.max_retries == 2
+
+    def test_agent_config_has_validation(self):
+        from src.config import AgentConfig
+
+        config = AgentConfig()
+        assert hasattr(config, "validation")
+        assert config.validation.enabled is True
+        assert config.validation.max_retries == 2
