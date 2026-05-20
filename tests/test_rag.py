@@ -294,7 +294,7 @@ class TestFFVectorStore:
 
         count = store.add_chunks(chunks, dedup=True, dedup_mode="exact")
 
-        assert count >= 1
+        assert count == 1
 
     def test_add_chunks_with_texts_for_embedding(self, temp_persist_dir, mock_embeddings):
         """Test add_chunks with custom texts for embedding."""
@@ -330,8 +330,8 @@ class TestFFVectorStore:
 
         count = store.add_documents(documents, chunk_size=100, chunk_overlap=20)
 
-        assert count >= 2
-        assert store.count() >= 2
+        assert count == 2
+        assert store.count() == 2
 
     def test_search(self, temp_persist_dir, mock_embeddings):
         """Test semantic search."""
@@ -469,8 +469,9 @@ class TestFFVectorStore:
         stats = store.get_stats()
 
         assert stats["collection_name"] == "test_collection"
-        assert "count" in stats
-        assert "persist_dir" in stats
+        assert stats["count"] == 0
+        assert stats["persist_dir"] == temp_persist_dir
+        assert stats["embedding_model"] == "test-model"
 
     def test_clear(self, temp_persist_dir, mock_embeddings):
         """Test clearing the collection."""
@@ -512,8 +513,11 @@ class TestFFVectorStore:
 
         indexed = store.get_indexed_documents()
 
-        assert len(indexed) >= 1
-        assert any(d["reference_name"] == "indexed_doc" for d in indexed)
+        assert len(indexed) == 1
+        doc = indexed[0]
+        assert doc["reference_name"] == "indexed_doc"
+        assert doc["chunking_strategy"] == "recursive"
+        assert doc["document_checksum"] == "abc123"
 
     def test_get_indexed_documents_with_strategy_filter(self, temp_persist_dir, mock_embeddings):
         """Test get_indexed_documents with chunking_strategy filter."""
@@ -617,8 +621,10 @@ class TestFFVectorStore:
 
         docs = store.get_all_documents()
 
-        assert len(docs) >= 1
-        assert all("id" in d and "content" in d and "metadata" in d for d in docs)
+        assert len(docs) == 1
+        assert docs[0]["id"] is not None
+        assert docs[0]["content"] == "Document content"
+        assert docs[0]["metadata"]["reference_name"] == "all_doc"
 
 
 @requires_chromadb
@@ -774,7 +780,9 @@ class TestFFRAGClientHybridSearch:
         client.add_document(content="Test content", reference_name="test_doc")
         results = client._vector_search_only("test query", n_results=5)
 
-        assert isinstance(results, list)
+        assert len(results) == 1
+        assert results[0]["content"] == "Test content"
+        assert "score" in results[0] or "distance" in results[0]
 
     def test_bm25_search_only(self, temp_persist_dir, mock_embeddings):
         """Test _bm25_search_only helper."""
@@ -791,7 +799,8 @@ class TestFFRAGClientHybridSearch:
         client.add_document(content="Test content", reference_name="test_doc")
         results = client._bm25_search_only("test", n_results=5)
 
-        assert isinstance(results, list)
+        assert len(results) >= 1
+        assert results[0]["content"] == "Test content"
 
 
 @requires_chromadb
@@ -841,7 +850,7 @@ class TestFFRAGClientIndexDocument:
             checksum="abc123",
         )
 
-        assert chunks >= 1
+        assert chunks == 1
 
     def test_index_document_already_indexed(self, rag_client, mock_embeddings):
         """Test index_document skips if already indexed with same checksum."""
@@ -884,7 +893,7 @@ class TestFFRAGClientIndexDocument:
             force=True,
         )
 
-        assert chunks >= 1
+        assert chunks == 1
 
     def test_index_document_checksum_changed(self, rag_client, mock_embeddings):
         """Test index_document when checksum changes."""
@@ -904,7 +913,7 @@ class TestFFRAGClientIndexDocument:
             checksum="checksum2",
         )
 
-        assert chunks >= 1
+        assert chunks == 1
 
     def test_index_document_with_summaries(self, temp_persist_dir, mock_embeddings):
         """Test index_document with summary generation."""
@@ -928,7 +937,7 @@ class TestFFRAGClientIndexDocument:
             checksum="sum123",
         )
 
-        assert chunks >= 1
+        assert chunks == 1
 
 
 @requires_chromadb
@@ -1112,7 +1121,7 @@ class TestFFRAGClientChunkAddition:
             chunk_overlap=20,
         )
 
-        assert chunks >= 1
+        assert chunks == 6
 
     def test_add_regular_chunks_with_contextual_headers(self, temp_persist_dir, mock_embeddings):
         """Test _add_regular_chunks with contextual headers enabled."""
@@ -1137,7 +1146,7 @@ class TestFFRAGClientChunkAddition:
 
         count = client._add_regular_chunks(chunks, reference_name="ctx_doc")
 
-        assert count >= 1
+        assert count == 1
 
     def test_add_regular_chunks_syncs_bm25(self, temp_persist_dir, mock_embeddings):
         """Test BM25 index sync in _add_regular_chunks."""
@@ -1165,7 +1174,7 @@ class TestFFRAGClientChunkAddition:
 
         count = client._add_regular_chunks(chunks, reference_name="bm25_doc")
 
-        assert count >= 1
+        assert count == 1
         assert client._bm25_index is not None
 
 
@@ -1218,7 +1227,8 @@ class TestFFRAGClientSearch:
 
         results = rag_client.search("query", query_expansion=True)
 
-        assert isinstance(results, list)
+        assert len(results) >= 1
+        assert "content" in results[0]
 
     def test_search_with_rerank_override(self, rag_client, mock_embeddings):
         """Test search with rerank parameter override."""
@@ -1229,7 +1239,8 @@ class TestFFRAGClientSearch:
 
         results = rag_client.search("test", rerank=False)
 
-        assert isinstance(results, list)
+        assert len(results) >= 1
+        assert "content" in results[0]
 
     def test_ensure_query_expander_lazy_init(self, rag_client):
         """Test lazy initialization of query expander."""
@@ -1274,7 +1285,8 @@ class TestFFRAGClientSearch:
 
         results = client._search_single("test", n_results=5, rerank=False)
 
-        assert isinstance(results, list)
+        assert len(results) >= 1
+        assert "content" in results[0]
 
     def test_search_single_with_summaries(self, temp_persist_dir, mock_embeddings):
         """Test _search_single with summary boosting."""
@@ -1304,7 +1316,8 @@ class TestFFRAGClientSearch:
 
         results = client._search_single("summary", n_results=5, rerank=False)
 
-        assert isinstance(results, list)
+        assert len(results) >= 1
+        assert "content" in results[0]
 
 
 @requires_chromadb
@@ -1386,7 +1399,7 @@ class TestFFRAGClientUtilities:
 
         total = rag_client.add_documents(documents)
 
-        assert total >= 2
+        assert total == 2
 
     def test_delete_by_reference_with_bm25(self, temp_persist_dir, mock_embeddings):
         """Test delete_by_reference syncs BM25 index."""
@@ -1466,7 +1479,8 @@ class TestFFRAGClientUtilities:
 
         indexed = rag_client.get_indexed_documents()
 
-        assert isinstance(indexed, list)
+        assert len(indexed) == 1
+        assert indexed[0]["reference_name"] == "indexed_doc"
 
     def test_get_indexed_documents_with_filter(self, rag_client, mock_embeddings):
         """Test get_indexed_documents with chunking_strategy filter."""
@@ -1476,7 +1490,8 @@ class TestFFRAGClientUtilities:
 
         indexed = rag_client.get_indexed_documents(chunking_strategy="recursive")
 
-        assert isinstance(indexed, list)
+        assert len(indexed) == 1
+        assert indexed[0]["chunking_strategy"] == "recursive"
 
     def test_needs_reindex(self, rag_client, mock_embeddings):
         """Test needs_reindex method."""
@@ -1618,8 +1633,8 @@ class TestFFRAGClient:
             metadata={"source": "test"},
         )
 
-        assert chunks >= 1
-        assert rag_client.count() >= 1
+        assert chunks == 1
+        assert rag_client.count() == 1
 
     def test_add_document_empty(self, rag_client):
         """Test adding empty document."""
