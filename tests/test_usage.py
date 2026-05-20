@@ -196,3 +196,71 @@ class TestResultBuilderUsage:
         assert result.total_tokens == 0
         assert result.cost_usd == 0.0
         assert result.duration_ms == 0.0
+
+
+class TestClientBaseRetryFallback:
+    """Tests for get_default_retry_config fallback path (lines 62-65)."""
+
+    def test_fallback_defaults_when_config_unavailable(self):
+        from unittest.mock import patch
+
+        from src.core.client_base import FFAIClientBase
+
+        with patch("src.config.get_config", side_effect=Exception("no config")):
+            defaults = FFAIClientBase.get_default_retry_config()
+
+        assert defaults["max_attempts"] == 3
+        assert defaults["min_wait_seconds"] == 1
+        assert defaults["max_wait_seconds"] == 60
+        assert defaults["exponential_base"] == 2
+        assert defaults["exponential_jitter"] is True
+        assert defaults["log_level"] == "INFO"
+
+
+class TestClientBaseAbstractMethodBodies:
+    """Tests that abstract base class pass-through bodies return None (lines 184, 189, 199, 209, 238)."""
+
+    @staticmethod
+    def _make_delegating_client():
+        from src.core.client_base import FFAIClientBase
+
+        class DelegatingClient(FFAIClientBase):
+            model = "test"
+            system_instructions = ""
+
+            def generate_response(self, prompt, **kwargs):
+                return super().generate_response(prompt, **kwargs)
+
+            def clear_conversation(self):
+                return super().clear_conversation()
+
+            def get_conversation_history(self):
+                return super().get_conversation_history()
+
+            def set_conversation_history(self, history):
+                return super().set_conversation_history(history)
+
+            def clone(self):
+                return super().clone()
+
+        return DelegatingClient()
+
+    def test_super_generate_response_returns_none(self):
+        client = self._make_delegating_client()
+        assert client.generate_response("test") is None
+
+    def test_super_clear_conversation_returns_none(self):
+        client = self._make_delegating_client()
+        assert client.clear_conversation() is None
+
+    def test_super_get_conversation_history_returns_none(self):
+        client = self._make_delegating_client()
+        assert client.get_conversation_history() is None
+
+    def test_super_set_conversation_history_returns_none(self):
+        client = self._make_delegating_client()
+        assert client.set_conversation_history([]) is None
+
+    def test_super_clone_returns_none(self):
+        client = self._make_delegating_client()
+        assert client.clone() is None

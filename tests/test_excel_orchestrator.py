@@ -2000,3 +2000,200 @@ class TestExcelOrchestratorSummaryEdgeCases:
 
         assert "total_attempts" in summary
         assert summary["total_attempts"] >= 3
+
+
+class TestExcelOrchestratorSourcePath:
+    """Tests for source_path property (line 90)."""
+
+    def test_source_path_returns_workbook_path(self, temp_workbook, mock_ffmistralsmall):
+        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
+
+        orchestrator = ExcelOrchestrator(temp_workbook, mock_ffmistralsmall)
+        assert orchestrator.source_path == temp_workbook
+
+
+class TestExcelOrchestratorSynthesisLoading:
+    """Tests for synthesis data loading (lines 158-160)."""
+
+    def test_load_source_enables_synthesis(self, temp_workbook, mock_ffmistralsmall):
+        from openpyxl import Workbook
+
+        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
+
+        wb = Workbook()
+        ws_config = wb.active
+        ws_config.title = "config"
+        ws_config["A1"] = "field"
+        ws_config["B1"] = "value"
+        ws_config["A2"] = "model"
+        ws_config["B2"] = "test-model"
+
+        ws_prompts = wb.create_sheet("prompts")
+        ws_prompts["A1"] = "sequence"
+        ws_prompts["B1"] = "prompt_name"
+        ws_prompts["C1"] = "prompt"
+        ws_prompts["D1"] = "history"
+        ws_prompts["A2"] = 1
+        ws_prompts["B2"] = "p1"
+        ws_prompts["C2"] = "Hello"
+        ws_prompts["D2"] = ""
+
+        ws_synth = wb.create_sheet("synthesis")
+        ws_synth["A1"] = "sequence"
+        ws_synth["B1"] = "prompt_name"
+        ws_synth["C1"] = "prompt"
+        ws_synth["A2"] = 100
+        ws_synth["B2"] = "summarize"
+        ws_synth["C2"] = "Summarize all results."
+
+        wb.save(temp_workbook)
+
+        orchestrator = ExcelOrchestrator(temp_workbook, mock_ffmistralsmall)
+        orchestrator._load_source()
+
+        assert orchestrator.has_synthesis is True
+        assert len(orchestrator.synthesis_prompts) == 1
+        assert orchestrator.synthesis_prompts[0]["prompt_name"] == "summarize"
+
+
+class TestExcelOrchestratorConfigValidationError:
+    """Tests for config validation error path (lines 176-177)."""
+
+    def test_load_config_raises_on_validation_errors(self, temp_workbook, mock_ffmistralsmall):
+        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
+
+        orchestrator = ExcelOrchestrator(temp_workbook, mock_ffmistralsmall)
+        orchestrator.builder = MagicMock()
+        orchestrator.builder.load_config.return_value = {"model": "test"}
+        orchestrator.builder.validate_config.return_value = ["Invalid model: bad_model"]
+        orchestrator.builder.load_prompts.return_value = []
+
+        with pytest.raises(ValueError, match="Config validation failed: Invalid model: bad_model"):
+            orchestrator._load_config()
+
+
+class TestExcelOrchestratorWriteResultsWithScoring:
+    """Tests for _write_results scoring pivot path (line 258)."""
+
+    def test_write_results_creates_pivot_sheet_with_scoring(
+        self, temp_workbook, mock_ffmistralsmall
+    ):
+        from openpyxl import Workbook, load_workbook
+
+        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
+        from src.orchestrator.scoring import ScoringCriteria, ScoringRubric
+
+        wb = Workbook()
+        wb.save(temp_workbook)
+
+        orchestrator = ExcelOrchestrator(temp_workbook, mock_ffmistralsmall)
+        orchestrator.has_scoring = True
+        orchestrator.scoring_rubric = ScoringRubric(
+            [
+                ScoringCriteria(
+                    criteria_name="quality",
+                    description="Quality check",
+                    score_type="normalized_score",
+                    scale_min=1,
+                    scale_max=10,
+                    weight=1.0,
+                )
+            ]
+        )
+        orchestrator.planning_results = []
+        orchestrator.is_batch_mode = False
+        orchestrator.config = {}
+
+        results = [
+            {
+                "sequence": 1,
+                "prompt_name": "eval",
+                "prompt": "Evaluate",
+                "response": "ok",
+                "status": "success",
+                "attempts": 1,
+                "batch_id": 1,
+                "batch_name": "test_batch",
+                "scores": {"quality": 8.0},
+                "composite_score": 8.0,
+                "scoring_status": "ok",
+            }
+        ]
+
+        sheet_name = orchestrator._write_results(results)
+        assert sheet_name.startswith("results_")
+
+        wb_loaded = load_workbook(temp_workbook)
+        assert "scores_pivot" in wb_loaded.sheetnames
+
+
+class TestExcelOrchestratorSeparateBatchWithPlanning:
+    """Tests for _write_separate_batch_results with planning results (lines 275-278, 283, 286)."""
+
+    def test_write_separate_batch_with_planning_and_mixed_results(
+        self, temp_workbook, mock_ffmistralsmall
+    ):
+        from openpyxl import Workbook, load_workbook
+
+        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
+
+        wb = Workbook()
+        wb.save(temp_workbook)
+
+        orchestrator = ExcelOrchestrator(temp_workbook, mock_ffmistralsmall)
+        orchestrator.planning_results = [
+            {
+                "result_type": "planning",
+                "prompt_name": "gen1",
+                "response": "plan output",
+                "status": "success",
+            }
+        ]
+        orchestrator.results = [
+            {
+                "result_type": "planning",
+                "prompt_name": "gen1",
+                "response": "plan output",
+                "status": "success",
+            },
+            {
+                "batch_id": 1,
+                "batch_name": "batch_alpha",
+                "prompt_name": "p1",
+                "prompt": "test",
+                "response": "ok",
+                "status": "success",
+                "attempts": 1,
+                "sequence": 1,
+            },
+            {
+                "batch_id": None,
+                "prompt_name": "orphan",
+                "prompt": "test",
+                "response": "ok",
+                "status": "success",
+                "attempts": 1,
+                "sequence": 2,
+            },
+            {
+                "batch_id": 2,
+                "batch_name": "batch_beta",
+                "prompt_name": "p2",
+                "prompt": "test",
+                "response": "ok",
+                "status": "success",
+                "attempts": 1,
+                "sequence": 3,
+            },
+        ]
+
+        sheet_names_str = orchestrator._write_separate_batch_results()
+        sheets = [s.strip() for s in sheet_names_str.split(",")]
+
+        assert len(sheets) == 3
+        planning_sheets = [s for s in sheets if s.startswith("planning_")]
+        assert len(planning_sheets) == 1
+
+        wb_loaded = load_workbook(temp_workbook)
+        for sheet in sheets:
+            assert sheet in wb_loaded.sheetnames

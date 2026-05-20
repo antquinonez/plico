@@ -14,7 +14,8 @@ triggering imports from src/__init__.py which requires polars.
 import importlib.util
 import os
 
-# Import condition_evaluator directly to avoid polars dependency
+import pytest
+
 _spec = importlib.util.spec_from_file_location(
     "condition_evaluator",
     os.path.join(os.path.dirname(__file__), "..", "src", "orchestrator", "condition_evaluator.py"),
@@ -1762,3 +1763,183 @@ class TestValidationConditionEvaluator:
         assert not result
         result, error = evaluator.evaluate("{{my_prompt.validation_attempts}} >= 3")
         assert result
+
+
+class TestParseLlmJsonDictList:
+    def test_dict_passthrough(self):
+        result = _ce._parse_llm_json({"a": 1})
+        assert result == {"a": 1}
+
+    def test_list_passthrough(self):
+        result = _ce._parse_llm_json([1, 2])
+        assert result == [1, 2]
+
+
+class TestSafeJsonHasEmptyPart:
+    def test_empty_part_in_path_skipped(self):
+        obj = {"a": {"b": 1}}
+        assert _ce._safe_json_has(obj, "a..b") is True
+
+
+class TestSafeJsonTypeBranches:
+    def test_invalid_json_string_returns_null(self):
+        assert _ce._safe_json_type("not json at all", "x") == "null"
+
+    def test_array_type(self):
+        obj = {"items": [1, 2]}
+        assert _ce._safe_json_type(obj, "items") == "array"
+
+    def test_null_type(self):
+        obj = {"val": None}
+        assert _ce._safe_json_type(obj, "val") == "null"
+
+
+class TestConditionEmptyResolved:
+    def test_evaluate_with_trace_syntax_error(self):
+        evaluator = ConditionEvaluator({})
+        result, error, resolved = evaluator.evaluate_with_trace("1 + + 2")
+        assert result is False
+        assert "Unsupported unary operator" in error
+
+
+class TestValueToLiteralBranches:
+    def test_fallback_type(self):
+        evaluator = ConditionEvaluator({})
+        result = evaluator._value_to_literal([1, 2])
+        assert result == '"[1, 2]"'
+
+    def test_none_returns_empty_string_literal(self):
+        evaluator = ConditionEvaluator({})
+        assert evaluator._value_to_literal(None) == '""'
+
+    def test_bool_false(self):
+        evaluator = ConditionEvaluator({})
+        assert evaluator._value_to_literal(False) == "False"
+
+    def test_string_with_special_chars(self):
+        evaluator = ConditionEvaluator({})
+        result = evaluator._value_to_literal('a"b\nc')
+        assert '\\"' in result
+        assert "\\n" in result
+
+
+class TestValueToDisplayBranches:
+    def test_none_returns_empty(self):
+        evaluator = ConditionEvaluator({})
+        assert evaluator._value_to_display(None) == '""'
+
+    def test_non_string_non_bool_non_number(self):
+        evaluator = ConditionEvaluator({})
+        result = evaluator._value_to_display([1, 2])
+        assert result == '"[1, 2]"'
+
+    def test_json_string_shows_parsed(self):
+        evaluator = ConditionEvaluator({})
+        result = evaluator._value_to_display('{"a": 1}')
+        assert "a" in result
+
+    def test_int_value(self):
+        evaluator = ConditionEvaluator({})
+        assert evaluator._value_to_display(42) == "42"
+
+
+class TestEvalNodeNameNone:
+    def test_name_none_returns_none(self):
+        evaluator = ConditionEvaluator({})
+        result, _ = evaluator.evaluate("None == None")
+        assert result is True
+
+
+class TestEvalBoolOpUnsupported:
+    def test_unsupported_bool_op_raises_value_error(self):
+        import ast
+
+        evaluator = ConditionEvaluator({})
+        node = ast.BoolOp(
+            op=ast.BitAnd(), values=[ast.Constant(value=True), ast.Constant(value=True)]
+        )
+        with pytest.raises(ValueError, match="Unsupported boolean operator"):
+            evaluator._eval_node(node)
+
+
+class TestEvalUnaryUnsupported:
+    def test_unsupported_unary_op_returns_error(self):
+        evaluator = ConditionEvaluator({})
+        result, error = evaluator.evaluate("~1")
+        assert result is False
+        assert "Unsupported unary operator" in error
+
+
+class TestEvalCallUnsupportedType:
+    def test_lambda_call_returns_error(self):
+        evaluator = ConditionEvaluator({})
+        result, error = evaluator.evaluate("(lambda: 1)()")
+        assert result is False
+        assert "simple function calls" in error
+
+
+class TestEvalAttributeBranches:
+    def test_unknown_string_method_returns_error(self):
+        evaluator = ConditionEvaluator({})
+        result, error = evaluator.evaluate("'hello'.unknown_method()")
+        assert result is False
+        assert "Unknown string method" in error
+
+    def test_unknown_list_method_returns_error(self):
+        evaluator = ConditionEvaluator({})
+        result, error = evaluator.evaluate("[1, 2].unknown_method()")
+        assert result is False
+        assert "Unsupported expression type" in error
+
+    def test_unsupported_type_attribute_returns_error(self):
+        evaluator = ConditionEvaluator({})
+        result, error = evaluator.evaluate("(1).something")
+        assert result is False
+        assert "Attribute access not supported" in error
+
+
+class TestEvalSubscriptError:
+    def test_subscript_non_constant_raises(self):
+        import ast
+
+        evaluator = ConditionEvaluator({})
+        node = ast.Subscript(
+            value=ast.Constant(value={"a": 1}),
+            slice=ast.Name(id="x"),
+        )
+        with pytest.raises(ValueError, match="Only simple subscript access"):
+            evaluator._eval_node(node)
+
+
+class TestCallAllowedMethodBranches:
+    def test_unknown_string_method_call_returns_error(self):
+        evaluator = ConditionEvaluator({})
+        result, error = evaluator.evaluate("'hello'.nonexistent()")
+        assert result is False
+        assert "Unknown string method" in error
+
+    def test_unknown_list_method_call_returns_error(self):
+        evaluator = ConditionEvaluator({})
+        result, error = evaluator.evaluate("[1, 2].nonexistent()")
+        assert result is False
+        assert "Unsupported expression type" in error
+
+    def test_method_on_unsupported_type_returns_error(self):
+        evaluator = ConditionEvaluator({})
+        result, error = evaluator.evaluate("(1).count()")
+        assert result is False
+        assert "Method calls not supported" in error
+
+
+class TestEvalIfExpElse:
+    def test_ternary_else_branch(self):
+        evaluator = ConditionEvaluator({})
+        result, _ = evaluator.evaluate("1 if False else 0")
+        assert result is False
+
+
+class TestValidateSyntaxException:
+    def test_validate_syntax_exception_returns_error(self):
+        is_valid, error = ConditionEvaluator.validate_syntax("{{nonexistent}} ???")
+        assert is_valid is False
+        assert error is not None

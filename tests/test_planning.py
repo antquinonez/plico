@@ -9,6 +9,8 @@ from __future__ import annotations
 import json
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from src.orchestrator.scoring import ScoringCriteria, ScoringRubric
 
 
@@ -634,3 +636,290 @@ class TestBackwardCompatibility:
         # Should call _validate (not _validate_pre_planning)
         orch._validate.assert_called_once()
         assert result == "results_sheet"
+
+
+class TestPlanningRunnerGeneratorParseError:
+    """Tests for PlanningPhaseRunner.execute() parse-error re-raise path (line 131)."""
+
+    def _make_orchestrator(self, planning_prompts):
+        from src.orchestrator.base.orchestrator_base import OrchestratorBase
+
+        mock_client = MagicMock()
+        mock_client.clone.return_value = mock_client
+
+        with patch.object(OrchestratorBase, "__abstractmethods__", set()):
+            orch = OrchestratorBase(client=mock_client)
+            orch.planning_prompts = planning_prompts
+            orch.has_planning = True
+            orch.prompts = []
+            orch.config = {"model": "test-model"}
+            orch.batch_data = []
+            orch.is_batch_mode = False
+        return orch
+
+    def test_generator_parse_error_raises_when_continue_disabled(self):
+        """Generator parse error re-raises ValueError when continue_on_parse_error is False."""
+        from src.orchestrator.planning_runner import PlanningPhaseRunner
+
+        planning_prompts = [
+            {
+                "sequence": 10,
+                "prompt_name": "gen1",
+                "prompt": "Generate criteria",
+                "phase": "planning",
+                "generator": True,
+                "history": None,
+            }
+        ]
+        orch = self._make_orchestrator(planning_prompts)
+        orch._execute_prompt = MagicMock(
+            return_value={
+                "prompt_name": "gen1",
+                "response": "this is not valid json",
+                "status": "success",
+                "attempts": 1,
+            }
+        )
+
+        runner = PlanningPhaseRunner()
+        with patch("src.orchestrator.planning_runner.get_config") as mock_config:
+            mock_planning = MagicMock()
+            mock_planning.continue_on_parse_error = False
+            mock_config.return_value.planning = mock_planning
+
+            with pytest.raises(ValueError, match="response is not a JSON object"):
+                runner.execute(orch)
+
+
+class TestPlanningRunnerParseAndInject:
+    """Tests for PlanningPhaseRunner.parse_and_inject() uncovered paths."""
+
+    def _make_orchestrator(self):
+        from src.orchestrator.base.orchestrator_base import OrchestratorBase
+
+        mock_client = MagicMock()
+        mock_client.clone.return_value = mock_client
+
+        with patch.object(OrchestratorBase, "__abstractmethods__", set()):
+            orch = OrchestratorBase(client=mock_client)
+            orch.config = {"model": "test-model"}
+            orch.batch_data = [{"name": "Alice"}, {"name": "Bob"}]
+            orch.is_batch_mode = True
+            orch.has_scoring = False
+            orch.evaluation_strategy = "balanced"
+        return orch
+
+    def test_inject_with_document_registry(self):
+        """parse_and_inject uses document_registry.get_reference_names when present (line 171)."""
+        from src.orchestrator.planning import GeneratedArtifact, PlanningArtifactParser
+        from src.orchestrator.planning_runner import PlanningPhaseRunner
+
+        orch = self._make_orchestrator()
+        orch.prompts = [{"prompt_name": "exec1", "prompt": "test", "sequence": 100}]
+        orch.document_registry = MagicMock()
+        orch.document_registry.get_reference_names.return_value = ["doc1.pdf"]
+
+        parser = PlanningArtifactParser()
+        artifacts = [
+            GeneratedArtifact(
+                scoring_criteria=[],
+                generated_prompts=[
+                    {"prompt_name": "gen_eval", "prompt": "Evaluate the candidate."},
+                ],
+                source="gen1",
+            )
+        ]
+
+        planning_config = MagicMock()
+        planning_config.continue_on_parse_error = True
+        planning_config.generated_sequence_base = "auto"
+        planning_config.generated_sequence_step = 10
+
+        with patch("src.orchestrator.planning_runner.OrchestratorValidator") as mock_validator_cls:
+            mock_validator_cls.extract_batch_keys.return_value = ["name"]
+            runner = PlanningPhaseRunner()
+            runner.parse_and_inject(orch, artifacts, parser, planning_config)
+
+        gen_prompts = [p for p in orch.prompts if p.get("_generated")]
+        assert len(gen_prompts) == 1
+        assert gen_prompts[0]["prompt_name"] == "gen_eval"
+
+    def test_inject_with_batch_keys(self):
+        """parse_and_inject extracts batch_keys for validation (line 174)."""
+        from src.orchestrator.planning import GeneratedArtifact, PlanningArtifactParser
+        from src.orchestrator.planning_runner import PlanningPhaseRunner
+
+        orch = self._make_orchestrator()
+        orch.prompts = [{"prompt_name": "exec1", "prompt": "test", "sequence": 100}]
+
+        parser = PlanningArtifactParser()
+        artifacts = [
+            GeneratedArtifact(
+                scoring_criteria=[],
+                generated_prompts=[
+                    {"prompt_name": "gen_eval", "prompt": "Evaluate candidate."},
+                ],
+                source="gen1",
+            )
+        ]
+
+        planning_config = MagicMock()
+        planning_config.continue_on_parse_error = True
+        planning_config.generated_sequence_base = "auto"
+        planning_config.generated_sequence_step = 10
+
+        runner = PlanningPhaseRunner()
+        runner.parse_and_inject(orch, artifacts, parser, planning_config)
+
+        assert any(p.get("_generated") for p in orch.prompts)
+
+    def test_inject_validation_errors_raise_when_continue_disabled(self):
+        """Validation errors in generated prompts raise when continue_on_parse_error is False (lines 180-186)."""
+        from src.orchestrator.planning import GeneratedArtifact, PlanningArtifactParser
+        from src.orchestrator.planning_runner import PlanningPhaseRunner
+
+        orch = self._make_orchestrator()
+        orch.prompts = [{"prompt_name": "exec1", "prompt": "test", "sequence": 100}]
+
+        parser = PlanningArtifactParser()
+        parser.merge_artifacts = MagicMock(
+            return_value=(
+                [],
+                [{"prompt_name": "", "prompt": ""}],
+            )
+        )
+        parser.validate_prompts = MagicMock(return_value=["Duplicate prompt name: 'gen1'"])
+        parser.assign_sequences = MagicMock()
+
+        artifacts = [
+            GeneratedArtifact(
+                scoring_criteria=[],
+                generated_prompts=[{"prompt_name": "gen1", "prompt": "test"}],
+                source="gen1",
+            )
+        ]
+
+        planning_config = MagicMock()
+        planning_config.continue_on_parse_error = False
+        planning_config.generated_sequence_base = "auto"
+        planning_config.generated_sequence_step = 10
+
+        runner = PlanningPhaseRunner()
+        with pytest.raises(ValueError, match="Generated prompt validation failed"):
+            runner.parse_and_inject(orch, artifacts, parser, planning_config)
+
+
+class TestPlanningArtifactParserEdgeCases:
+    """Tests for PlanningArtifactParser lines 78-80, 158, 169, 201, 232-233, 250-251, 305, 314, 372, 401-410."""
+
+    def _make_parser(self):
+        from src.orchestrator.planning import PlanningArtifactParser
+
+        return PlanningArtifactParser()
+
+    def test_parse_json_repair_raises_value_error(self):
+        from src.orchestrator.planning import PlanningArtifactParser
+
+        parser = PlanningArtifactParser()
+        with patch("src.orchestrator.planning.json_repair_loads", side_effect=RuntimeError("boom")):
+            with pytest.raises(ValueError, match="response is not valid JSON.*boom"):
+                parser.parse("some content", "gen1")
+
+    def test_merge_artifacts_skips_non_dict_criteria(self):
+        from src.orchestrator.planning import GeneratedArtifact, PlanningArtifactParser
+
+        parser = PlanningArtifactParser()
+        artifacts = [
+            GeneratedArtifact(
+                scoring_criteria=["not_a_dict", {"criteria_name": "valid", "description": "ok"}],
+                generated_prompts=[],
+                source="gen1",
+            )
+        ]
+        criteria, prompts = parser.merge_artifacts(artifacts)
+        assert len(criteria) == 1
+        assert criteria[0]["criteria_name"] == "valid"
+
+    def test_merge_artifacts_skips_non_dict_prompts(self):
+        from src.orchestrator.planning import GeneratedArtifact, PlanningArtifactParser
+
+        parser = PlanningArtifactParser()
+        artifacts = [
+            GeneratedArtifact(
+                scoring_criteria=[],
+                generated_prompts=["not_a_dict", {"prompt_name": "valid", "prompt": "ok"}],
+                source="gen1",
+            )
+        ]
+        criteria, prompts = parser.merge_artifacts(artifacts)
+        assert len(prompts) == 1
+        assert prompts[0]["prompt_name"] == "valid"
+
+    def test_validate_criteria_empty_list_returns_empty_errors(self):
+        parser = self._make_parser()
+        errors = parser.validate_criteria([], set())
+        assert errors == []
+
+    def test_validate_criteria_non_numeric_weight(self):
+        parser = self._make_parser()
+        criteria = [{"criteria_name": "c1", "description": "d", "weight": "not_a_number"}]
+        errors = parser.validate_criteria(criteria, {"exec1"})
+        assert len(errors) == 1
+        assert "weight is not a number" in errors[0]
+
+    def test_validate_criteria_non_integer_scale(self):
+        parser = self._make_parser()
+        criteria = [
+            {"criteria_name": "c1", "description": "d", "scale_min": "abc", "scale_max": "xyz"}
+        ]
+        errors = parser.validate_criteria(criteria, {"exec1"})
+        assert len(errors) == 1
+        assert "scale_min/scale_max must be integers" in errors[0]
+
+    def test_validate_prompts_string_references(self):
+        parser = self._make_parser()
+        prompts = [{"prompt_name": "p1", "prompt": "test", "references": "unknown_doc"}]
+        errors = parser.validate_prompts(
+            prompts, existing_names=set(), doc_refs={"doc_a"}, batch_keys=set()
+        )
+        assert len(errors) == 1
+        assert "references unknown document 'unknown_doc'" in errors[0]
+
+    def test_validate_prompts_string_history(self):
+        parser = self._make_parser()
+        prompts = [{"prompt_name": "p1", "prompt": "test", "history": "unknown_prompt"}]
+        errors = parser.validate_prompts(
+            prompts, existing_names=set(), doc_refs=set(), batch_keys=set()
+        )
+        assert len(errors) == 1
+        assert "history references unknown prompt 'unknown_prompt'" in errors[0]
+
+    def test_assign_sequences_collision_avoidance(self):
+        parser = self._make_parser()
+        prompts = [
+            {"prompt_name": "p1", "prompt": "a"},
+            {"prompt_name": "p2", "prompt": "b"},
+        ]
+        existing = {1000, 1010}
+        result = parser.assign_sequences(prompts, existing, base=1000, step=10)
+        assert result[0]["sequence"] == 1001
+        assert result[1]["sequence"] == 1011
+
+    def test_build_scoring_criteria_unparseable_weight_falls_back(self):
+        parser = self._make_parser()
+        criteria = [{"criteria_name": "c1", "description": "d", "weight": "bad"}]
+        result = parser.build_scoring_criteria(criteria)
+        assert len(result) == 1
+        assert result[0].weight == 1.0
+
+    def test_build_scoring_criteria_unparseable_scale_min_falls_back(self):
+        parser = self._make_parser()
+        criteria = [{"criteria_name": "c1", "description": "d", "scale_min": "bad"}]
+        result = parser.build_scoring_criteria(criteria)
+        assert result[0].scale_min == 1
+
+    def test_build_scoring_criteria_unparseable_scale_max_falls_back(self):
+        parser = self._make_parser()
+        criteria = [{"criteria_name": "c1", "description": "d", "scale_max": "bad"}]
+        result = parser.build_scoring_criteria(criteria)
+        assert result[0].scale_max == 10
