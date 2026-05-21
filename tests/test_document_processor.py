@@ -645,3 +645,10 @@ class TestIndexToRag:
             "ref", "name", "content", "abc123", tags=["tag1"], chunking_strategy="recursive"
         )
         assert result == 3
+
+    def test_index_to_rag_zero_chunks_already_indexed(self, processor):
+        mock_rag = type("MockRAG", (), {"index_document": lambda self, **kw: 0})()
+        processor.rag_client = mock_rag
+
+        result = processor.index_to_rag("ref", "name", "content", "abc123")
+        assert result == 0

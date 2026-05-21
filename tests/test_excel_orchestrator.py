@@ -2197,3 +2197,139 @@ class TestExcelOrchestratorSeparateBatchWithPlanning:
         wb_loaded = load_workbook(temp_workbook)
         for sheet in sheets:
             assert sheet in wb_loaded.sheetnames
+
+
+class TestExcelOrchestratorLoadSourceClients:
+    def test_load_source_with_clients_sheet(self, temp_workbook, mock_ffmistralsmall):
+        from openpyxl import Workbook
+
+        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
+
+        wb = Workbook()
+        ws_config = wb.active
+        ws_config.title = "config"
+        ws_config["A1"] = "field"
+        ws_config["B1"] = "value"
+        ws_config["A2"] = "model"
+        ws_config["B2"] = "test-model"
+
+        ws_prompts = wb.create_sheet("prompts")
+        ws_prompts["A1"] = "sequence"
+        ws_prompts["B1"] = "prompt_name"
+        ws_prompts["C1"] = "prompt"
+        ws_prompts["D1"] = "history"
+        ws_prompts["A2"] = 1
+        ws_prompts["B2"] = "p1"
+        ws_prompts["C2"] = "Hello"
+        ws_prompts["D2"] = ""
+
+        ws_clients = wb.create_sheet("clients")
+        ws_clients["A1"] = "name"
+        ws_clients["B1"] = "client_type"
+        ws_clients["A2"] = "default"
+        ws_clients["B2"] = "mistral-small"
+
+        wb.save(temp_workbook)
+
+        orchestrator = ExcelOrchestrator(temp_workbook, mock_ffmistralsmall)
+        orchestrator._load_source()
+
+        assert orchestrator.client_registry is not None
+
+
+class TestExcelOrchestratorLoadSourceDocuments:
+    def test_load_source_with_documents_sheet(self, temp_workbook, mock_ffmistralsmall):
+        import os
+
+        from openpyxl import Workbook
+
+        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
+
+        wb = Workbook()
+        ws_config = wb.active
+        ws_config.title = "config"
+        ws_config["A1"] = "field"
+        ws_config["B1"] = "value"
+        ws_config["A2"] = "model"
+        ws_config["B2"] = "test-model"
+
+        ws_prompts = wb.create_sheet("prompts")
+        ws_prompts["A1"] = "sequence"
+        ws_prompts["B1"] = "prompt_name"
+        ws_prompts["C1"] = "prompt"
+        ws_prompts["D1"] = "history"
+        ws_prompts["A2"] = 1
+        ws_prompts["B2"] = "p1"
+        ws_prompts["C2"] = "Hello"
+        ws_prompts["D2"] = ""
+
+        doc_path = os.path.join(os.path.dirname(temp_workbook), "test_doc.txt")
+        with open(doc_path, "w") as f:
+            f.write("Sample document content for testing.")
+
+        ws_docs = wb.create_sheet("documents")
+        ws_docs["A1"] = "reference_name"
+        ws_docs["B1"] = "common_name"
+        ws_docs["C1"] = "file_path"
+        ws_docs["A2"] = "doc1"
+        ws_docs["B2"] = "Document One"
+        ws_docs["C2"] = "test_doc.txt"
+
+        wb.save(temp_workbook)
+
+        orchestrator = ExcelOrchestrator(temp_workbook, mock_ffmistralsmall)
+        orchestrator._load_source()
+
+        assert orchestrator.has_documents is True
+        assert orchestrator.document_registry is not None
+        assert "doc1" in orchestrator.document_registry.get_reference_names()
+
+
+class TestExcelOrchestratorLoadSourceScoring:
+    def test_load_source_with_scoring_sheet(self, temp_workbook, mock_ffmistralsmall):
+        from openpyxl import Workbook
+
+        from src.orchestrator.excel_orchestrator import ExcelOrchestrator
+
+        wb = Workbook()
+        ws_config = wb.active
+        ws_config.title = "config"
+        ws_config["A1"] = "field"
+        ws_config["B1"] = "value"
+        ws_config["A2"] = "model"
+        ws_config["B2"] = "test-model"
+
+        ws_prompts = wb.create_sheet("prompts")
+        ws_prompts["A1"] = "sequence"
+        ws_prompts["B1"] = "prompt_name"
+        ws_prompts["C1"] = "prompt"
+        ws_prompts["D1"] = "history"
+        ws_prompts["A2"] = 1
+        ws_prompts["B2"] = "p1"
+        ws_prompts["C2"] = "Hello"
+        ws_prompts["D2"] = ""
+
+        ws_scoring = wb.create_sheet("scoring")
+        ws_scoring["A1"] = "criteria_name"
+        ws_scoring["B1"] = "description"
+        ws_scoring["C1"] = "scale_min"
+        ws_scoring["D1"] = "scale_max"
+        ws_scoring["E1"] = "weight"
+        ws_scoring["F1"] = "source_prompt"
+        ws_scoring["A2"] = "quality"
+        ws_scoring["B2"] = "Quality of response"
+        ws_scoring["C2"] = 1
+        ws_scoring["D2"] = 10
+        ws_scoring["E2"] = 1.0
+        ws_scoring["F2"] = "p1"
+
+        wb.save(temp_workbook)
+
+        orchestrator = ExcelOrchestrator(temp_workbook, mock_ffmistralsmall)
+        orchestrator._load_source()
+
+        assert orchestrator.has_scoring is True
+        assert orchestrator.scoring_rubric is not None
+        assert len(orchestrator.scoring_rubric.criteria) == 1
+        assert orchestrator.scoring_rubric.criteria[0].criteria_name == "quality"
+        assert orchestrator.evaluation_strategy is not None
