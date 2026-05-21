@@ -570,3 +570,126 @@ class TestPreScreeningConfig:
 
         config = get_config()
         assert config.pre_screening.embedding_cache_size == 512
+
+
+class TestParseAllFailures:
+    def test_all_resumes_empty_content_returns_empty_ranked(self, tmp_path):
+        folder = tmp_path / "resumes"
+        folder.mkdir()
+        (folder / "empty.txt").write_text("")
+
+        mock_emb = MagicMock()
+        mock_emb.embed_single.return_value = [0.1] * 8
+        mock_emb.embed.return_value = [[0.1] * 8]
+        mock_emb.cosine_similarity = MagicMock(return_value=0.5)
+
+        with patch("src.orchestrator.pre_screener.FFEmbeddings", return_value=mock_emb):
+            with patch("src.orchestrator.pre_screener.DocumentProcessor") as MockDP:
+                mock_dp = MagicMock()
+                mock_dp.get_document_content.return_value = ""
+                MockDP.return_value = mock_dp
+                screener = ResumePreScreener(embedding_model="mistral/mistral-embed")
+
+        screener._embeddings = mock_emb
+        screener._doc_processor = mock_dp
+
+        ranked, bm25_excluded = screener.rank_resumes("Python Developer", folder)
+        assert ranked == []
+        assert bm25_excluded == 0
+
+    def test_parse_exception_skips_resume(self, tmp_path):
+        folder = tmp_path / "resumes"
+        folder.mkdir()
+        (folder / "bad.txt").write_text("content")
+
+        mock_emb = MagicMock()
+        mock_emb.embed_single.return_value = [0.1] * 8
+        mock_emb.embed.return_value = [[0.1] * 8]
+        mock_emb.cosine_similarity = MagicMock(return_value=0.5)
+
+        with patch("src.orchestrator.pre_screener.FFEmbeddings", return_value=mock_emb):
+            with patch("src.orchestrator.pre_screener.DocumentProcessor") as MockDP:
+                mock_dp = MagicMock()
+                mock_dp.get_document_content.side_effect = OSError("cannot read")
+                MockDP.return_value = mock_dp
+                screener = ResumePreScreener(embedding_model="mistral/mistral-embed")
+
+        screener._embeddings = mock_emb
+        screener._doc_processor = mock_dp
+
+        ranked, bm25_excluded = screener.rank_resumes("Python Developer", folder)
+        assert ranked == []
+        assert bm25_excluded == 0
+
+
+class TestScoreEmbeddingsEdges:
+    def test_score_embeddings_empty_list_returns_empty(self):
+        mock_emb = MagicMock()
+        mock_dp = MagicMock()
+        with patch("src.orchestrator.pre_screener.FFEmbeddings", return_value=mock_emb):
+            with patch("src.orchestrator.pre_screener.DocumentProcessor", return_value=mock_dp):
+                screener = ResumePreScreener(embedding_model="mistral/mistral-embed")
+
+        result = screener._score_embeddings("job text", [])
+        assert result == []
+        mock_emb.embed_single.assert_not_called()
+
+    def test_score_embeddings_read_failure_uses_empty_string(self, tmp_path):
+        folder = tmp_path / "resumes"
+        folder.mkdir()
+        (folder / "good.txt").write_text("Python Developer resume content")
+        (folder / "bad.txt").write_text("Bad resume")
+
+        mock_emb = MagicMock()
+        jd_vec = [0.5] * 8
+        mock_emb.embed_single.return_value = jd_vec
+        mock_emb.embed.return_value = [[0.4] * 8, [0.0] * 8]
+
+        call_count = [0]
+
+        def get_content_side_effect(fp, rn, cn):
+            call_count[0] += 1
+            if "bad" in rn:
+                raise OSError("read error")
+            return "Python Developer resume content"
+
+        mock_dp = MagicMock()
+        mock_dp.get_document_content.side_effect = get_content_side_effect
+
+        with patch("src.orchestrator.pre_screener.FFEmbeddings", return_value=mock_emb):
+            with patch("src.orchestrator.pre_screener.DocumentProcessor", return_value=mock_dp):
+                screener = ResumePreScreener(embedding_model="mistral/mistral-embed")
+
+        screener._embeddings = mock_emb
+        screener._doc_processor = mock_dp
+
+        resumes = [
+            RankedResume(
+                reference_name="good",
+                common_name="good",
+                file_path=str(folder / "good.txt"),
+                entity_overlap=5,
+                entity_overlap_ratio=0.5,
+                bm25_score=2.0,
+                passed_bm25_filter=True,
+            ),
+            RankedResume(
+                reference_name="bad",
+                common_name="bad",
+                file_path=str(folder / "bad.txt"),
+                entity_overlap=1,
+                entity_overlap_ratio=0.1,
+                bm25_score=0.5,
+                passed_bm25_filter=True,
+            ),
+        ]
+
+        with patch(
+            "src.orchestrator.pre_screener.FFEmbeddings.cosine_similarity", return_value=0.42
+        ):
+            result = screener._score_embeddings("job text", resumes)
+
+        assert len(result) == 2
+        assert result[0].embedding_score == 0.42
+        assert result[1].embedding_score == 0.42
+        assert any("bad" in str(c) for c in mock_dp.get_document_content.call_args_list)

@@ -379,7 +379,7 @@ class TestFFPerplexityUsageExtraction:
             assert client.last_usage.input_tokens == 80
             assert client.last_usage.output_tokens == 40
             assert client.last_usage.total_tokens == 120
-            assert client.last_cost_usd > 0.0
+            assert client.last_cost_usd == pytest.approx(0.00012)
 
     def test_usage_none_when_no_usage_in_response(self, mock_openai_client):
         """Test that usage is None when response has no usage data."""

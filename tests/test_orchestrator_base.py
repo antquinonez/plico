@@ -380,6 +380,7 @@ class TestSelfFfaiDocumentation:
         orchestrator._init_client()
 
         assert orchestrator.ffai is not None
+        assert hasattr(orchestrator.ffai, "generate_response")
 
     def test_execution_uses_isolated_ffai_not_self_ffai(
         self, temp_workbook_with_data, mock_ffmistralsmall
@@ -1305,7 +1306,7 @@ class TestResolveBatchName:
         orch = _make_base(mock_ffmistralsmall)
         result = orch._resolve_batch_name({"region": "north", "product": "widget"}, 1)
         assert isinstance(result, str)
-        assert len(result) > 0
+        assert result == "batch_1"
 
 
 class TestDetectPlanningPrompts:
@@ -1314,3 +1315,195 @@ class TestDetectPlanningPrompts:
         orch._planning_runner = MagicMock()
         orch._detect_planning_prompts()
         orch._planning_runner.detect.assert_called_once_with(orch)
+
+
+class TestInjectReferencesEmptyRefNames:
+    def test_non_list_references_returns_prompt(self, mock_ffmistralsmall):
+        orch = _make_base(mock_ffmistralsmall)
+        orch.has_documents = True
+        orch.document_registry = MagicMock()
+
+        prompt = {
+            "prompt": "original prompt",
+            "references": "single_doc",
+        }
+
+        result = orch._inject_references(prompt)
+        assert result == "original prompt"
+        orch.document_registry.inject_references_into_prompt.assert_not_called()
+
+
+class TestEvaluateConditionWrapper:
+    def test_evaluate_condition_delegates(self, mock_ffmistralsmall):
+        orch = _make_base(mock_ffmistralsmall)
+
+        prompt = {"prompt_name": "p1", "condition": "True", "prompt": "test"}
+        results = {}
+
+        passed, cond_result, error = orch._evaluate_condition(prompt, results)
+        assert passed is True
+        assert cond_result is True
+        assert error is None
+
+
+class TestApplyWeightTiers:
+    def test_no_rubric_returns_early(self, mock_ffmistralsmall):
+        orch = _make_base(mock_ffmistralsmall)
+        orch.scoring_rubric = None
+        orch._apply_weight_tiers()
+
+    def test_with_rubric_derives_tiers(self, mock_ffmistralsmall):
+        from src.orchestrator.scoring import ScoringCriteria, ScoringRubric
+
+        orch = _make_base(mock_ffmistralsmall)
+        orch.scoring_rubric = ScoringRubric(
+            [
+                ScoringCriteria(
+                    criteria_name="quality",
+                    description="Quality",
+                    score_type="normalized_score",
+                    scale_min=1,
+                    scale_max=10,
+                    weight=1.0,
+                )
+            ]
+        )
+        orch._apply_weight_tiers()
+
+
+class TestAggregateScores:
+    def test_delegates_to_synthesis_runner(self, mock_ffmistralsmall):
+        orch = _make_base(mock_ffmistralsmall)
+        orch._synthesis_runner = MagicMock()
+        orch._aggregate_scores()
+        orch._synthesis_runner.aggregate_scores.assert_called_once_with(orch)
+
+
+class TestExecuteSynthesis:
+    def test_delegates_to_synthesis_runner(self, mock_ffmistralsmall):
+        orch = _make_base(mock_ffmistralsmall)
+        orch._synthesis_runner = MagicMock()
+        orch._execute_synthesis()
+        orch._synthesis_runner.execute_synthesis.assert_called_once_with(orch)
+
+
+class TestValidatePrePlanning:
+    def test_delegates_to_validation_manager(self, mock_ffmistralsmall):
+        orch = _make_base(mock_ffmistralsmall)
+        orch._validation_manager = MagicMock()
+        orch._validate_pre_planning()
+        orch._validation_manager.validate_pre_planning.assert_called_once_with(orch)
+
+
+class TestValidatePostPlanning:
+    def test_delegates_to_validation_manager(self, mock_ffmistralsmall):
+        orch = _make_base(mock_ffmistralsmall)
+        orch._validation_manager = MagicMock()
+        orch._validate_post_planning()
+        orch._validation_manager.validate_post_planning.assert_called_once_with(orch)
+
+
+class TestRunWithScoringAndSynthesis:
+    def test_run_aggregates_scores_when_scoring_enabled(self, mock_ffmistralsmall):
+        orch = _make_base(mock_ffmistralsmall)
+        orch.has_scoring = True
+        orch.has_synthesis = False
+        orch.has_planning = False
+        orch._synthesis_runner = MagicMock()
+
+        orch._load_source = MagicMock()
+        orch._validate = MagicMock()
+        orch._init_client = MagicMock()
+        orch._executor = MagicMock()
+        orch._executor.execute.return_value = [{"status": "success", "response": "ok"}]
+        orch._write_results = MagicMock(return_value="results_sheet")
+
+        result = orch.run()
+        assert result == "results_sheet"
+        orch._synthesis_runner.aggregate_scores.assert_called_once_with(orch)
+
+    def test_run_executes_synthesis_when_enabled(self, mock_ffmistralsmall):
+        orch = _make_base(mock_ffmistralsmall)
+        orch.has_scoring = False
+        orch.has_synthesis = True
+        orch.has_planning = False
+        orch.synthesis_prompts = [{"prompt_name": "summarize", "prompt": "Summarize"}]
+        orch._synthesis_runner = MagicMock()
+
+        orch._load_source = MagicMock()
+        orch._validate = MagicMock()
+        orch._init_client = MagicMock()
+        orch._executor = MagicMock()
+        orch._executor.execute.return_value = [{"status": "success", "response": "ok"}]
+        orch._write_results = MagicMock(return_value="results_sheet")
+
+        result = orch.run()
+        assert result == "results_sheet"
+        orch._synthesis_runner.execute_synthesis.assert_called_once_with(orch)
+
+    def test_run_with_planning_phase(self, mock_ffmistralsmall):
+        orch = _make_base(mock_ffmistralsmall)
+        orch.has_planning = True
+        orch.has_scoring = False
+        orch.has_synthesis = False
+        orch.prompts = [{"phase": "planning", "prompt_name": "plan1"}]
+        orch._planning_runner = MagicMock()
+        orch._validation_manager = MagicMock()
+
+        orch._load_source = MagicMock()
+        orch._init_client = MagicMock()
+        orch._execute_planning_phase = MagicMock()
+        orch._executor = MagicMock()
+        orch._executor.execute.return_value = [{"status": "success", "response": "ok"}]
+        orch._write_results = MagicMock(return_value="results_sheet")
+
+        result = orch.run()
+        assert result == "results_sheet"
+        orch._validation_manager.validate_pre_planning.assert_called_once_with(orch)
+        orch._execute_planning_phase.assert_called_once()
+        orch._validation_manager.validate_post_planning.assert_called_once_with(orch)
+
+    def test_run_write_error_propagates(self, mock_ffmistralsmall):
+        orch = _make_base(mock_ffmistralsmall)
+        orch.has_scoring = False
+        orch.has_synthesis = False
+        orch.has_planning = False
+
+        orch._load_source = MagicMock()
+        orch._validate = MagicMock()
+        orch._init_client = MagicMock()
+        orch._executor = MagicMock()
+        orch._executor.execute.return_value = [{"status": "success"}]
+        orch._write_results = MagicMock(side_effect=PermissionError("write denied"))
+
+        with pytest.raises(PermissionError, match="write denied"):
+            orch.run()
+
+    def test_run_with_tokens_and_cost_in_summary(self, mock_ffmistralsmall):
+        orch = _make_base(mock_ffmistralsmall)
+        orch.has_scoring = False
+        orch.has_synthesis = False
+        orch.has_planning = False
+
+        orch._load_source = MagicMock()
+        orch._validate = MagicMock()
+        orch._init_client = MagicMock()
+        orch._executor = MagicMock()
+        orch._executor.execute.return_value = [{"status": "success"}]
+        orch._write_results = MagicMock(return_value="results_sheet")
+
+        original_get_summary = orch.get_summary
+
+        def mock_summary():
+            return {
+                "total_prompts": 3,
+                "successful": 2,
+                "failed": 1,
+                "tokens": {"total": 1500, "input": 1000, "output": 500},
+                "cost_usd": 0.05,
+            }
+
+        orch.get_summary = mock_summary
+
+        result = orch.run()
+        assert result == "results_sheet"

@@ -294,7 +294,7 @@ class TestFFMistralUsageExtraction:
             assert client.last_usage.input_tokens == 50
             assert client.last_usage.output_tokens == 25
             assert client.last_usage.total_tokens == 75
-            assert client.last_cost_usd > 0.0
+            assert client.last_cost_usd == pytest.approx(0.00025)
 
     def test_usage_none_when_no_usage_in_response(self, mock_mistral_client):
         """Test that usage is None when response has no usage data."""

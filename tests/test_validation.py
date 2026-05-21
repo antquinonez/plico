@@ -527,3 +527,355 @@ class TestValidationValidatorAgentMode:
         validator._validate_agent_mode(result)
         errors = [e for e in result.errors if e.code == "AGENT_INVALID_MAX_VALIDATION_RETRIES"]
         assert len(errors) == 0
+
+
+class TestFormatReportSingleSeverity:
+    """Line 92: continue when no findings for a severity level."""
+
+    def test_errors_only_skips_warning_section(self):
+        result = ValidationResult()
+        result.add_error("E1", "error one")
+        report = result.format_report()
+        assert "1 error:" in report
+        assert "warning" not in report
+
+    def test_warnings_only_skips_error_section(self):
+        result = ValidationResult()
+        result.add_warning("W1", "warning one")
+        report = result.format_report()
+        assert "1 warning:" in report
+        assert not any(
+            "error" in ln.lower() for ln in report.split("\n") if "warning" not in ln.lower()
+        )
+
+    def test_plural_label_for_multiple(self):
+        result = ValidationResult()
+        result.add_error("E1", "first")
+        result.add_error("E2", "second")
+        report = result.format_report()
+        assert "2 errors:" in report
+
+
+class TestValidateAbortConditionSyntax:
+    """Line 311: invalid abort_condition syntax."""
+
+    def test_invalid_abort_condition(self):
+        prompts = [
+            {
+                "sequence": 1,
+                "prompt_name": "a",
+                "prompt": "test",
+                "history": [],
+                "abort_condition": "broken (( syntax",
+            }
+        ]
+        result = OrchestratorValidator(prompts, {}).validate()
+        errors = [e for e in result.errors if e.code == "INVALID_ABORT_CONDITION"]
+        assert len(errors) == 1
+        assert "abort_condition syntax error" in errors[0].message
+
+    def test_valid_abort_condition(self):
+        prompts = [
+            {
+                "sequence": 1,
+                "prompt_name": "a",
+                "prompt": "test",
+                "history": [],
+                "abort_condition": '{{a.status}} == "failed"',
+            }
+        ]
+        result = OrchestratorValidator(prompts, {}).validate()
+        errors = [e for e in result.errors if e.code == "INVALID_ABORT_CONDITION"]
+        assert len(errors) == 0
+
+
+class TestValidateConfigNonNumeric:
+    """Lines 341-342: temperature non-numeric; Lines 354-355: max_retries non-numeric."""
+
+    def test_temperature_non_numeric(self):
+        result = OrchestratorValidator([], {"temperature": "hot"}).validate()
+        errors = [
+            e
+            for e in result.errors
+            if e.code == "INVALID_CONFIG" and "not a valid number" in e.message
+        ]
+        assert len(errors) == 1
+
+    def test_max_retries_non_numeric(self):
+        result = OrchestratorValidator([], {"max_retries": "many"}).validate()
+        errors = [
+            e
+            for e in result.errors
+            if e.code == "INVALID_CONFIG" and "not a valid integer" in e.message
+        ]
+        assert len(errors) == 1
+
+
+class TestValidateBatchVariableEdgeCases:
+    """Lines 408, 411: batch variable edge cases."""
+
+    def test_empty_prompt_text_skipped(self):
+        prompts = [{"sequence": 1, "prompt_name": "a", "prompt": "", "history": []}]
+        result = OrchestratorValidator(prompts, {}, batch_data_keys=["region"]).validate()
+        warnings = [e for e in result.errors if e.code == "UNKNOWN_BATCH_VARIABLE"]
+        assert len(warnings) == 0
+
+    def test_batch_var_matching_prompt_name_not_flagged(self):
+        prompts = [
+            _make_prompt(1, "region"),
+            _make_prompt(2, "b", prompt="Process {{region}} data"),
+        ]
+        result = OrchestratorValidator(prompts, {}, batch_data_keys=["other_key"]).validate()
+        warnings = [e for e in result.errors if e.code == "UNKNOWN_BATCH_VARIABLE"]
+        assert len(warnings) == 0
+
+
+class TestValidateScoringEdgeCases:
+    """Lines 441-442, 467-468, 488-489: scoring edge cases."""
+
+    def test_missing_criteria_name(self):
+        result = OrchestratorValidator(
+            [],
+            {},
+            scoring_criteria=[{"source_prompt": "a", "weight": 1.0}],
+        ).validate()
+        errors = [e for e in result.errors if e.code == "MISSING_CRITERIA_NAME"]
+        assert len(errors) == 1
+
+    def test_weight_not_a_number(self):
+        result = OrchestratorValidator(
+            [],
+            {},
+            scoring_criteria=[{"criteria_name": "quality", "weight": "heavy"}],
+        ).validate()
+        errors = [e for e in result.errors if e.code == "INVALID_SCORING_WEIGHT"]
+        assert len(errors) == 1
+        assert "not a number" in errors[0].message
+        assert "heavy" in errors[0].message
+
+    def test_scale_non_integer_silently_skipped(self):
+        result = OrchestratorValidator(
+            [],
+            {},
+            scoring_criteria=[
+                {"criteria_name": "quality", "scale_min": "low", "scale_max": "high"},
+            ],
+        ).validate()
+        errors = [e for e in result.errors if e.code == "INCONSISTENT_SCORING_SCALE"]
+        assert len(errors) == 0
+
+
+class TestValidateSynthesisEdgeCases:
+    """Lines 529, 540: synthesis string normalization."""
+
+    def test_source_prompts_as_string(self):
+        prompts = [_make_prompt(1, "a")]
+        result = OrchestratorValidator(
+            prompts,
+            {},
+            synthesis_prompts=[{"prompt_name": "synth1", "sequence": 1, "source_prompts": "a"}],
+        ).validate()
+        errors = [e for e in result.errors if e.code == "INVALID_SYNTHESIS_SOURCE_PROMPT"]
+        assert len(errors) == 0
+
+    def test_history_as_string(self):
+        result = OrchestratorValidator(
+            [],
+            {},
+            synthesis_prompts=[
+                {"prompt_name": "synth1", "sequence": 1},
+                {"prompt_name": "synth2", "sequence": 2, "history": "synth1"},
+            ],
+        ).validate()
+        errors = [e for e in result.errors if e.code == "INVALID_SYNTHESIS_HISTORY"]
+        assert len(errors) == 0
+
+
+class TestValidateAgentModeEdgeCases:
+    """Lines 594-600, 603-609, 614, 626-633, 642, 660-661."""
+
+    def test_agent_no_tools_warning(self):
+        validator = OrchestratorValidator(
+            prompts=[
+                {
+                    "sequence": 1,
+                    "prompt_name": "agent1",
+                    "prompt": "test",
+                    "agent_mode": True,
+                },
+            ],
+            config={},
+        )
+        result = ValidationResult()
+        validator._validate_agent_mode(result)
+        warnings = [e for e in result.errors if e.code == "AGENT_NO_TOOLS"]
+        assert len(warnings) == 1
+        assert warnings[0].severity == "warning"
+
+    def test_agent_tools_not_list(self):
+        validator = OrchestratorValidator(
+            prompts=[
+                {
+                    "sequence": 1,
+                    "prompt_name": "agent1",
+                    "prompt": "test",
+                    "agent_mode": True,
+                    "tools": "calculate",
+                },
+            ],
+            config={},
+        )
+        result = ValidationResult()
+        validator._validate_agent_mode(result)
+        errors = [e for e in result.errors if e.code == "AGENT_INVALID_TOOLS"]
+        assert len(errors) == 1
+        assert "str" in errors[0].message
+
+    def test_agent_unknown_tools(self):
+        validator = OrchestratorValidator(
+            prompts=[
+                {
+                    "sequence": 1,
+                    "prompt_name": "agent1",
+                    "prompt": "test",
+                    "agent_mode": True,
+                    "tools": ["known", "mystery"],
+                },
+            ],
+            config={},
+            tool_names=["known"],
+        )
+        result = ValidationResult()
+        validator._validate_agent_mode(result)
+        errors = [e for e in result.errors if e.code == "AGENT_UNKNOWN_TOOLS"]
+        assert len(errors) == 1
+        assert "mystery" in errors[0].message
+
+    def test_agent_max_tool_rounds_out_of_range(self):
+        validator = OrchestratorValidator(
+            prompts=[
+                {
+                    "sequence": 1,
+                    "prompt_name": "agent1",
+                    "prompt": "test",
+                    "agent_mode": True,
+                    "tools": ["t1"],
+                    "max_tool_rounds": 100,
+                },
+            ],
+            config={},
+            tool_names=["t1"],
+        )
+        result = ValidationResult()
+        validator._validate_agent_mode(result)
+        errors = [e for e in result.errors if e.code == "AGENT_INVALID_MAX_ROUNDS"]
+        assert len(errors) == 1
+        assert "100" in errors[0].message
+
+    def test_agent_max_tool_rounds_non_integer(self):
+        validator = OrchestratorValidator(
+            prompts=[
+                {
+                    "sequence": 1,
+                    "prompt_name": "agent1",
+                    "prompt": "test",
+                    "agent_mode": True,
+                    "tools": ["t1"],
+                    "max_tool_rounds": "many",
+                },
+            ],
+            config={},
+            tool_names=["t1"],
+        )
+        result = ValidationResult()
+        validator._validate_agent_mode(result)
+        errors = [e for e in result.errors if e.code == "AGENT_INVALID_MAX_ROUNDS"]
+        assert len(errors) == 1
+        assert "many" in errors[0].message
+
+    def test_agent_validation_prompt_not_string(self):
+        validator = OrchestratorValidator(
+            prompts=[
+                {
+                    "sequence": 1,
+                    "prompt_name": "agent1",
+                    "prompt": "test",
+                    "agent_mode": True,
+                    "tools": ["t1"],
+                    "validation_prompt": 123,
+                },
+            ],
+            config={},
+        )
+        result = ValidationResult()
+        validator._validate_agent_mode(result)
+        errors = [e for e in result.errors if e.code == "AGENT_INVALID_VALIDATION_PROMPT"]
+        assert len(errors) == 1
+        assert "int" in errors[0].message
+
+    def test_agent_max_validation_retries_non_integer(self):
+        validator = OrchestratorValidator(
+            prompts=[
+                {
+                    "sequence": 1,
+                    "prompt_name": "agent1",
+                    "prompt": "test",
+                    "agent_mode": True,
+                    "tools": ["t1"],
+                    "validation_prompt": "check",
+                    "max_validation_retries": "lots",
+                },
+            ],
+            config={},
+        )
+        result = ValidationResult()
+        validator._validate_agent_mode(result)
+        errors = [e for e in result.errors if e.code == "AGENT_INVALID_MAX_VALIDATION_RETRIES"]
+        assert len(errors) == 1
+        assert "lots" in errors[0].message
+
+
+class TestValidateManifestMetadataEdgeCases:
+    """Lines 682-683, 700, 707, 714: manifest metadata edge cases."""
+
+    def test_prompt_count_non_integer(self):
+        prompts = [_make_prompt(1, "a")]
+        result = OrchestratorValidator(
+            prompts,
+            {},
+            manifest_meta={"prompt_count": "three"},
+        ).validate()
+        warnings = [e for e in result.errors if e.code == "PROMPT_COUNT_MISMATCH"]
+        assert len(warnings) == 1
+        assert "three" in warnings[0].message
+        assert warnings[0].severity == "warning"
+
+    def test_has_data_no_batch_keys(self):
+        prompts = [_make_prompt(1, "a")]
+        result = OrchestratorValidator(
+            prompts,
+            {},
+            manifest_meta={"has_data": True},
+        ).validate()
+        warnings = [e for e in result.errors if e.code == "HAS_DATA_NO_BATCH"]
+        assert len(warnings) == 1
+
+    def test_has_clients_no_client_names(self):
+        prompts = [_make_prompt(1, "a")]
+        result = OrchestratorValidator(
+            prompts,
+            {},
+            manifest_meta={"has_clients": True},
+        ).validate()
+        warnings = [e for e in result.errors if e.code == "HAS_CLIENTS_NO_REGISTRY"]
+        assert len(warnings) == 1
+
+    def test_has_documents_no_doc_refs(self):
+        prompts = [_make_prompt(1, "a")]
+        result = OrchestratorValidator(
+            prompts,
+            {},
+            manifest_meta={"has_documents": True},
+        ).validate()
+        warnings = [e for e in result.errors if e.code == "HAS_DOCS_NO_REGISTRY"]
+        assert len(warnings) == 1

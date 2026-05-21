@@ -6,6 +6,8 @@
 
 from unittest.mock import MagicMock, patch
 
+import pytest
+
 from src.Clients.FFAzureLiteLLM import create_azure_client
 
 
@@ -54,8 +56,8 @@ class TestCreateAzureClientInit:
             env_prefix="AZURE_TEST",
         )
 
-        assert client.max_tokens is not None
-        assert client.temperature is not None
+        assert client.max_tokens == 40000
+        assert client.temperature == pytest.approx(0.7)
 
     def test_env_temperature_override(self, monkeypatch):
         """Should use temperature from env if set."""
@@ -163,7 +165,7 @@ class TestCreateAzureClientInit:
             env_prefix="AZURE_TEST",
         )
 
-        assert client.temperature is not None
+        assert client.temperature == pytest.approx(0.7)
 
     def test_invalid_env_max_tokens_uses_default(self, monkeypatch):
         """Should fall back to default if env max_tokens is invalid."""
@@ -176,7 +178,7 @@ class TestCreateAzureClientInit:
             env_prefix="AZURE_TEST",
         )
 
-        assert client.max_tokens is not None
+        assert client.max_tokens == 40000
 
     def test_missing_api_key(self, monkeypatch):
         """Should create client even without API key (validation happens at call time)."""

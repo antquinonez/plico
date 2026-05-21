@@ -211,8 +211,8 @@ class TestWorkbookParserLoadConfig:
 
         parser = WorkbookParser(temp_workbook_with_data)
         config = parser.load_config()
-        assert isinstance(config.get("max_retries"), int)
-        assert isinstance(config.get("temperature"), float)
+        assert config.get("max_retries") == 3
+        assert config.get("temperature") == pytest.approx(0.8)
 
 
 class TestWorkbookParserLoadPrompts:
@@ -1019,3 +1019,699 @@ class TestValidationWorkbookParsing:
         row = prompt.to_row()
         assert "notes" in DEFAULT_PROMPT_HEADERS
         assert row["notes"] == "Helpful note for workbook users."
+
+
+class TestParseHistoryStringFallbacks:
+    """Tests for parse_history_string fallback parsing paths."""
+
+    def test_bracketed_invalid_json_extracts_quoted_items(self):
+        from src.orchestrator.workbook_parser import parse_history_string
+
+        result = parse_history_string('["a" "b"]')
+        assert result == ["a", "b"]
+
+    def test_bracketed_invalid_json_comma_split(self):
+        from src.orchestrator.workbook_parser import parse_history_string
+
+        result = parse_history_string("[item1, item2]")
+        assert result == ["item1", "item2"]
+
+    def test_bracketed_unquoted_items_comma_split(self):
+        from src.orchestrator.workbook_parser import parse_history_string
+
+        result = parse_history_string("[alpha, beta, gamma]")
+        assert result == ["alpha", "beta", "gamma"]
+
+
+class TestHasSheetCachingAndNoFile:
+    """Tests for has_*_sheet cached returns and no-file returns."""
+
+    def test_has_documents_sheet_false_when_no_file(self, tmp_path):
+        from src.orchestrator.workbook_parser import WorkbookParser
+
+        parser = WorkbookParser(str(tmp_path / "nonexistent.xlsx"))
+        assert parser.has_documents_sheet() is False
+
+    def test_has_tools_sheet_false_when_no_file(self, tmp_path):
+        from src.orchestrator.workbook_parser import WorkbookParser
+
+        parser = WorkbookParser(str(tmp_path / "nonexistent.xlsx"))
+        assert parser.has_tools_sheet() is False
+
+    def test_has_scoring_sheet_false_when_no_file(self, tmp_path):
+        from src.orchestrator.workbook_parser import WorkbookParser
+
+        parser = WorkbookParser(str(tmp_path / "nonexistent.xlsx"))
+        assert parser.has_scoring_sheet() is False
+
+    def test_has_synthesis_sheet_false_when_no_file(self, tmp_path):
+        from src.orchestrator.workbook_parser import WorkbookParser
+
+        parser = WorkbookParser(str(tmp_path / "nonexistent.xlsx"))
+        assert parser.has_synthesis_sheet() is False
+
+    def test_has_documents_sheet_cached_return(self, tmp_path):
+        from openpyxl import Workbook
+
+        from src.orchestrator.workbook_parser import WorkbookParser
+
+        wb = Workbook()
+        wb.active.title = "config"
+        wb["config"]["A1"] = "field"
+        wb["config"]["B1"] = "value"
+        ws_prompts = wb.create_sheet(title="prompts")
+        ws_prompts["A1"] = "sequence"
+        ws_prompts["B1"] = "prompt_name"
+        ws_prompts["C1"] = "prompt"
+        ws_prompts["D1"] = "history"
+        path = str(tmp_path / "cached.xlsx")
+        wb.save(path)
+
+        parser = WorkbookParser(path)
+        assert parser._has_documents_sheet is None
+        result = parser.has_documents_sheet()
+        assert result is False
+        assert parser._has_documents_sheet is False
+        cached = parser.has_documents_sheet()
+        assert cached is False
+
+    def test_has_tools_sheet_cached_return(self, tmp_path):
+        from openpyxl import Workbook
+
+        from src.orchestrator.workbook_parser import WorkbookParser
+
+        wb = Workbook()
+        wb.active.title = "config"
+        wb["config"]["A1"] = "field"
+        wb["config"]["B1"] = "value"
+        ws_prompts = wb.create_sheet(title="prompts")
+        ws_prompts["A1"] = "sequence"
+        ws_prompts["B1"] = "prompt_name"
+        ws_prompts["C1"] = "prompt"
+        ws_prompts["D1"] = "history"
+        path = str(tmp_path / "cached_tools.xlsx")
+        wb.save(path)
+
+        parser = WorkbookParser(path)
+        assert parser._has_tools_sheet is None
+        parser.has_tools_sheet()
+        assert parser._has_tools_sheet is False
+
+    def test_has_scoring_sheet_cached_return(self, tmp_path):
+        from openpyxl import Workbook
+
+        from src.orchestrator.workbook_parser import WorkbookParser
+
+        wb = Workbook()
+        wb.active.title = "config"
+        wb["config"]["A1"] = "field"
+        wb["config"]["B1"] = "value"
+        ws_prompts = wb.create_sheet(title="prompts")
+        ws_prompts["A1"] = "sequence"
+        ws_prompts["B1"] = "prompt_name"
+        ws_prompts["C1"] = "prompt"
+        ws_prompts["D1"] = "history"
+        path = str(tmp_path / "cached_scoring.xlsx")
+        wb.save(path)
+
+        parser = WorkbookParser(path)
+        assert parser._has_scoring_sheet is None
+        parser.has_scoring_sheet()
+        assert parser._has_scoring_sheet is False
+
+    def test_has_synthesis_sheet_cached_return(self, tmp_path):
+        from openpyxl import Workbook
+
+        from src.orchestrator.workbook_parser import WorkbookParser
+
+        wb = Workbook()
+        wb.active.title = "config"
+        wb["config"]["A1"] = "field"
+        wb["config"]["B1"] = "value"
+        ws_prompts = wb.create_sheet(title="prompts")
+        ws_prompts["A1"] = "sequence"
+        ws_prompts["B1"] = "prompt_name"
+        ws_prompts["C1"] = "prompt"
+        ws_prompts["D1"] = "history"
+        path = str(tmp_path / "cached_synth.xlsx")
+        wb.save(path)
+
+        parser = WorkbookParser(path)
+        assert parser._has_synthesis_sheet is None
+        parser.has_synthesis_sheet()
+        assert parser._has_synthesis_sheet is False
+
+
+class TestValidateConfigErrorBranches:
+    """Tests for validate_config error conditions."""
+
+    def test_unknown_client_type(self):
+        from src.orchestrator.workbook_parser import WorkbookParser
+
+        parser = WorkbookParser("/tmp/test.xlsx")
+        errors = parser.validate_config({"client_type": "nonexistent_client"})
+        assert len(errors) == 1
+        assert "Unknown client_type" in errors[0]
+        assert "nonexistent_client" in errors[0]
+
+    def test_temperature_out_of_range_high(self):
+        from src.orchestrator.workbook_parser import WorkbookParser
+
+        parser = WorkbookParser("/tmp/test.xlsx")
+        errors = parser.validate_config({"temperature": 3.0})
+        assert len(errors) == 1
+        assert "temperature" in errors[0]
+        assert "out of range" in errors[0]
+
+    def test_temperature_out_of_range_negative(self):
+        from src.orchestrator.workbook_parser import WorkbookParser
+
+        parser = WorkbookParser("/tmp/test.xlsx")
+        errors = parser.validate_config({"temperature": -0.5})
+        assert len(errors) == 1
+        assert "out of range" in errors[0]
+
+    def test_temperature_not_a_number(self):
+        from src.orchestrator.workbook_parser import WorkbookParser
+
+        parser = WorkbookParser("/tmp/test.xlsx")
+        errors = parser.validate_config({"temperature": "abc"})
+        assert len(errors) == 1
+        assert "not a valid number" in errors[0]
+
+    def test_max_retries_out_of_range(self):
+        from src.orchestrator.workbook_parser import WorkbookParser
+
+        parser = WorkbookParser("/tmp/test.xlsx")
+        errors = parser.validate_config({"max_retries": 11})
+        assert len(errors) == 1
+        assert "max_retries" in errors[0]
+        assert "out of range" in errors[0]
+
+    def test_max_retries_zero_out_of_range(self):
+        from src.orchestrator.workbook_parser import WorkbookParser
+
+        parser = WorkbookParser("/tmp/test.xlsx")
+        errors = parser.validate_config({"max_retries": 0})
+        assert len(errors) == 1
+        assert "out of range" in errors[0]
+
+    def test_max_retries_not_an_integer(self):
+        from src.orchestrator.workbook_parser import WorkbookParser
+
+        parser = WorkbookParser("/tmp/test.xlsx")
+        errors = parser.validate_config({"max_retries": "abc"})
+        assert len(errors) == 1
+        assert "not a valid integer" in errors[0]
+
+    def test_invalid_batch_mode(self):
+        from src.orchestrator.workbook_parser import WorkbookParser
+
+        parser = WorkbookParser("/tmp/test.xlsx")
+        errors = parser.validate_config({"batch_mode": "invalid_mode"})
+        assert len(errors) == 1
+        assert "batch_mode" in errors[0]
+        assert "not supported" in errors[0]
+
+    def test_invalid_batch_output(self):
+        from src.orchestrator.workbook_parser import WorkbookParser
+
+        parser = WorkbookParser("/tmp/test.xlsx")
+        errors = parser.validate_config({"batch_output": "invalid_output"})
+        assert len(errors) == 1
+        assert "batch_output" in errors[0]
+
+    def test_invalid_on_batch_error(self):
+        from src.orchestrator.workbook_parser import WorkbookParser
+
+        parser = WorkbookParser("/tmp/test.xlsx")
+        errors = parser.validate_config({"on_batch_error": "invalid_error"})
+        assert len(errors) == 1
+        assert "on_batch_error" in errors[0]
+
+    def test_valid_config_returns_no_errors(self):
+        from src.orchestrator.workbook_parser import WorkbookParser
+
+        parser = WorkbookParser("/tmp/test.xlsx")
+        errors = parser.validate_config(
+            {
+                "client_type": "mistral-small",
+                "temperature": 0.8,
+                "max_retries": 3,
+                "batch_mode": "per_row",
+                "batch_output": "combined",
+                "on_batch_error": "continue",
+            }
+        )
+        assert errors == []
+
+    def test_multiple_errors_accumulate(self):
+        from src.orchestrator.workbook_parser import WorkbookParser
+
+        parser = WorkbookParser("/tmp/test.xlsx")
+        errors = parser.validate_config(
+            {
+                "temperature": 5.0,
+                "max_retries": 20,
+                "batch_mode": "bad",
+            }
+        )
+        assert len(errors) == 3
+
+
+class TestLoadPromptsSkipEmptyRow:
+    """Tests for load_prompts skipping rows with empty first column."""
+
+    def test_empty_sequence_row_is_skipped(self, tmp_path):
+        from openpyxl import Workbook
+
+        from src.orchestrator.workbook_parser import WorkbookParser
+
+        wb = Workbook()
+        wb.active.title = "config"
+        wb["config"]["A1"] = "field"
+        wb["config"]["B1"] = "value"
+        ws_prompts = wb.create_sheet(title="prompts")
+        ws_prompts["A1"] = "sequence"
+        ws_prompts["B1"] = "prompt_name"
+        ws_prompts["C1"] = "prompt"
+        ws_prompts["D1"] = "history"
+
+        ws_prompts.cell(2, 1, 1)
+        ws_prompts.cell(2, 2, "first")
+        ws_prompts.cell(2, 3, "Hello")
+        ws_prompts.cell(2, 4, None)
+
+        ws_prompts.cell(3, 1, None)
+        ws_prompts.cell(3, 2, "empty_row")
+        ws_prompts.cell(3, 3, "Should be skipped")
+        ws_prompts.cell(3, 4, None)
+
+        ws_prompts.cell(4, 1, 2)
+        ws_prompts.cell(4, 2, "second")
+        ws_prompts.cell(4, 3, "World")
+        ws_prompts.cell(4, 4, None)
+
+        path = str(tmp_path / "skip_empty.xlsx")
+        wb.save(path)
+
+        parser = WorkbookParser(path)
+        prompts = parser.load_prompts()
+        assert len(prompts) == 2
+        assert prompts[0]["prompt_name"] == "first"
+        assert prompts[1]["prompt_name"] == "second"
+
+
+class TestLoadScoringWithStringValues:
+    """Tests for load_scoring coercing string scale/weight values."""
+
+    def test_string_scale_and_weight_coerced(self, tmp_path):
+        from openpyxl import Workbook
+
+        from src.orchestrator.workbook_parser import WorkbookParser
+
+        wb = Workbook()
+        wb.active.title = "config"
+        wb["config"]["A1"] = "field"
+        wb["config"]["B1"] = "value"
+        ws_prompts = wb.create_sheet(title="prompts")
+        ws_prompts["A1"] = "sequence"
+        ws_prompts["B1"] = "prompt_name"
+        ws_prompts["C1"] = "prompt"
+        ws_prompts["D1"] = "history"
+
+        ws_scoring = wb.create_sheet(title="scoring")
+        headers = [
+            "criteria_name",
+            "description",
+            "scale_min",
+            "scale_max",
+            "weight",
+            "source_prompt",
+            "score_type",
+            "label_1",
+            "label_2",
+            "label_3",
+        ]
+        for col, h in enumerate(headers, 1):
+            ws_scoring.cell(1, col, h)
+        ws_scoring.cell(2, 1, "skills")
+        ws_scoring.cell(2, 2, "Skills evaluation")
+        ws_scoring.cell(2, 3, "1")
+        ws_scoring.cell(2, 4, "10")
+        ws_scoring.cell(2, 5, "0.8")
+        ws_scoring.cell(2, 6, "eval")
+        ws_scoring.cell(2, 7, "normalized_score")
+
+        path = str(tmp_path / "scoring_str.xlsx")
+        wb.save(path)
+
+        parser = WorkbookParser(path)
+        scoring = parser.load_scoring()
+        assert len(scoring) == 1
+        assert scoring[0]["scale_min"] == 1
+        assert isinstance(scoring[0]["scale_min"], int)
+        assert scoring[0]["scale_max"] == 10
+        assert isinstance(scoring[0]["scale_max"], int)
+        assert scoring[0]["weight"] == pytest.approx(0.8)
+        assert isinstance(scoring[0]["weight"], float)
+
+
+class TestLoadToolsWithStringEnabled:
+    """Tests for load_tools parsing string enabled values."""
+
+    def test_string_false_disables_tool(self, tmp_path):
+        from openpyxl import Workbook
+
+        from src.orchestrator.workbook_parser import WorkbookParser
+
+        wb = Workbook()
+        wb.active.title = "config"
+        wb["config"]["A1"] = "field"
+        wb["config"]["B1"] = "value"
+        ws_prompts = wb.create_sheet(title="prompts")
+        ws_prompts["A1"] = "sequence"
+        ws_prompts["B1"] = "prompt_name"
+        ws_prompts["C1"] = "prompt"
+        ws_prompts["D1"] = "history"
+
+        ws_tools = wb.create_sheet(title="tools")
+        headers = ["name", "description", "parameters", "implementation", "enabled"]
+        for col, h in enumerate(headers, 1):
+            ws_tools.cell(1, col, h)
+        ws_tools.cell(2, 1, "calculator")
+        ws_tools.cell(2, 2, "A calculator")
+        ws_tools.cell(2, 3, '{"type": "object"}')
+        ws_tools.cell(2, 4, "builtin:calculator")
+        ws_tools.cell(2, 5, "false")
+
+        path = str(tmp_path / "tools_str.xlsx")
+        wb.save(path)
+
+        parser = WorkbookParser(path)
+        tools = parser.load_tools()
+        assert len(tools) == 1
+        assert tools[0]["enabled"] is False
+
+    def test_string_zero_disables_tool(self, tmp_path):
+        from openpyxl import Workbook
+
+        from src.orchestrator.workbook_parser import WorkbookParser
+
+        wb = Workbook()
+        wb.active.title = "config"
+        wb["config"]["A1"] = "field"
+        wb["config"]["B1"] = "value"
+        ws_prompts = wb.create_sheet(title="prompts")
+        ws_prompts["A1"] = "sequence"
+        ws_prompts["B1"] = "prompt_name"
+        ws_prompts["C1"] = "prompt"
+        ws_prompts["D1"] = "history"
+
+        ws_tools = wb.create_sheet(title="tools")
+        headers = ["name", "description", "parameters", "implementation", "enabled"]
+        for col, h in enumerate(headers, 1):
+            ws_tools.cell(1, col, h)
+        ws_tools.cell(2, 1, "search")
+        ws_tools.cell(2, 2, "A search tool")
+        ws_tools.cell(2, 3, '{"type": "object"}')
+        ws_tools.cell(2, 4, "builtin:search")
+        ws_tools.cell(2, 5, "0")
+
+        path = str(tmp_path / "tools_zero.xlsx")
+        wb.save(path)
+
+        parser = WorkbookParser(path)
+        tools = parser.load_tools()
+        assert len(tools) == 1
+        assert tools[0]["enabled"] is False
+
+
+class TestLoadSynthesisEdgeCases:
+    """Tests for load_synthesis with string sequence and bool include_scores."""
+
+    def test_string_sequence_parsed_correctly(self, tmp_path):
+        from openpyxl import Workbook
+
+        from src.orchestrator.workbook_parser import WorkbookParser
+
+        wb = Workbook()
+        wb.active.title = "config"
+        wb["config"]["A1"] = "field"
+        wb["config"]["B1"] = "value"
+        ws_prompts = wb.create_sheet(title="prompts")
+        ws_prompts["A1"] = "sequence"
+        ws_prompts["B1"] = "prompt_name"
+        ws_prompts["C1"] = "prompt"
+        ws_prompts["D1"] = "history"
+
+        ws_synth = wb.create_sheet(title="synthesis")
+        headers = [
+            "sequence",
+            "prompt_name",
+            "prompt",
+            "source_scope",
+            "source_prompts",
+            "include_scores",
+            "history",
+            "condition",
+        ]
+        for col, h in enumerate(headers, 1):
+            ws_synth.cell(1, col, h)
+        ws_synth.cell(2, 1, "2")
+        ws_synth.cell(2, 2, "rank")
+        ws_synth.cell(2, 3, "Rank candidates")
+        ws_synth.cell(2, 4, "all")
+        ws_synth.cell(2, 5, '["eval", "screen"]')
+        ws_synth.cell(2, 6, True)
+        ws_synth.cell(2, 7, None)
+        ws_synth.cell(2, 8, None)
+
+        path = str(tmp_path / "synth_str.xlsx")
+        wb.save(path)
+
+        parser = WorkbookParser(path)
+        synth = parser.load_synthesis()
+        assert len(synth) == 1
+        assert synth[0]["sequence"] == 2
+        assert synth[0]["source_prompts"] == ["eval", "screen"]
+        assert synth[0]["include_scores"] is True
+
+    def test_invalid_string_sequence_skipped(self, tmp_path):
+        from openpyxl import Workbook
+
+        from src.orchestrator.workbook_parser import WorkbookParser
+
+        wb = Workbook()
+        wb.active.title = "config"
+        wb["config"]["A1"] = "field"
+        wb["config"]["B1"] = "value"
+        ws_prompts = wb.create_sheet(title="prompts")
+        ws_prompts["A1"] = "sequence"
+        ws_prompts["B1"] = "prompt_name"
+        ws_prompts["C1"] = "prompt"
+        ws_prompts["D1"] = "history"
+
+        ws_synth = wb.create_sheet(title="synthesis")
+        headers = [
+            "sequence",
+            "prompt_name",
+            "prompt",
+            "source_scope",
+            "source_prompts",
+            "include_scores",
+            "history",
+            "condition",
+        ]
+        for col, h in enumerate(headers, 1):
+            ws_synth.cell(1, col, h)
+        ws_synth.cell(2, 1, "abc")
+        ws_synth.cell(2, 2, "bad_row")
+        ws_synth.cell(2, 3, "Should be skipped")
+        ws_synth.cell(2, 4, "all")
+
+        path = str(tmp_path / "synth_invalid.xlsx")
+        wb.save(path)
+
+        parser = WorkbookParser(path)
+        synth = parser.load_synthesis()
+        assert synth == []
+
+    def test_bool_include_scores_false(self, tmp_path):
+        from openpyxl import Workbook
+
+        from src.orchestrator.workbook_parser import WorkbookParser
+
+        wb = Workbook()
+        wb.active.title = "config"
+        wb["config"]["A1"] = "field"
+        wb["config"]["B1"] = "value"
+        ws_prompts = wb.create_sheet(title="prompts")
+        ws_prompts["A1"] = "sequence"
+        ws_prompts["B1"] = "prompt_name"
+        ws_prompts["C1"] = "prompt"
+        ws_prompts["D1"] = "history"
+
+        ws_synth = wb.create_sheet(title="synthesis")
+        headers = [
+            "sequence",
+            "prompt_name",
+            "prompt",
+            "source_scope",
+            "source_prompts",
+            "include_scores",
+            "history",
+            "condition",
+        ]
+        for col, h in enumerate(headers, 1):
+            ws_synth.cell(1, col, h)
+        ws_synth.cell(2, 1, 1)
+        ws_synth.cell(2, 2, "summary")
+        ws_synth.cell(2, 3, "Summarize")
+        ws_synth.cell(2, 4, "all")
+        ws_synth.cell(2, 5, None)
+        ws_synth.cell(2, 6, False)
+        ws_synth.cell(2, 7, None)
+        ws_synth.cell(2, 8, None)
+
+        path = str(tmp_path / "synth_bool.xlsx")
+        wb.save(path)
+
+        parser = WorkbookParser(path)
+        synth = parser.load_synthesis()
+        assert len(synth) == 1
+        assert synth[0]["include_scores"] is False
+
+
+class TestInferChunkingStrategy:
+    """Tests for _infer_chunking_strategy by file extension."""
+
+    def test_markdown_extension(self, tmp_path):
+        from src.orchestrator.workbook_parser import WorkbookParser
+
+        parser = WorkbookParser(str(tmp_path / "test.xlsx"))
+        assert parser._infer_chunking_strategy("guide.md") == "markdown"
+
+    def test_python_extension(self, tmp_path):
+        from src.orchestrator.workbook_parser import WorkbookParser
+
+        parser = WorkbookParser(str(tmp_path / "test.xlsx"))
+        assert parser._infer_chunking_strategy("script.py") == "code"
+
+    def test_javascript_extension(self, tmp_path):
+        from src.orchestrator.workbook_parser import WorkbookParser
+
+        parser = WorkbookParser(str(tmp_path / "test.xlsx"))
+        assert parser._infer_chunking_strategy("app.js") == "code"
+
+    def test_typescript_extension(self, tmp_path):
+        from src.orchestrator.workbook_parser import WorkbookParser
+
+        parser = WorkbookParser(str(tmp_path / "test.xlsx"))
+        assert parser._infer_chunking_strategy("module.ts") == "code"
+
+    def test_unknown_extension_defaults_recursive(self, tmp_path):
+        from src.orchestrator.workbook_parser import WorkbookParser
+
+        parser = WorkbookParser(str(tmp_path / "test.xlsx"))
+        assert parser._infer_chunking_strategy("document.txt") == "recursive"
+
+    def test_case_insensitive_extension(self, tmp_path):
+        from src.orchestrator.workbook_parser import WorkbookParser
+
+        parser = WorkbookParser(str(tmp_path / "test.xlsx"))
+        assert parser._infer_chunking_strategy("README.MD") == "markdown"
+
+
+class TestWriteBatchResultsCollision:
+    """Tests for write_batch_results sheet name collision handling."""
+
+    def test_colliding_sheet_name_gets_counter_suffix(self, tmp_path):
+        from openpyxl import Workbook
+
+        from src.orchestrator.workbook_parser import WorkbookParser
+
+        wb = Workbook()
+        wb.active.title = "config"
+        wb["config"]["A1"] = "field"
+        wb["config"]["B1"] = "value"
+        ws_prompts = wb.create_sheet(title="prompts")
+        ws_prompts["A1"] = "sequence"
+        ws_prompts["B1"] = "prompt_name"
+        ws_prompts["C1"] = "prompt"
+        ws_prompts["D1"] = "history"
+        wb.create_sheet("results_alice")
+
+        path = str(tmp_path / "collision.xlsx")
+        wb.save(path)
+
+        parser = WorkbookParser(path)
+        results = [
+            {
+                "sequence": 1,
+                "prompt_name": "test",
+                "prompt": "hello",
+                "response": "world",
+                "status": "success",
+                "attempts": 1,
+                "history": None,
+                "batch_id": 1,
+                "batch_name": "alice",
+            }
+        ]
+        sheet_name = parser.write_batch_results(results, "alice")
+        assert sheet_name == "results_alice_1"
+
+        wb2 = load_workbook(path)
+        assert "results_alice_1" in wb2.sheetnames
+        assert "results_alice" in wb2.sheetnames
+
+
+class TestWriteScoresPivotCollision:
+    """Tests for write_scores_pivot sheet name collision handling."""
+
+    def test_colliding_pivot_sheet_gets_timestamp_suffix(self, tmp_path):
+        from openpyxl import Workbook
+
+        from src.orchestrator.workbook_parser import WorkbookParser
+
+        wb = Workbook()
+        wb.active.title = "config"
+        wb["config"]["A1"] = "field"
+        wb["config"]["B1"] = "value"
+        ws_prompts = wb.create_sheet(title="prompts")
+        ws_prompts["A1"] = "sequence"
+        ws_prompts["B1"] = "prompt_name"
+        ws_prompts["C1"] = "prompt"
+        ws_prompts["D1"] = "history"
+        wb.create_sheet("scores_pivot")
+
+        path = str(tmp_path / "pivot_collision.xlsx")
+        wb.save(path)
+
+        parser = WorkbookParser(path)
+        results = [
+            {
+                "batch_name": "alice",
+                "scores": {"skills": 8.0},
+                "composite_score": 8.0,
+            }
+        ]
+        criteria = [
+            {
+                "criteria_name": "skills",
+                "description": "Skills",
+                "scale_min": 1,
+                "scale_max": 10,
+                "weight": 1.0,
+                "source_prompt": "eval",
+                "score_type": "normalized_score",
+            },
+        ]
+        sheet_name = parser.write_scores_pivot(results, criteria)
+        assert sheet_name.startswith("scores_pivot_")
+        assert sheet_name != "scores_pivot"
+
+        wb2 = load_workbook(path)
+        assert sheet_name in wb2.sheetnames
+        assert "scores_pivot" in wb2.sheetnames

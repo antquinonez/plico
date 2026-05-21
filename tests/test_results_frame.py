@@ -390,7 +390,7 @@ class TestResultsFrameScoresPivot:
         ]
         frame = ResultsFrame(results)
         pivot = frame.scores_pivot(self._criteria([("skills", "normalized_score")]))
-        assert pivot.height > 0
+        assert pivot.height == 2
         criteria_row = pivot.filter(pl.col("criteria_name") == "skills")
         assert criteria_row["percentile"].item() == 100
 
@@ -1011,12 +1011,14 @@ class TestSerializeValue:
 
         result = _serialize_value("history", ["h1", "h2"])
         assert isinstance(result, str)
+        assert json.loads(result) == ["h1", "h2"]
 
     def test_serialize_value_response_dict(self):
         from src.orchestrator.results.frame import _serialize_value
 
         result = _serialize_value("response", {"key": "val"})
         assert isinstance(result, str)
+        assert json.loads(result) == {"key": "val"}
 
     def test_serialize_for_excel_converts_none(self):
         from src.orchestrator.results.frame import _serialize_for_excel

@@ -377,3 +377,72 @@ class TestOrderedPromptHistory:
         history1.merge_histories(history2)
 
         assert len(history1.get_all_interactions()) == 2
+
+    def test_get_effective_prompt_name_single_tuple(self):
+        history = OrderedPromptHistory()
+        result = history.get_effective_prompt_name((("name1", {}),))
+        assert result == "name1"
+        assert isinstance(result, str)
+
+    def test_get_effective_prompt_name_multi_tuple(self):
+        history = OrderedPromptHistory()
+        result = history.get_effective_prompt_name((("a", {}), ("b", {})))
+        assert result == ("a", "b")
+        assert isinstance(result, tuple)
+        assert len(result) == 2
+
+    def test_get_effective_prompt_name_non_string_non_tuple(self):
+        history = OrderedPromptHistory()
+        result = history.get_effective_prompt_name(42)
+        assert result == ""
+
+    def test_get_all_prompt_names_returns_empty_when_no_prompt_dict(self):
+        history = OrderedPromptHistory()
+        del history.prompt_dict
+        names = history.get_all_prompt_names()
+        assert names == []
+
+    def test_get_interaction_by_prompt_delegates_to_latest(self):
+        history = OrderedPromptHistory()
+        history.add_interaction("model", "Hello", "Hi", prompt_name="greet")
+        history.add_interaction("model", "Hello again", "Hey", prompt_name="greet")
+        result = history.get_interaction_by_prompt("greet")
+        assert result.response == "Hey"
+
+    def test_get_formatted_responses_cycle_detection(self):
+        history = OrderedPromptHistory()
+        history.add_interaction("m", "A", "resp_a", prompt_name="a", history=["b"])
+        history.add_interaction("m", "B", "resp_b", prompt_name="b", history=["a"])
+        result = history.get_formatted_responses(["a", "b"])
+        assert "resp_a" in result
+        assert "resp_b" in result
+
+    def test_get_formatted_responses_follows_history_chain(self):
+        history = OrderedPromptHistory()
+        history.add_interaction("m", "Base", "base_resp", prompt_name="base")
+        history.add_interaction(
+            "m", "Derived", "derived_resp", prompt_name="derived", history=["base"]
+        )
+        result = history.get_formatted_responses(["derived"])
+        assert "base_resp" in result
+        assert "derived_resp" in result
+        base_idx = result.index("base_resp")
+        derived_idx = result.index("derived_resp")
+        assert base_idx < derived_idx
+
+    def test_get_latest_responses_skips_empty_interactions(self):
+        history = OrderedPromptHistory()
+        history.add_interaction("m", "Q", "A", prompt_name="has_resp")
+        result = history.get_latest_responses_by_prompt_names(["has_resp", "missing"])
+        assert len(result) == 1
+        assert "has_resp" in result
+        assert "missing" not in result
+
+    def test_get_interactions_by_model_and_prompt_name(self):
+        history = OrderedPromptHistory()
+        history.add_interaction("model-a", "Q1", "A1", prompt_name="q")
+        history.add_interaction("model-b", "Q2", "A2", prompt_name="q")
+        history.add_interaction("model-a", "Q3", "A3", prompt_name="q")
+        result = history.get_interactions_by_model_and_prompt_name("model-a", "q")
+        assert len(result) == 2
+        assert all(i.model == "model-a" for i in result)

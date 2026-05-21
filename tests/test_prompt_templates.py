@@ -36,6 +36,7 @@ class TestResolveTemplatePath:
         template.write_text("name: test\n")
         result = resolve_template_path(str(tmp_path / "my_template"))
         assert result is not None
+        assert result == template.resolve()
 
     def test_resolve_nonexistent_path_returns_none(self):
         from src.prompt_templates import resolve_template_path

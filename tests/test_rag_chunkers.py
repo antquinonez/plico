@@ -521,14 +521,14 @@ class TestGetChunker:
         assert chunker.chunk_size == 500
 
     def test_get_recursive_chunker(self) -> None:
-        """Get recursive chunker by name."""
         chunker = get_chunker("recursive")
         assert isinstance(chunker, RecursiveChunker)
+        assert chunker.chunk_size > 0
 
     def test_get_markdown_chunker(self) -> None:
-        """Get markdown chunker by name."""
         chunker = get_chunker("markdown")
         assert isinstance(chunker, MarkdownChunker)
+        assert chunker.chunk_size > 0
 
     def test_get_code_chunker(self) -> None:
         """Get code chunker by name."""
@@ -578,3 +578,176 @@ class TestChunkTextConvenience:
 
         for chunk in chunks:
             assert chunk.metadata.get("source") == "test.txt"
+
+
+class TestHierarchicalTextChunkPostInit:
+    """Tests for HierarchicalTextChunk.__post_init__ (lines 39, 41 in base.py)."""
+
+    def test_default_child_ids_initialized(self):
+        """child_ids defaults to empty list when None."""
+        from src.RAG.text_splitters.base import HierarchicalTextChunk
+
+        chunk = HierarchicalTextChunk(content="x", chunk_index=0, start_char=0, end_char=1)
+        assert chunk.child_ids == []
+
+    def test_default_metadata_initialized(self):
+        """metadata defaults to empty dict when None."""
+        from src.RAG.text_splitters.base import HierarchicalTextChunk
+
+        chunk = HierarchicalTextChunk(content="x", chunk_index=0, start_char=0, end_char=1)
+        assert chunk.metadata == {}
+
+    def test_explicit_values_preserved(self):
+        """Explicitly provided child_ids and metadata are not overwritten."""
+        from src.RAG.text_splitters.base import HierarchicalTextChunk
+
+        chunk = HierarchicalTextChunk(
+            content="x",
+            chunk_index=0,
+            start_char=0,
+            end_char=1,
+            child_ids=["c1"],
+            metadata={"key": "val"},
+        )
+        assert chunk.child_ids == ["c1"]
+        assert chunk.metadata == {"key": "val"}
+
+
+class TestRecursiveChunkerLargeTextSplit:
+    """Tests for RecursiveChunker._split_large_text path in chunk() (lines 113-123)."""
+
+    def test_single_word_longer_than_chunk_size_triggers_sub_split(self):
+        """Text with no separator longer than chunk_size uses _split_large_text."""
+        chunker = RecursiveChunker(chunk_size=20, chunk_overlap=5, keep_separator=False)
+        text = "a" * 100
+
+        chunks = chunker.chunk(text)
+        assert len(chunks) == 7
+        assert all(len(c.content) <= 25 for c in chunks)
+
+    def test_split_large_text_produces_position_tracking(self):
+        """Sub-chunks from _split_large_text have correct start_char tracking."""
+        chunker = RecursiveChunker(chunk_size=30, chunk_overlap=5)
+        text = "x" * 80
+
+        chunks = chunker.chunk(text)
+        assert chunks[0].start_char == 0
+        assert chunks[-1].end_char <= len(text)
+
+
+class TestRecursiveChunkerSplitStartFallback:
+    """Tests for split_start == -1 fallback (line 93)."""
+
+    def test_repeated_text_finds_positions(self):
+        """Repeated identical substrings still produce valid position tracking."""
+        chunker = RecursiveChunker(chunk_size=50, chunk_overlap=10)
+        text = "abc abc abc " * 20
+
+        chunks = chunker.chunk(text)
+        for chunk in chunks:
+            assert chunk.start_char >= 0
+            assert chunk.end_char > chunk.start_char
+
+
+class TestMarkdownChunkerEmptyText:
+    """Tests for MarkdownChunker empty text guard (line 77)."""
+
+    def test_empty_string_returns_empty(self):
+        """Empty string returns empty list."""
+        chunker = MarkdownChunker(chunk_size=500, chunk_overlap=50)
+        assert chunker.chunk("") == []
+
+    def test_whitespace_only_returns_empty(self):
+        """Whitespace-only text returns empty list."""
+        chunker = MarkdownChunker(chunk_size=500, chunk_overlap=50)
+        assert chunker.chunk("   \n\n   ") == []
+
+
+class TestMarkdownChunkerLargeSectionRemainder:
+    """Tests for _split_large_section remainder path (lines 209, 212)."""
+
+    def test_large_section_with_remainder_chunk(self):
+        """Large section ending with leftover text emits a final chunk."""
+        chunker = MarkdownChunker(
+            chunk_size=80, chunk_overlap=10, max_chunk_fallback=True, split_headers=["h1"]
+        )
+        text = "# Title\n\n" + "This is a test sentence. " * 30
+
+        chunks = chunker.chunk(text)
+        assert len(chunks) >= 5
+        last_content = chunks[-1].content.strip()
+        assert len(last_content) > 0
+        assert "sentence" in last_content
+
+
+class TestMarkdownChunkerSplitLargeSectionEmptyPara:
+    """Tests for _split_large_section skipping empty paragraphs (line 180)."""
+
+    def test_section_with_blank_paragraphs(self):
+        """Blank paragraphs in large sections are skipped."""
+        chunker = MarkdownChunker(chunk_size=100, chunk_overlap=0, max_chunk_fallback=True)
+        text = "# Title\n\npara1\n\n\n\npara2\n\n\n\npara3"
+
+        chunks = chunker.chunk(text)
+        assert len(chunks) >= 1
+        for c in chunks:
+            assert c.content.strip() != ""
+
+
+class TestMarkdownChunkerSplitParagraphLongSentence:
+    """Tests for _split_paragraph long sentence path (lines 264-279)."""
+
+    def test_sentence_longer_than_chunk_size(self):
+        """Sentence longer than chunk_size is split by character range."""
+        chunker = MarkdownChunker(chunk_size=30, chunk_overlap=0, max_chunk_fallback=True)
+        long_sentence = "x" * 100
+        text = "# Title\n\n" + long_sentence
+
+        chunks = chunker.chunk(text)
+        assert len(chunks) >= 3
+        assert all(len(c.content.strip()) <= 30 for c in chunks)
+
+
+class TestCodeChunkerFallbackChunk:
+    """Tests for CodeChunker._fallback_chunk (lines 120, 309-360)."""
+
+    def test_fallback_chunk_directly(self):
+        """_fallback_chunk splits text by lines when no structure detected."""
+        chunker = CodeChunker(language="python", chunk_size=50, chunk_overlap=0)
+        code = "x = 1\n" * 20
+
+        chunks = chunker._fallback_chunk(code, {"language": "python"})
+        assert len(chunks) == 3
+        assert all(c.metadata.get("block_type") == "fallback" for c in chunks)
+
+    def test_fallback_preserves_content(self):
+        """Fallback chunking preserves all content."""
+        chunker = CodeChunker(language="python", chunk_size=50, chunk_overlap=0)
+        code = "x = 1\n" * 30
+
+        chunks = chunker._fallback_chunk(code, {"language": "python"})
+        total = sum(len(c.content) for c in chunks)
+        assert total >= len(code.strip()) - 10
+
+    def test_fallback_with_overlap(self):
+        """Fallback chunking with overlap produces more chunks than without."""
+        chunker = CodeChunker(language="python", chunk_size=30, chunk_overlap=10)
+        code = "x = 1\n" * 20
+
+        chunks = chunker._fallback_chunk(code, {"language": "python"})
+        assert len(chunks) >= 5
+        assert all(c.metadata.get("block_type") == "fallback" for c in chunks)
+
+
+class TestCodeChunkerExtractCodeBlocksPass:
+    """Tests for _extract_code_blocks pass statement (line 204)."""
+
+    def test_module_level_then_unmatched_lines(self):
+        """Lines after first block that don't match any pattern are handled."""
+        chunker = CodeChunker(language="python", chunk_size=500)
+        code = "x = 1\ndef foo():\n    pass\ny = 2\n"
+
+        chunks = chunker.chunk(code)
+        assert len(chunks) >= 2
+        block_types = {c.metadata.get("block_type") for c in chunks}
+        assert "function" in block_types
