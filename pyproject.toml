@@ -39,7 +39,7 @@ dev = [
     "pytest-cov",
     "pre-commit",
     "ruff",
-    "invoke>=2.0.0",
+    "invoke>=2.2.1",
     "vulture>=2.16",
 ]
 otel = [
